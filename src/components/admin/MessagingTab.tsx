@@ -48,8 +48,7 @@ import {
   ChevronRight,
   ChevronLeft,
   ArrowLeft,
-  RefreshCw,
-  ExternalLink
+  RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageTypeBadge } from "../student/MessageTypeBadge";
@@ -68,30 +67,6 @@ const formatMessageDate = (createdAt: string): string => {
   return isToday
     ? msgDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
     : msgDate.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
-};
-
-// Strip HTML tags to plain text for Gmail compose body
-const htmlToPlain = (html: string): string => {
-  if (!html) return '';
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return tmp.textContent || tmp.innerText || '';
-};
-
-// Build a Gmail web compose URL pre-filled with recipients/subject/body.
-// Opens the teacher's Gmail account in a new tab (mailto-style, no backend).
-export const buildGmailComposeUrl = (
-  toEmails: string[],
-  subject: string,
-  body: string
-): string => {
-  const params = new URLSearchParams();
-  params.set('view', 'cm');
-  params.set('fs', '1');
-  if (toEmails.length > 0) params.set('to', toEmails.join(','));
-  if (subject) params.set('su', subject);
-  if (body) params.set('body', body);
-  return `https://mail.google.com/mail/?${params.toString()}`;
 };
 
 type FolderType = 'inbox' | 'sent' | 'drafts' | 'starred' | 'trash' | 'swap_requests';
@@ -353,19 +328,22 @@ export default function MessagingTab() {
       type: 'general' as const,
     };
 
-    // Save locally first (always)
-    addMessage(messageData);
-
-    // If there are real email recipients, open Gmail compose in a new tab
-    // so the teacher can review and send from her own Gmail account.
+    // Try to send via Gmail if we have recipient emails
     if (recipientEmails.length > 0) {
-      const url = buildGmailComposeUrl(recipientEmails, composeSubject, plain);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      toast.success('ההודעה נשמרה ונפתחה ב-Gmail לשליחה');
-    } else {
-      toast.success('ההודעה נשמרה');
+      const result = await sendMessageViaGmail(messageData, recipientEmails);
+      if (result) {
+        toast.success('ההודעה נשלחה בהצלחה דרך Gmail');
+        resetCompose();
+        loadData();
+        return;
+      }
+      // If Gmail send failed, fall back to local
+      console.warn('Gmail send failed, falling back to local message');
     }
 
+    // Fallback: save locally only
+    addMessage(messageData);
+    toast.success('ההודעה נשלחה בהצלחה');
     resetCompose();
     loadData();
   };
@@ -1160,7 +1138,7 @@ function ComposeForm({
       <div className="flex gap-2">
         <Button onClick={onSend}>
           <Send className="w-4 h-4 mr-2" />
-          שמור ופתח ב-Gmail
+          שלח
         </Button>
         <Button variant="outline" onClick={onSaveDraft}>
           <Save className="w-4 h-4 mr-2" />
