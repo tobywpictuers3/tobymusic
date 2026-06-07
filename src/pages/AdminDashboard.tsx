@@ -58,7 +58,7 @@ const BrandSection = ({ index, children }: { index: number; children: React.Reac
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const isStorybook = typeof window !== 'undefined' && window.location?.port === '6006';
-  const [activeTab, setActiveTab] = useState('students');
+  const [activeTab, setActiveTab] = useState('journal');
 
   const [user, setUser] = useState<any>(() => {
     const existing = getCurrentUser();
