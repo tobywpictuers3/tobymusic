@@ -19,9 +19,9 @@ export default {
 		},
 		extend: {
 			fontFamily: {
-				sans: ['"Assistant"', 'system-ui', '-apple-system', 'sans-serif'],
-				serif: ['"Playfair Display"', 'Georgia', 'serif'],
-				display: ['"Playfair Display"', 'Georgia', 'serif'],
+				sans: ['"Heebo"', '"Assistant"', 'system-ui', '-apple-system', 'sans-serif'],
+				serif: ['"Frank Ruhl Libre"', '"Cormorant Garamond"', 'Georgia', 'serif'],
+				display: ['"Frank Ruhl Libre"', '"Cormorant Garamond"', 'Georgia', 'serif'],
 			},
 			colors: {
 				gold: {
