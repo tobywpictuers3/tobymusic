@@ -18,7 +18,7 @@ import StudentFiles from "@/components/student/StudentFiles";
 import PaymentAlert from "@/components/student/PaymentAlert";
 import LessonHistory from "@/components/student/LessonHistory";
 import PracticeTracking from "@/components/student/PracticeTracking";
-import GmailStyleMessages from "@/components/student/GmailStyleMessages";
+import MessagesTopRow from "@/components/student/MessagesTopRow";
 import BroadcastMessageBanner from "@/components/student/BroadcastMessageBanner";
 import StarredMessagesBanner from "@/components/student/StarredMessagesBanner";
 import MedalCollection from "@/components/student/MedalCollection";
@@ -261,7 +261,7 @@ const StudentDashboard = () => {
         </TabsContent>
 
         <TabsContent value="messages" className="fade-slide-in space-y-6">
-          <GmailStyleMessages
+          <MessagesTopRow
             studentId={student.id}
             studentName={`${student.firstName} ${student.lastName}`}
           />
