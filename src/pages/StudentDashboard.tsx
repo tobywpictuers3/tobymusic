@@ -19,8 +19,7 @@ import PaymentAlert from "@/components/student/PaymentAlert";
 import LessonHistory from "@/components/student/LessonHistory";
 import PracticeTracking from "@/components/student/PracticeTracking";
 import MessagesTopRow from "@/components/student/MessagesTopRow";
-import BroadcastMessageBanner from "@/components/student/BroadcastMessageBanner";
-import StarredMessagesBanner from "@/components/student/StarredMessagesBanner";
+import GmailStyleMessages from "@/components/student/GmailStyleMessages";
 import MedalCollection from "@/components/student/MedalCollection";
 import MedalStore from "@/components/student/MedalStore";
 import BackButton from "@/components/ui/back-button";
@@ -164,22 +163,11 @@ const StudentDashboard = () => {
         </div>
       </div>
 
-      {/* Messages — collapsed to single row with expand */}
-      <div className="space-y-2">
-        <div className={showAllMessages ? "" : "max-h-14 overflow-hidden"}>
-          <BroadcastMessageBanner studentId={student.id} />
-          <StarredMessagesBanner studentId={student.id} />
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowAllMessages(!showAllMessages)}
-          className="w-full text-xs text-muted-foreground"
-        >
-          {showAllMessages ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
-          {showAllMessages ? "צמצם הודעות" : "הרחב הודעות"}
-        </Button>
-      </div>
+      {/* Top messages row — equal-width across full width */}
+      <MessagesTopRow
+        studentId={student.id}
+        studentName={`${student.firstName} ${student.lastName}`}
+      />
 
       <PaymentAlert studentId={student.id} />
 
@@ -261,7 +249,7 @@ const StudentDashboard = () => {
         </TabsContent>
 
         <TabsContent value="messages" className="fade-slide-in space-y-6">
-          <MessagesTopRow
+          <GmailStyleMessages
             studentId={student.id}
             studentName={`${student.firstName} ${student.lastName}`}
           />
