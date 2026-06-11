@@ -250,9 +250,8 @@ const StudentDashboard = () => {
 
         <TabsContent value="messages" className="fade-slide-in space-y-6">
           <GmailStyleMessages
-            userId={student.id}
-            userName={`${student.firstName} ${student.lastName}`}
-            userType="student"
+            studentId={student.id}
+            studentName={`${student.firstName} ${student.lastName}`}
           />
         </TabsContent>
 
