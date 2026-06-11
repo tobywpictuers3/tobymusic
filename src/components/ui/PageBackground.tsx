@@ -1,5 +1,5 @@
-import { ASSETS } from "@/brand/assets";
 import { useLocation } from "react-router-dom";
+import stageDark from "@/assets/stage-dark.png.asset.json";
 
 const PageBackground = () => {
   const { pathname } = useLocation();
@@ -11,7 +11,7 @@ const PageBackground = () => {
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: `url(${ASSETS.hero.pianoFlute})`,
+          backgroundImage: `url(${stageDark.url})`,
           backgroundSize: "cover",
           backgroundPosition: "center bottom",
         }}
