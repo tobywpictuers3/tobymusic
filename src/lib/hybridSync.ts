@@ -328,6 +328,13 @@ class HybridSyncManager {
       'musicSystem_scheduleTemplates',
       'musicSystem_holidays',
       'oneTimePayments',
+      // ⚠️ CRITICAL: messages MUST be merged by id, otherwise messages
+      // sent by one user while another user is syncing get overwritten.
+      'musicSystem_messages',
+      'musicSystem_perLessonPayments',
+      'musicSystem_storeItems',
+      'musicSystem_storePurchases',
+      'musicSystem_integrationSettings',
     ];
 
     const directCopyKeys = ['musicSystem_studentStats', 'musicSystem_tithePaid'];
