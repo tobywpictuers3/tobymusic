@@ -502,6 +502,23 @@ const BackupHistory = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const filteredVersions = (() => {
+    if (!dateFrom && !dateTo) return versions;
+    const fromMs = dateFrom ? new Date(dateFrom + 'T00:00:00').getTime() : -Infinity;
+    // If only "from" given, treat "to" as end of that same day for a single-date filter
+    const toStr = dateTo || dateFrom;
+    const toMs = toStr ? new Date(toStr + 'T23:59:59.999').getTime() : Infinity;
+    return versions.filter((v) => {
+      const t = new Date(v.server_modified).getTime();
+      return t >= fromMs && t <= toMs;
+    });
+  })();
+
+  const clearDateFilter = () => {
+    setDateFrom('');
+    setDateTo('');
+  };
+
   if (devMode) {
     return (
       <Card>
