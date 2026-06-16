@@ -17,6 +17,8 @@ import {
   Dumbbell,
   CheckCircle,
   ShieldCheck,
+  Filter,
+  X,
 } from 'lucide-react';
 import {
   getStudents,
@@ -119,6 +121,10 @@ const BackupHistory = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const [selectedVersion, setSelectedVersion] = useState<VersionInfo | null>(null);
+
+  // Date range filter
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
 
   const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -496,6 +502,23 @@ const BackupHistory = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const filteredVersions = (() => {
+    if (!dateFrom && !dateTo) return versions;
+    const fromMs = dateFrom ? new Date(dateFrom + 'T00:00:00').getTime() : -Infinity;
+    // If only "from" given, treat "to" as end of that same day for a single-date filter
+    const toStr = dateTo || dateFrom;
+    const toMs = toStr ? new Date(toStr + 'T23:59:59.999').getTime() : Infinity;
+    return versions.filter((v) => {
+      const t = new Date(v.server_modified).getTime();
+      return t >= fromMs && t <= toMs;
+    });
+  })();
+
+  const clearDateFilter = () => {
+    setDateFrom('');
+    setDateTo('');
+  };
+
   if (devMode) {
     return (
       <Card>
@@ -557,17 +580,62 @@ const BackupHistory = () => {
               </p>
             </div>
 
+            {/* Date range filter */}
+            <div className="p-4 border rounded-lg bg-card/50 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Filter className="h-4 w-4" />
+                סינון לפי תאריך
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground">מתאריך</label>
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="px-3 py-2 rounded-md border bg-background text-sm"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground">עד תאריך</label>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="px-3 py-2 rounded-md border bg-background text-sm"
+                  />
+                </div>
+                {(dateFrom || dateTo) && (
+                  <Button variant="ghost" size="sm" onClick={clearDateFilter}>
+                    <X className="h-4 w-4 ml-2" />
+                    נקה סינון
+                  </Button>
+                )}
+                <div className="text-xs text-muted-foreground mr-auto">
+                  {dateFrom || dateTo
+                    ? `מציג ${filteredVersions.length} מתוך ${versions.length} גרסאות`
+                    : `סה"כ ${versions.length} גרסאות`}
+                  {' · '}
+                  ניתן לשחזר הכל, רק אימונים, או הכל למעט אימונים מכל גרסה
+                </div>
+              </div>
+            </div>
+
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <span className="mr-3 text-muted-foreground">טוען גרסאות...</span>
               </div>
-            ) : versions.length === 0 ? (
+            ) : filteredVersions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <HardDrive className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-lg font-medium">אין גרסאות שמורות</p>
+                <p className="text-lg font-medium">
+                  {versions.length === 0 ? 'אין גרסאות שמורות' : 'אין גרסאות בטווח התאריכים שנבחר'}
+                </p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  הגרסה הראשונה תישמר אוטומטית עם השינוי הבא
+                  {versions.length === 0
+                    ? 'הגרסה הראשונה תישמר אוטומטית עם השינוי הבא'
+                    : 'נסי טווח תאריכים אחר או נקי את הסינון'}
                 </p>
               </div>
             ) : (
@@ -585,7 +653,7 @@ const BackupHistory = () => {
                   </TableHeader>
 
                   <TableBody>
-                    {versions.map((version, index) => (
+                    {filteredVersions.map((version, index) => (
                       <TableRow
                         key={version.path}
                         className="cursor-pointer hover:bg-muted/50"
@@ -595,7 +663,7 @@ const BackupHistory = () => {
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
                             {formatDate(version.server_modified)}
-                            {index === 0 && (
+                            {index === 0 && !dateFrom && !dateTo && (
                               <Badge variant="default" className="mr-2">
                                 אחרון
                               </Badge>
