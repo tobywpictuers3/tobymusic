@@ -122,6 +122,10 @@ const BackupHistory = () => {
 
   const [selectedVersion, setSelectedVersion] = useState<VersionInfo | null>(null);
 
+  // Date range filter
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+
   const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
