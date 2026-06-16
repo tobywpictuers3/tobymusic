@@ -374,19 +374,41 @@ class HybridSyncManager {
   private mergeRecords(localRecords: any[], remoteRecords: any[]): any {
     const recordMap = new Map<string, any>();
 
-    remoteRecords.forEach((record) => recordMap.set(record.id, record));
+    // Seed map with remote records (so anything only in remote survives)
+    (remoteRecords || []).forEach((record) => {
+      if (record && record.id != null) recordMap.set(String(record.id), record);
+    });
 
-    localRecords.forEach((localRecord) => {
-      const remoteRecord = recordMap.get(localRecord.id);
+    (localRecords || []).forEach((localRecord) => {
+      if (!localRecord || localRecord.id == null) return;
+      const key = String(localRecord.id);
+      const remoteRecord = recordMap.get(key);
 
       if (!remoteRecord) {
-        recordMap.set(localRecord.id, localRecord);
-      } else if (localRecord.lastModified && remoteRecord.lastModified) {
-        const localTime = new Date(localRecord.lastModified).getTime();
-        const remoteTime = new Date(remoteRecord.lastModified).getTime();
-        if (localTime > remoteTime) recordMap.set(localRecord.id, localRecord);
-      } else {
-        recordMap.set(localRecord.id, localRecord);
+        // Only in local → keep
+        recordMap.set(key, localRecord);
+        return;
+      }
+
+      const localTime = localRecord.lastModified
+        ? new Date(localRecord.lastModified).getTime()
+        : localRecord.createdAt
+          ? new Date(localRecord.createdAt).getTime()
+          : 0;
+      const remoteTime = remoteRecord.lastModified
+        ? new Date(remoteRecord.lastModified).getTime()
+        : remoteRecord.createdAt
+          ? new Date(remoteRecord.createdAt).getTime()
+          : 0;
+
+      // Prefer the most recently modified version; on tie, prefer the one
+      // with more keys (i.e. richer record) to avoid losing fields.
+      if (localTime > remoteTime) {
+        recordMap.set(key, localRecord);
+      } else if (localTime === remoteTime) {
+        const localSize = Object.keys(localRecord).length;
+        const remoteSize = Object.keys(remoteRecord).length;
+        if (localSize >= remoteSize) recordMap.set(key, localRecord);
       }
     });
 
