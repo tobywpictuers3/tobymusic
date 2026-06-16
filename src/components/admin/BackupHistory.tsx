@@ -17,6 +17,8 @@ import {
   Dumbbell,
   CheckCircle,
   ShieldCheck,
+  Filter,
+  X,
 } from 'lucide-react';
 import {
   getStudents,
