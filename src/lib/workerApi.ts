@@ -39,6 +39,29 @@ const buildWorkerUrl = (
   return `${WORKER_BASE_URL}?${params.toString()}`;
 };
 
+const getWorkerError = (data: any, fallback = "Worker request failed") => {
+  if (data && typeof data === "object") {
+    return data.error || data.message || fallback;
+  }
+  return fallback;
+};
+
+const isFailureEnvelope = (data: any) =>
+  data && typeof data === "object" && (data.success === false || data.ok === false);
+
+const unwrapDataEnvelope = (data: any) => {
+  if (
+    data &&
+    typeof data === "object" &&
+    data.success === true &&
+    data.data &&
+    typeof data.data === "object"
+  ) {
+    return data.data;
+  }
+  return data;
+};
+
 // NOTICE:
 // 1. UploadAttachment MUST NOT use Accept or Content-Type
 // 2. Only X-Sonata-Manager-Code is allowed
@@ -159,7 +182,10 @@ export const workerApi = {
       }
 
       const data = await r.json();
-      return { success: true, data };
+      if (isFailureEnvelope(data)) {
+        return { success: false, error: getWorkerError(data, "DOWNLOAD_LATEST_FAILED"), data };
+      }
+      return { success: true, data: unwrapDataEnvelope(data) };
     } catch (err) {
       logger.error("downloadLatest error:", err);
       return { success: false, error: (err as Error).message };
@@ -307,8 +333,12 @@ export const workerApi = {
       }
 
       const data = await r.json();
-      logger.info("listVersions success:", data);
-      return { success: true, data };
+      if (isFailureEnvelope(data)) {
+        return { success: false, error: getWorkerError(data, "LIST_VERSIONS_FAILED"), data };
+      }
+      const unwrapped = unwrapDataEnvelope(data);
+      logger.info("listVersions success:", unwrapped);
+      return { success: true, data: unwrapped };
     } catch (err) {
       logger.error("listVersions error:", err);
       return { success: false, error: (err as Error).message };
@@ -339,7 +369,10 @@ export const workerApi = {
       }
 
       const data = await r.json();
-      return { success: true, data };
+      if (isFailureEnvelope(data)) {
+        return { success: false, error: getWorkerError(data, "DOWNLOAD_BY_PATH_FAILED"), data };
+      }
+      return { success: true, data: unwrapDataEnvelope(data) };
     } catch (err) {
       logger.error("downloadByPath error:", err);
       return { success: false, error: (err as Error).message };
