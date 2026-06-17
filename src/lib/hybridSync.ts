@@ -483,6 +483,7 @@ class HybridSyncManager {
     }
 
     this.setLastLocalSaveNow();
+    this.persistLocalSnapshot();
     this.syncState.pendingChanges++;
     this.emit();
 
@@ -527,6 +528,7 @@ class HybridSyncManager {
     }
 
     this.setLastLocalSaveNow();
+    this.persistLocalSnapshot();
     this.syncState.pendingChanges++;
     this.emit();
 
@@ -617,7 +619,9 @@ class HybridSyncManager {
 
       const localData = this.gatherAllData();
 
-      const remoteData = remoteResult.data || remoteResult;
+      const remoteData = remoteResult.success && this.hasValidDataShape(remoteResult.data)
+        ? remoteResult.data
+        : {};
       const mergedData = this.mergeDataWithConflictResolution(localData, remoteData);
       logger.info('🔀 Merged local and remote changes');
 
