@@ -6,6 +6,7 @@ import { toast } from '@/hooks/use-toast';
 import { workerApi } from '@/lib/workerApi';
 import { logger } from '@/lib/logger';
 import { isDevMode } from '@/lib/storage';
+import { hybridSync } from '@/lib/hybridSync';
 import { restorePracticeSessionsFromVersion } from '@/lib/practiceRestore';
 import {
   History,
@@ -58,24 +59,6 @@ interface VersionInfo {
   content_hash?: string;
 }
 
-const PRACTICE_KEY_HINTS = [
-  'practice',
-  'practices',
-  'session',
-  'sessions',
-  'training',
-  'trainings',
-  'workout',
-  'exercise',
-  'אימון',
-  'אימונים',
-];
-
-const isPracticeStorageKey = (key: string) => {
-  const lowerKey = key.toLowerCase();
-  return PRACTICE_KEY_HINTS.some((hint) => lowerKey.includes(hint.toLowerCase()));
-};
-
 const extractVersions = (data: unknown): VersionInfo[] => {
   if (Array.isArray(data)) return data as VersionInfo[];
 
@@ -98,23 +81,6 @@ const asStorageRecord = (data: unknown): Record<string, unknown> | null => {
   }
   return null;
 };
-
-const toStorageString = (value: unknown) =>
-  typeof value === 'string' ? value : JSON.stringify(value);
-
-const getAllLocalStorageKeys = () => {
-  const keys: string[] = [];
-  for (let i = 0; i < localStorage.length; i += 1) {
-    const key = localStorage.key(i);
-    if (key) keys.push(key);
-  }
-  return keys;
-};
-
-interface StorageSnapshotItem {
-  key: string;
-  value: string | null;
-}
 
 const BackupHistory = () => {
   const [versions, setVersions] = useState<VersionInfo[]>([]);
@@ -355,13 +321,20 @@ const BackupHistory = () => {
           return;
         }
 
-        Object.entries(restoredData).forEach(([key, value]) => {
-          localStorage.setItem(key, toStorageString(value));
-        });
+        const restoreResult = await hybridSync.restoreData(restoredData);
+
+        if (!restoreResult.success) {
+          toast({
+            title: '❌ שגיאה בשחזור',
+            description: restoreResult.message || 'לא ניתן לשחזר את הגרסה',
+            variant: 'destructive',
+          });
+          return;
+        }
 
         toast({
-          title: '✅ השחזור הושלם',
-          description: 'הנתונים שוחזרו בהצלחה. הדף יתרענן...',
+          title: restoreResult.synced ? '✅ השחזור הושלם וסונכרן' : '✅ השחזור הושלם מקומית',
+          description: `${restoreResult.message}. הדף יתרענן...`,
         });
 
         setTimeout(() => {
@@ -410,56 +383,25 @@ const BackupHistory = () => {
           return;
         }
 
-        const practiceKeys = new Set<string>();
+        const mergedData = {
+          ...restoredData,
+          musicSystem_practiceSessions: JSON.parse(currentPracticeSerialized),
+        };
 
-        getAllLocalStorageKeys().forEach((key) => {
-          if (isPracticeStorageKey(key)) {
-            practiceKeys.add(key);
-            return;
-          }
+        const restoreResult = await hybridSync.restoreData(mergedData);
 
-          const currentValue = localStorage.getItem(key);
-          if (currentValue === currentPracticeSerialized) {
-            practiceKeys.add(key);
-          }
-        });
-
-        Object.entries(restoredData).forEach(([key, value]) => {
-          if (isPracticeStorageKey(key)) {
-            practiceKeys.add(key);
-            return;
-          }
-
-          try {
-            if (toStorageString(value) === currentPracticeSerialized) {
-              practiceKeys.add(key);
-            }
-          } catch {
-            // ignore
-          }
-        });
-
-        const practiceSnapshot: StorageSnapshotItem[] = Array.from(practiceKeys).map((key) => ({
-          key,
-          value: localStorage.getItem(key),
-        }));
-
-        Object.entries(restoredData).forEach(([key, value]) => {
-          if (practiceKeys.has(key) || isPracticeStorageKey(key)) return;
-          localStorage.setItem(key, toStorageString(value));
-        });
-
-        practiceSnapshot.forEach(({ key, value }) => {
-          if (value === null) {
-            localStorage.removeItem(key);
-          } else {
-            localStorage.setItem(key, value);
-          }
-        });
+        if (!restoreResult.success) {
+          toast({
+            title: '❌ שגיאה בשחזור',
+            description: restoreResult.message || 'לא ניתן לשחזר את הגרסה',
+            variant: 'destructive',
+          });
+          return;
+        }
 
         toast({
-          title: '✅ השחזור הושלם',
-          description: 'כל הנתונים שוחזרו, והאימונים נשמרו כפי שהם. הדף יתרענן...',
+          title: restoreResult.synced ? '✅ השחזור הושלם וסונכרן' : '✅ השחזור הושלם מקומית',
+          description: `כל הנתונים שוחזרו, והאימונים נשמרו כפי שהם. ${restoreResult.message}. הדף יתרענן...`,
         });
 
         setTimeout(() => {

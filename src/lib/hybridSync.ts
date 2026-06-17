@@ -37,8 +37,12 @@ const LS_LAST_LOCAL = 'musicSystem_lastLocalSaveAt';
 const LS_LAST_CLOUD = 'musicSystem_lastCloudSyncAt';
 const LS_LAST_ERROR = 'musicSystem_lastCloudSyncError';
 const LS_LAST_ERROR_MSG = 'musicSystem_lastCloudSyncErrorMessage';
+const LS_LOCAL_SNAPSHOT = 'musicSystem_localSnapshot';
+const LS_HAS_UNSYNCED = 'musicSystem_hasUnsyncedChanges';
 
 type SyncListener = (state: SyncUiState) => void;
+
+type SyncResult = { success: boolean; synced: boolean; message: string };
 
 class HybridSyncManager {
   private listeners = new Set<SyncListener>();
@@ -112,6 +116,7 @@ class HybridSyncManager {
 
     try {
       localStorage.setItem(LS_LAST_LOCAL, now);
+      localStorage.setItem(LS_HAS_UNSYNCED, 'true');
     } catch {}
     this.emit();
   }
@@ -130,6 +135,7 @@ class HybridSyncManager {
 
     try {
       localStorage.setItem(LS_LAST_CLOUD, now);
+      localStorage.setItem(LS_HAS_UNSYNCED, 'false');
       localStorage.removeItem(LS_LAST_ERROR);
       localStorage.removeItem(LS_LAST_ERROR_MSG);
     } catch {}
@@ -150,6 +156,37 @@ class HybridSyncManager {
     } catch {}
 
     this.emit();
+  }
+
+  private hasValidDataShape(data: any): boolean {
+    return !!(
+      data &&
+      typeof data === 'object' &&
+      Object.keys(data).some((k) => k.startsWith('musicSystem_') || k === 'oneTimePayments')
+    );
+  }
+
+  private persistLocalSnapshot(): void {
+    try {
+      const data = this.gatherAllData();
+      if (this.hasValidDataShape(data)) {
+        localStorage.setItem(LS_LOCAL_SNAPSHOT, JSON.stringify(data));
+      }
+    } catch (error) {
+      logger.warn('⚠️ Could not persist local sync snapshot:', error);
+    }
+  }
+
+  private readLocalSnapshot(): any | null {
+    try {
+      const raw = localStorage.getItem(LS_LOCAL_SNAPSHOT);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return this.hasValidDataShape(parsed) ? parsed : null;
+    } catch (error) {
+      logger.warn('⚠️ Could not read local sync snapshot:', error);
+      return null;
+    }
   }
 
   /* =======================
@@ -255,8 +292,9 @@ class HybridSyncManager {
       logger.info('🔄 Loading from Worker...');
 
       if (!this.syncState.isOnline) {
-        logger.warn('📡 Offline - initializing empty local state');
-        this.updateInMemoryStorage(emptyData);
+        const snapshot = this.readLocalSnapshot();
+        logger.warn('📡 Offline - loading local snapshot if available');
+        this.updateInMemoryStorage(snapshot || emptyData);
         return;
       }
 
@@ -275,27 +313,45 @@ class HybridSyncManager {
           dataKeys.some((k) => k.startsWith('musicSystem_')) || dataKeys.length > 1;
 
         if (!hasMeaningfulData) {
-          logger.warn('⚠️ Loaded empty/invalid data from Worker - initializing fresh state');
-          this.updateInMemoryStorage(emptyData);
+          const snapshot = this.readLocalSnapshot();
+          logger.warn('⚠️ Loaded empty/invalid data from Worker - using local snapshot if available');
+          this.updateInMemoryStorage(snapshot || emptyData);
           this.syncState.lastSyncTime = null;
           this.emit();
         } else {
-          logger.info('✅ Data loaded from Worker');
-          this.updateInMemoryStorage(result.data);
+          const snapshot = localStorage.getItem(LS_HAS_UNSYNCED) === 'true' ? this.readLocalSnapshot() : null;
+          const dataToLoad = snapshot
+            ? this.mergeDataWithConflictResolution(snapshot, result.data)
+            : result.data;
+          logger.info(snapshot ? '✅ Data loaded from Worker and merged with local snapshot' : '✅ Data loaded from Worker');
+          this.updateInMemoryStorage(dataToLoad);
+          this.persistLocalSnapshot();
           // Treat init load as "cloud ok" (but do not reset pendingChanges)
           this.syncState.lastSyncTime = new Date().toISOString();
           this.emit();
+          if (snapshot) void this.directUpload();
         }
       } else if (result && result.error === 'NO_VERSION_FOUND') {
         logger.info('ℹ️ No version found on Worker - starting fresh (first use)');
         this.updateInMemoryStorage(emptyData);
       } else {
-        logger.warn('⚠️ Worker load failed or timed out - initializing empty local state');
-        this.updateInMemoryStorage(emptyData);
+        const errorMessage = result?.error || 'WORKER_LOAD_FAILED';
+        const snapshot = this.readLocalSnapshot();
+        if (snapshot) {
+          logger.warn('⚠️ Worker load failed - using local unsynced snapshot:', errorMessage);
+          this.updateInMemoryStorage(snapshot);
+        }
+        logger.error('❌ Worker load failed - keeping local state empty and blocking silent overwrite:', errorMessage);
+        this.setCloudError(errorMessage);
       }
     } catch (error) {
-      logger.warn('⚠️ Load error - initializing empty local state:', error);
-      this.updateInMemoryStorage(emptyData);
+      const snapshot = this.readLocalSnapshot();
+      if (snapshot) {
+        logger.warn('⚠️ Load error - using local unsynced snapshot:', error);
+        this.updateInMemoryStorage(snapshot);
+      }
+      logger.error('❌ Load error - keeping local state empty and blocking silent overwrite:', error);
+      this.setCloudError(error);
     }
   }
 
@@ -420,13 +476,14 @@ class HybridSyncManager {
      Public sync triggers
      ======================= */
 
-  async onDataChange(): Promise<{ success: boolean; synced: boolean; message: string }> {
+  async onDataChange(): Promise<SyncResult> {
     if (isDevMode()) {
       this.setLastLocalSaveNow();
       return { success: true, synced: true, message: 'נשמר במצב מפתחים' };
     }
 
     this.setLastLocalSaveNow();
+    this.persistLocalSnapshot();
     this.syncState.pendingChanges++;
     this.emit();
 
@@ -471,6 +528,7 @@ class HybridSyncManager {
     }
 
     this.setLastLocalSaveNow();
+    this.persistLocalSnapshot();
     this.syncState.pendingChanges++;
     this.emit();
 
@@ -510,6 +568,7 @@ class HybridSyncManager {
 
     try {
       const data = this.gatherAllData();
+      this.persistLocalSnapshot();
       const result = await workerApi.uploadVersioned(data);
 
       if (result.success) {
@@ -561,7 +620,9 @@ class HybridSyncManager {
 
       const localData = this.gatherAllData();
 
-      const remoteData = remoteResult.data || remoteResult;
+      const remoteData = remoteResult.success && this.hasValidDataShape(remoteResult.data)
+        ? remoteResult.data
+        : {};
       const mergedData = this.mergeDataWithConflictResolution(localData, remoteData);
       logger.info('🔀 Merged local and remote changes');
 
@@ -577,6 +638,8 @@ class HybridSyncManager {
       const result = await workerApi.uploadVersioned(mergedData);
 
       if (result.success) {
+        this.updateInMemoryStorage(mergedData);
+        this.persistLocalSnapshot();
         this.setCloudSuccessNow();
         logger.info('✅ Worker sync completed with conflict resolution');
 
@@ -639,6 +702,45 @@ class HybridSyncManager {
       return true;
     }
     return await this.syncToWorker();
+  }
+
+  async restoreData(data: any, options: { uploadImmediately?: boolean } = {}): Promise<SyncResult> {
+    try {
+      const hasValidData =
+        data &&
+        typeof data === 'object' &&
+        Object.keys(data).some((k) => k.startsWith('musicSystem_') || k === 'oneTimePayments');
+
+      if (!hasValidData) {
+        return { success: false, synced: false, message: 'מבנה הגיבוי לא תקין' };
+      }
+
+      this.updateInMemoryStorage(data);
+      this.setLastLocalSaveNow();
+      this.syncState.pendingChanges++;
+      this.emit();
+
+      if (options.uploadImmediately === false || isDevMode()) {
+        return { success: true, synced: false, message: 'שוחזר מקומית' };
+      }
+
+      if (!this.syncState.isOnline) {
+        return { success: true, synced: false, message: 'שוחזר מקומית, יסונכרן כשיחזור חיבור' };
+      }
+
+      const uploaded = await this.directUpload();
+      return uploaded
+        ? { success: true, synced: true, message: 'השחזור נשמר בדרופבוקס בהצלחה' }
+        : { success: true, synced: false, message: 'השחזור בוצע מקומית, אך הסנכרון לדרופבוקס נכשל' };
+    } catch (error) {
+      logger.error('❌ Restore data error:', error);
+      this.setCloudError(error);
+      return {
+        success: false,
+        synced: false,
+        message: error instanceof Error ? error.message : 'שגיאה בשחזור',
+      };
+    }
   }
 
   /**
