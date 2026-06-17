@@ -215,6 +215,9 @@ export const workerApi = {
       }
 
       const data = await r.json();
+      if (isFailureEnvelope(data)) {
+        return { success: false, error: getWorkerError(data, "UPLOAD_VERSIONED_FAILED"), data };
+      }
       return { success: true, data };
     } catch (err) {
       logger.error("uploadVersioned error:", err);
