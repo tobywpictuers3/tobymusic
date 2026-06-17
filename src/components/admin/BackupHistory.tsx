@@ -6,6 +6,7 @@ import { toast } from '@/hooks/use-toast';
 import { workerApi } from '@/lib/workerApi';
 import { logger } from '@/lib/logger';
 import { isDevMode } from '@/lib/storage';
+import { hybridSync } from '@/lib/hybridSync';
 import { restorePracticeSessionsFromVersion } from '@/lib/practiceRestore';
 import {
   History,
@@ -355,13 +356,20 @@ const BackupHistory = () => {
           return;
         }
 
-        Object.entries(restoredData).forEach(([key, value]) => {
-          localStorage.setItem(key, toStorageString(value));
-        });
+        const restoreResult = await hybridSync.restoreData(restoredData);
+
+        if (!restoreResult.success) {
+          toast({
+            title: '❌ שגיאה בשחזור',
+            description: restoreResult.message || 'לא ניתן לשחזר את הגרסה',
+            variant: 'destructive',
+          });
+          return;
+        }
 
         toast({
-          title: '✅ השחזור הושלם',
-          description: 'הנתונים שוחזרו בהצלחה. הדף יתרענן...',
+          title: restoreResult.synced ? '✅ השחזור הושלם וסונכרן' : '✅ השחזור הושלם מקומית',
+          description: `${restoreResult.message}. הדף יתרענן...`,
         });
 
         setTimeout(() => {
@@ -439,27 +447,29 @@ const BackupHistory = () => {
           }
         });
 
-        const practiceSnapshot: StorageSnapshotItem[] = Array.from(practiceKeys).map((key) => ({
-          key,
-          value: localStorage.getItem(key),
-        }));
-
-        Object.entries(restoredData).forEach(([key, value]) => {
-          if (practiceKeys.has(key) || isPracticeStorageKey(key)) return;
-          localStorage.setItem(key, toStorageString(value));
-        });
-
+        const mergedData = { ...restoredData };
         practiceSnapshot.forEach(({ key, value }) => {
           if (value === null) {
-            localStorage.removeItem(key);
+            delete mergedData[key];
           } else {
-            localStorage.setItem(key, value);
+            mergedData[key] = JSON.parse(value);
           }
         });
 
+        const restoreResult = await hybridSync.restoreData(mergedData);
+
+        if (!restoreResult.success) {
+          toast({
+            title: '❌ שגיאה בשחזור',
+            description: restoreResult.message || 'לא ניתן לשחזר את הגרסה',
+            variant: 'destructive',
+          });
+          return;
+        }
+
         toast({
-          title: '✅ השחזור הושלם',
-          description: 'כל הנתונים שוחזרו, והאימונים נשמרו כפי שהם. הדף יתרענן...',
+          title: restoreResult.synced ? '✅ השחזור הושלם וסונכרן' : '✅ השחזור הושלם מקומית',
+          description: `כל הנתונים שוחזרו, והאימונים נשמרו כפי שהם. ${restoreResult.message}. הדף יתרענן...`,
         });
 
         setTimeout(() => {
