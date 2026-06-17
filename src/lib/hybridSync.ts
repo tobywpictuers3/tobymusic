@@ -568,6 +568,7 @@ class HybridSyncManager {
 
     try {
       const data = this.gatherAllData();
+      this.persistLocalSnapshot();
       const result = await workerApi.uploadVersioned(data);
 
       if (result.success) {
@@ -637,6 +638,8 @@ class HybridSyncManager {
       const result = await workerApi.uploadVersioned(mergedData);
 
       if (result.success) {
+        this.updateInMemoryStorage(mergedData);
+        this.persistLocalSnapshot();
         this.setCloudSuccessNow();
         logger.info('✅ Worker sync completed with conflict resolution');
 
