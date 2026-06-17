@@ -37,6 +37,8 @@ const LS_LAST_LOCAL = 'musicSystem_lastLocalSaveAt';
 const LS_LAST_CLOUD = 'musicSystem_lastCloudSyncAt';
 const LS_LAST_ERROR = 'musicSystem_lastCloudSyncError';
 const LS_LAST_ERROR_MSG = 'musicSystem_lastCloudSyncErrorMessage';
+const LS_LOCAL_SNAPSHOT = 'musicSystem_localSnapshot';
+const LS_HAS_UNSYNCED = 'musicSystem_hasUnsyncedChanges';
 
 type SyncListener = (state: SyncUiState) => void;
 
@@ -114,6 +116,7 @@ class HybridSyncManager {
 
     try {
       localStorage.setItem(LS_LAST_LOCAL, now);
+      localStorage.setItem(LS_HAS_UNSYNCED, 'true');
     } catch {}
     this.emit();
   }
@@ -132,6 +135,7 @@ class HybridSyncManager {
 
     try {
       localStorage.setItem(LS_LAST_CLOUD, now);
+      localStorage.setItem(LS_HAS_UNSYNCED, 'false');
       localStorage.removeItem(LS_LAST_ERROR);
       localStorage.removeItem(LS_LAST_ERROR_MSG);
     } catch {}
@@ -152,6 +156,37 @@ class HybridSyncManager {
     } catch {}
 
     this.emit();
+  }
+
+  private hasValidDataShape(data: any): boolean {
+    return !!(
+      data &&
+      typeof data === 'object' &&
+      Object.keys(data).some((k) => k.startsWith('musicSystem_') || k === 'oneTimePayments')
+    );
+  }
+
+  private persistLocalSnapshot(): void {
+    try {
+      const data = this.gatherAllData();
+      if (this.hasValidDataShape(data)) {
+        localStorage.setItem(LS_LOCAL_SNAPSHOT, JSON.stringify(data));
+      }
+    } catch (error) {
+      logger.warn('⚠️ Could not persist local sync snapshot:', error);
+    }
+  }
+
+  private readLocalSnapshot(): any | null {
+    try {
+      const raw = localStorage.getItem(LS_LOCAL_SNAPSHOT);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return this.hasValidDataShape(parsed) ? parsed : null;
+    } catch (error) {
+      logger.warn('⚠️ Could not read local sync snapshot:', error);
+      return null;
+    }
   }
 
   /* =======================
