@@ -59,24 +59,6 @@ interface VersionInfo {
   content_hash?: string;
 }
 
-const PRACTICE_KEY_HINTS = [
-  'practice',
-  'practices',
-  'session',
-  'sessions',
-  'training',
-  'trainings',
-  'workout',
-  'exercise',
-  'אימון',
-  'אימונים',
-];
-
-const isPracticeStorageKey = (key: string) => {
-  const lowerKey = key.toLowerCase();
-  return PRACTICE_KEY_HINTS.some((hint) => lowerKey.includes(hint.toLowerCase()));
-};
-
 const extractVersions = (data: unknown): VersionInfo[] => {
   if (Array.isArray(data)) return data as VersionInfo[];
 
@@ -99,23 +81,6 @@ const asStorageRecord = (data: unknown): Record<string, unknown> | null => {
   }
   return null;
 };
-
-const toStorageString = (value: unknown) =>
-  typeof value === 'string' ? value : JSON.stringify(value);
-
-const getAllLocalStorageKeys = () => {
-  const keys: string[] = [];
-  for (let i = 0; i < localStorage.length; i += 1) {
-    const key = localStorage.key(i);
-    if (key) keys.push(key);
-  }
-  return keys;
-};
-
-interface StorageSnapshotItem {
-  key: string;
-  value: string | null;
-}
 
 const BackupHistory = () => {
   const [versions, setVersions] = useState<VersionInfo[]>([]);
