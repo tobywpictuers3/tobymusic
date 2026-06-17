@@ -418,43 +418,10 @@ const BackupHistory = () => {
           return;
         }
 
-        const practiceKeys = new Set<string>();
-
-        getAllLocalStorageKeys().forEach((key) => {
-          if (isPracticeStorageKey(key)) {
-            practiceKeys.add(key);
-            return;
-          }
-
-          const currentValue = localStorage.getItem(key);
-          if (currentValue === currentPracticeSerialized) {
-            practiceKeys.add(key);
-          }
-        });
-
-        Object.entries(restoredData).forEach(([key, value]) => {
-          if (isPracticeStorageKey(key)) {
-            practiceKeys.add(key);
-            return;
-          }
-
-          try {
-            if (toStorageString(value) === currentPracticeSerialized) {
-              practiceKeys.add(key);
-            }
-          } catch {
-            // ignore
-          }
-        });
-
-        const mergedData = { ...restoredData };
-        practiceSnapshot.forEach(({ key, value }) => {
-          if (value === null) {
-            delete mergedData[key];
-          } else {
-            mergedData[key] = JSON.parse(value);
-          }
-        });
+        const mergedData = {
+          ...restoredData,
+          musicSystem_practiceSessions: JSON.parse(currentPracticeSerialized),
+        };
 
         const restoreResult = await hybridSync.restoreData(mergedData);
 
