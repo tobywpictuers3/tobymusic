@@ -292,8 +292,9 @@ class HybridSyncManager {
       logger.info('🔄 Loading from Worker...');
 
       if (!this.syncState.isOnline) {
-        logger.warn('📡 Offline - initializing empty local state');
-        this.updateInMemoryStorage(emptyData);
+        const snapshot = this.readLocalSnapshot();
+        logger.warn('📡 Offline - loading local snapshot if available');
+        this.updateInMemoryStorage(snapshot || emptyData);
         return;
       }
 
@@ -312,26 +313,43 @@ class HybridSyncManager {
           dataKeys.some((k) => k.startsWith('musicSystem_')) || dataKeys.length > 1;
 
         if (!hasMeaningfulData) {
-          logger.warn('⚠️ Loaded empty/invalid data from Worker - initializing fresh state');
-          this.updateInMemoryStorage(emptyData);
+          const snapshot = this.readLocalSnapshot();
+          logger.warn('⚠️ Loaded empty/invalid data from Worker - using local snapshot if available');
+          this.updateInMemoryStorage(snapshot || emptyData);
           this.syncState.lastSyncTime = null;
           this.emit();
         } else {
-          logger.info('✅ Data loaded from Worker');
-          this.updateInMemoryStorage(result.data);
+          const snapshot = localStorage.getItem(LS_HAS_UNSYNCED) === 'true' ? this.readLocalSnapshot() : null;
+          const dataToLoad = snapshot
+            ? this.mergeDataWithConflictResolution(snapshot, result.data)
+            : result.data;
+          logger.info(snapshot ? '✅ Data loaded from Worker and merged with local snapshot' : '✅ Data loaded from Worker');
+          this.updateInMemoryStorage(dataToLoad);
+          this.persistLocalSnapshot();
           // Treat init load as "cloud ok" (but do not reset pendingChanges)
           this.syncState.lastSyncTime = new Date().toISOString();
           this.emit();
+          if (snapshot) void this.directUpload();
         }
       } else if (result && result.error === 'NO_VERSION_FOUND') {
         logger.info('ℹ️ No version found on Worker - starting fresh (first use)');
         this.updateInMemoryStorage(emptyData);
       } else {
         const errorMessage = result?.error || 'WORKER_LOAD_FAILED';
+        const snapshot = this.readLocalSnapshot();
+        if (snapshot) {
+          logger.warn('⚠️ Worker load failed - using local unsynced snapshot:', errorMessage);
+          this.updateInMemoryStorage(snapshot);
+        }
         logger.error('❌ Worker load failed - keeping local state empty and blocking silent overwrite:', errorMessage);
         this.setCloudError(errorMessage);
       }
     } catch (error) {
+      const snapshot = this.readLocalSnapshot();
+      if (snapshot) {
+        logger.warn('⚠️ Load error - using local unsynced snapshot:', error);
+        this.updateInMemoryStorage(snapshot);
+      }
       logger.error('❌ Load error - keeping local state empty and blocking silent overwrite:', error);
       this.setCloudError(error);
     }
