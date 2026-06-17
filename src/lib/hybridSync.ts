@@ -40,6 +40,8 @@ const LS_LAST_ERROR_MSG = 'musicSystem_lastCloudSyncErrorMessage';
 
 type SyncListener = (state: SyncUiState) => void;
 
+type SyncResult = { success: boolean; synced: boolean; message: string };
+
 class HybridSyncManager {
   private listeners = new Set<SyncListener>();
 
@@ -290,12 +292,13 @@ class HybridSyncManager {
         logger.info('ℹ️ No version found on Worker - starting fresh (first use)');
         this.updateInMemoryStorage(emptyData);
       } else {
-        logger.warn('⚠️ Worker load failed or timed out - initializing empty local state');
-        this.updateInMemoryStorage(emptyData);
+        const errorMessage = result?.error || 'WORKER_LOAD_FAILED';
+        logger.error('❌ Worker load failed - keeping local state empty and blocking silent overwrite:', errorMessage);
+        this.setCloudError(errorMessage);
       }
     } catch (error) {
-      logger.warn('⚠️ Load error - initializing empty local state:', error);
-      this.updateInMemoryStorage(emptyData);
+      logger.error('❌ Load error - keeping local state empty and blocking silent overwrite:', error);
+      this.setCloudError(error);
     }
   }
 
@@ -420,7 +423,7 @@ class HybridSyncManager {
      Public sync triggers
      ======================= */
 
-  async onDataChange(): Promise<{ success: boolean; synced: boolean; message: string }> {
+  async onDataChange(): Promise<SyncResult> {
     if (isDevMode()) {
       this.setLastLocalSaveNow();
       return { success: true, synced: true, message: 'נשמר במצב מפתחים' };
@@ -639,6 +642,45 @@ class HybridSyncManager {
       return true;
     }
     return await this.syncToWorker();
+  }
+
+  async restoreData(data: any, options: { uploadImmediately?: boolean } = {}): Promise<SyncResult> {
+    try {
+      const hasValidData =
+        data &&
+        typeof data === 'object' &&
+        Object.keys(data).some((k) => k.startsWith('musicSystem_') || k === 'oneTimePayments');
+
+      if (!hasValidData) {
+        return { success: false, synced: false, message: 'מבנה הגיבוי לא תקין' };
+      }
+
+      this.updateInMemoryStorage(data);
+      this.setLastLocalSaveNow();
+      this.syncState.pendingChanges++;
+      this.emit();
+
+      if (options.uploadImmediately === false || isDevMode()) {
+        return { success: true, synced: false, message: 'שוחזר מקומית' };
+      }
+
+      if (!this.syncState.isOnline) {
+        return { success: true, synced: false, message: 'שוחזר מקומית, יסונכרן כשיחזור חיבור' };
+      }
+
+      const uploaded = await this.directUpload();
+      return uploaded
+        ? { success: true, synced: true, message: 'השחזור נשמר בדרופבוקס בהצלחה' }
+        : { success: true, synced: false, message: 'השחזור בוצע מקומית, אך הסנכרון לדרופבוקס נכשל' };
+    } catch (error) {
+      logger.error('❌ Restore data error:', error);
+      this.setCloudError(error);
+      return {
+        success: false,
+        synced: false,
+        message: error instanceof Error ? error.message : 'שגיאה בשחזור',
+      };
+    }
   }
 
   /**
