@@ -69,6 +69,9 @@ export const initializeStorage = (data: any) => {
   
   Object.keys(data).forEach(key => {
     if (key.startsWith('musicSystem_') || key === 'oneTimePayments') {
+      if (key === 'musicSystem_studentStats') {
+        return;
+      }
       const storageKey = key.replace('musicSystem_', '');
       inMemoryStorage[storageKey] = data[key];
       initialized = true;
@@ -84,11 +87,6 @@ export const initializeStorage = (data: any) => {
   // Initialize tithePaid if present
   if (data['musicSystem_tithePaid']) {
     inMemoryStorage['tithePaid'] = data['musicSystem_tithePaid'];
-  }
-  
-  // Initialize studentStats if present
-  if (data['musicSystem_studentStats']) {
-    inMemoryStorage['studentStats'] = data['musicSystem_studentStats'];
   }
   
   if (initialized) {
