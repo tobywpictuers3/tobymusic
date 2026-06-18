@@ -1,6 +1,7 @@
 import { workerApi } from './workerApi';
 import { logger } from './logger';
 import { exportAllData, initializeStorage, isDevMode } from './storage';
+import { recalculateAllMonthlyAchievements } from './recalculateAchievements';
 
 /**
  * Hybrid Sync Manager - Worker as source of truth, in-memory storage as app state
@@ -369,7 +370,6 @@ class HybridSyncManager {
 
   private mergeDataWithConflictResolution(localData: any, remoteData: any): any {
     const merged = { ...remoteData };
-    delete merged.musicSystem_studentStats;
 
     const conflictKeys = [
       'musicSystem_practiceSessions',
@@ -393,7 +393,7 @@ class HybridSyncManager {
       'musicSystem_integrationSettings',
     ];
 
-    const directCopyKeys = ['musicSystem_tithePaid'];
+    const directCopyKeys = ['musicSystem_studentStats', 'musicSystem_tithePaid'];
 
     directCopyKeys.forEach((key) => {
       if (localData[key]) merged[key] = localData[key];
@@ -420,9 +420,7 @@ class HybridSyncManager {
     });
 
     Object.keys(localData).forEach((key) => {
-      if (!conflictKeys.includes(key) && key !== 'timestamp' && key !== 'musicSystem_studentStats') {
-        merged[key] = localData[key];
-      }
+      if (!conflictKeys.includes(key) && key !== 'timestamp') merged[key] = localData[key];
     });
 
     merged.timestamp = new Date().toISOString();
@@ -498,7 +496,7 @@ class HybridSyncManager {
       };
     }
 
-    // Debounce: wait for rapid-fire changes to settle before touching Dropbox.
+    // Debounce: wait 500ms for rapid-fire changes to settle
     return new Promise((resolve) => {
       this.debounceResolvers.push(resolve);
 
@@ -519,7 +517,7 @@ class HybridSyncManager {
         const resolvers = [...this.debounceResolvers];
         this.debounceResolvers = [];
         resolvers.forEach((r) => r(result));
-      }, 2500);
+      }, 500);
     });
   }
 
@@ -577,6 +575,12 @@ class HybridSyncManager {
         this.setCloudSuccessNow();
         logger.info('✅ Direct upload to worker completed');
 
+        try {
+          recalculateAllMonthlyAchievements();
+        } catch (err) {
+          logger.warn('⚠️ Failed to recalc achievements after direct upload:', err);
+        }
+
         return true;
       } else {
         logger.warn('⚠️ Direct upload failed:', result.error);
@@ -611,7 +615,7 @@ class HybridSyncManager {
     try {
       logger.info('🔄 Starting Worker sync with conflict resolution...');
 
-      const remoteResult = await workerApi.downloadLatest({ useHistoricalFallback: false });
+      const remoteResult = await workerApi.downloadLatest();
       logger.info('📥 Downloaded latest version from server');
 
       const localData = this.gatherAllData();
@@ -638,6 +642,13 @@ class HybridSyncManager {
         this.persistLocalSnapshot();
         this.setCloudSuccessNow();
         logger.info('✅ Worker sync completed with conflict resolution');
+
+        try {
+          recalculateAllMonthlyAchievements();
+          logger.info('✅ Achievements recalculated after sync');
+        } catch (error) {
+          logger.warn('⚠️ Failed to recalculate achievements after sync:', error);
+        }
 
         return true;
       } else {

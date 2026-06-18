@@ -307,7 +307,7 @@ const AdminDashboard = () => {
 
             <TabsContent value="history" className="fade-slide-in">
               <BrandSection index={0}>
-                {activeTab === 'history' ? <BackupHistory /> : null}
+                <BackupHistory />
               </BrandSection>
             </TabsContent>
           </Tabs>
