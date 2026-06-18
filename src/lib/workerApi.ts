@@ -159,7 +159,8 @@ export const workerApi = {
   /* -----------------------------------------------------------
      1. Download Latest Database JSON
      ----------------------------------------------------------- */
-  downloadLatest: async (): Promise<WorkerResponse> => {
+  downloadLatest: async (options: { useHistoricalFallback?: boolean } = {}): Promise<WorkerResponse> => {
+    const useHistoricalFallback = options.useHistoricalFallback !== false;
     if (isDevMode()) {
       logger.warn("DEV MODE: downloadLatest blocked");
       return { success: false, error: "DEV_MODE_BLOCKED" };
@@ -184,6 +185,9 @@ export const workerApi = {
       const data = await r.json();
       if (isFailureEnvelope(data)) {
         const err = getWorkerError(data, "DOWNLOAD_LATEST_FAILED");
+        if (!useHistoricalFallback) {
+          return { success: false, error: err, data };
+        }
         logger.warn("⚠️ downloadLatest returned failure envelope, attempting historic fallback:", err);
         const fallback = await workerApi.downloadLastHealthyVersion();
         if (fallback.success) {
@@ -196,6 +200,9 @@ export const workerApi = {
     } catch (err) {
       logger.error("downloadLatest error:", err);
       const message = (err as Error).message;
+      if (!useHistoricalFallback) {
+        return { success: false, error: message };
+      }
       logger.warn("⚠️ downloadLatest threw, attempting historic fallback:", message);
       const fallback = await workerApi.downloadLastHealthyVersion();
       if (fallback.success) return fallback;
@@ -228,7 +235,7 @@ export const workerApi = {
             new Date(a.server_modified || 0).getTime()
         );
 
-      for (const version of sorted.slice(0, 10)) {
+      for (const version of sorted.slice(0, 5)) {
         try {
           const result = await workerApi.downloadByPath(version.path);
           if (result.success && result.data && typeof result.data === "object") {
@@ -381,7 +388,7 @@ export const workerApi = {
       // ⚠️ Cloudflare Workers cap subrequests per invocation (50 on free, 1000 paid).
       // Without a `limit`, the Worker tries to enumerate every version in Dropbox
       // and crashes with "Too many subrequests by single Worker invocation".
-      const r = await fetch(buildWorkerUrl("list_versions", { limit: 25 }), {
+      const r = await fetch(buildWorkerUrl("list_versions", { limit: 10, max: 10 }), {
         method: "GET",
         headers: {
           "Cache-Control": "no-store",
