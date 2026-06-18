@@ -112,8 +112,11 @@ export const exportAllData = (allowEmpty: boolean = false): Record<string, any> 
     // Handle special keys that need musicSystem_ prefix
     if (key === 'oneTimePayments') {
       data[key] = inMemoryStorage[key];
-    } else if (key === 'tithePaid' || key === 'studentStats') {
-      // These need musicSystem_ prefix for proper sync
+    } else if (key === 'studentStats') {
+      // Derived cache only — do not upload it to Dropbox; it makes every save much slower.
+      return;
+    } else if (key === 'tithePaid') {
+      // This needs musicSystem_ prefix for proper sync
       data[`musicSystem_${key}`] = inMemoryStorage[key];
     } else {
       data[`musicSystem_${key}`] = inMemoryStorage[key];
@@ -2004,7 +2007,6 @@ export const saveStudentStatistics = (studentId: string, stats: {
       ...stats,
       lastUpdated: new Date().toISOString()
     };
-    hybridSync.onDataChange();
   }
 };
 
