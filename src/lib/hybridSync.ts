@@ -369,6 +369,7 @@ class HybridSyncManager {
 
   private mergeDataWithConflictResolution(localData: any, remoteData: any): any {
     const merged = { ...remoteData };
+    delete merged.musicSystem_studentStats;
 
     const conflictKeys = [
       'musicSystem_practiceSessions',
@@ -392,7 +393,7 @@ class HybridSyncManager {
       'musicSystem_integrationSettings',
     ];
 
-    const directCopyKeys = ['musicSystem_studentStats', 'musicSystem_tithePaid'];
+    const directCopyKeys = ['musicSystem_tithePaid'];
 
     directCopyKeys.forEach((key) => {
       if (localData[key]) merged[key] = localData[key];
