@@ -183,11 +183,69 @@ export const workerApi = {
 
       const data = await r.json();
       if (isFailureEnvelope(data)) {
-        return { success: false, error: getWorkerError(data, "DOWNLOAD_LATEST_FAILED"), data };
+        const err = getWorkerError(data, "DOWNLOAD_LATEST_FAILED");
+        logger.warn("⚠️ downloadLatest returned failure envelope, attempting historic fallback:", err);
+        const fallback = await workerApi.downloadLastHealthyVersion();
+        if (fallback.success) {
+          logger.info("✅ Recovered data from previous Dropbox version");
+          return fallback;
+        }
+        return { success: false, error: err, data };
       }
       return { success: true, data: unwrapDataEnvelope(data) };
     } catch (err) {
       logger.error("downloadLatest error:", err);
+      const message = (err as Error).message;
+      logger.warn("⚠️ downloadLatest threw, attempting historic fallback:", message);
+      const fallback = await workerApi.downloadLastHealthyVersion();
+      if (fallback.success) return fallback;
+      return { success: false, error: message };
+    }
+  },
+
+  /* -----------------------------------------------------------
+     Fallback: walk recent versions and return the first one that
+     deserializes correctly. Used when download_latest returns
+     corrupt JSON.
+     ----------------------------------------------------------- */
+  downloadLastHealthyVersion: async (): Promise<WorkerResponse> => {
+    try {
+      const listResult = await workerApi.listVersions();
+      if (!listResult.success || !listResult.data) {
+        return { success: false, error: listResult.error || "LIST_VERSIONS_FAILED" };
+      }
+
+      const raw = listResult.data as any;
+      const candidates: any[] = Array.isArray(raw)
+        ? raw
+        : raw.entries || raw.versions || raw.items || raw.files || raw.result || [];
+
+      const sorted = [...candidates]
+        .filter((v) => v && v.path)
+        .sort(
+          (a, b) =>
+            new Date(b.server_modified || 0).getTime() -
+            new Date(a.server_modified || 0).getTime()
+        );
+
+      for (const version of sorted.slice(0, 10)) {
+        try {
+          const result = await workerApi.downloadByPath(version.path);
+          if (result.success && result.data && typeof result.data === "object") {
+            const keys = Object.keys(result.data);
+            if (keys.some((k) => k.startsWith("musicSystem_"))) {
+              logger.info(`✅ Fallback succeeded with version ${version.path}`);
+              return result;
+            }
+          }
+        } catch (e) {
+          logger.warn(`⚠️ Fallback version ${version.path} failed:`, e);
+        }
+      }
+
+      return { success: false, error: "NO_HEALTHY_VERSION_FOUND" };
+    } catch (err) {
+      logger.error("downloadLastHealthyVersion error:", err);
       return { success: false, error: (err as Error).message };
     }
   },
@@ -320,7 +378,10 @@ export const workerApi = {
     }
 
     try {
-      const r = await fetch(buildWorkerUrl("list_versions"), {
+      // ⚠️ Cloudflare Workers cap subrequests per invocation (50 on free, 1000 paid).
+      // Without a `limit`, the Worker tries to enumerate every version in Dropbox
+      // and crashes with "Too many subrequests by single Worker invocation".
+      const r = await fetch(buildWorkerUrl("list_versions", { limit: 25 }), {
         method: "GET",
         headers: {
           "Cache-Control": "no-store",
