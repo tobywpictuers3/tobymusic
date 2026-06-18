@@ -13,7 +13,6 @@ import PracticeStatsRow from './PracticeStatsRow';
 import CompactLeaderboard from './CompactLeaderboard';
 import MonthlyAchievements from './MonthlyAchievements';
 import PracticeHistory from './PracticeHistory';
-import { hybridSync } from '@/lib/hybridSync';
 import { 
   getCurrentStreak,
   checkForNewDailyMilestone,
@@ -116,30 +115,11 @@ const PracticeTracking = ({ studentId }: PracticeTrackingProps) => {
       
       checkAndShowCelebrations(sessionData.date, sessionData.durationMinutes);
       addPracticeSession(sessionData);
-      
-      const result = await hybridSync.onDataChange();
-      
-      if (result.synced) {
-        toast({
-          title: '✅ נשמר!',
-          description: `${sessionData.durationMinutes} דקות נשמרו`,
-          duration: 3000,
-        });
-      } else if (result.success) {
-        toast({
-          title: '💾 נשמר מקומית',
-          description: 'יסונכרן אוטומטית',
-          duration: 3000,
-        });
-      } else {
-        toast({
-          title: '❌ שמירה נכשלה',
-          description: result.message || 'בדקי חיבור',
-          variant: 'destructive',
-          duration: 4000,
-        });
-        return false;
-      }
+      toast({
+        title: '✅ נשמר!',
+        description: `${sessionData.durationMinutes} דקות נשמרו ויסונכרנו אוטומטית`,
+        duration: 3000,
+      });
       
       return true;
     } catch (error) {
