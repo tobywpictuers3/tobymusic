@@ -420,7 +420,9 @@ class HybridSyncManager {
     });
 
     Object.keys(localData).forEach((key) => {
-      if (!conflictKeys.includes(key) && key !== 'timestamp') merged[key] = localData[key];
+      if (!conflictKeys.includes(key) && key !== 'timestamp' && key !== 'musicSystem_studentStats') {
+        merged[key] = localData[key];
+      }
     });
 
     merged.timestamp = new Date().toISOString();
