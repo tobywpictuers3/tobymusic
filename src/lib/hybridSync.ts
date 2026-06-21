@@ -67,10 +67,21 @@ class HybridSyncManager {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private debounceResolvers: Array<(result: { success: boolean; synced: boolean; message: string }) => void> = [];
 
+  // Background full-merge sync (download+merge+upload). Heavy, so it runs at
+  // long intervals — NOT on every save.
+  private backgroundMergeInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly BACKGROUND_MERGE_MS = 3 * 60 * 1000; // 3 minutes
+
+  // Deferred achievements recalc — coalesced so rapid saves don't trigger it
+  // multiple times.
+  private achievementsRecalcTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly ACHIEVEMENTS_RECALC_DEBOUNCE_MS = 2500;
+
   constructor() {
     this.setupNetworkListeners();
     this.setupUnloadListener();
     this.startOfflineRetry();
+    this.startBackgroundMergeSync();
   }
 
   /* =======================
@@ -199,6 +210,9 @@ class HybridSyncManager {
       this.syncState.isOnline = true;
       this.emit();
       this.processPendingQueue();
+      // When we just came back online, run one full merge to reconcile with
+      // anything other devices wrote while we were offline.
+      void this.syncToWorker();
     });
 
     window.addEventListener('offline', () => {
@@ -206,6 +220,32 @@ class HybridSyncManager {
       this.syncState.isOnline = false;
       this.emit();
     });
+  }
+
+  private startBackgroundMergeSync() {
+    if (this.backgroundMergeInterval) return;
+    this.backgroundMergeInterval = setInterval(() => {
+      if (isDevMode()) return;
+      if (!this.syncState.isOnline) return;
+      if (this.isSyncingInternal) return;
+      // Don't fight an active debounce / fresh user save.
+      if (this.debounceTimer !== null) return;
+      void this.syncToWorker();
+    }, this.BACKGROUND_MERGE_MS);
+  }
+
+  private scheduleAchievementsRecalc() {
+    if (this.achievementsRecalcTimer) {
+      clearTimeout(this.achievementsRecalcTimer);
+    }
+    this.achievementsRecalcTimer = setTimeout(() => {
+      this.achievementsRecalcTimer = null;
+      try {
+        recalculateAllMonthlyAchievements();
+      } catch (err) {
+        logger.warn('⚠️ Deferred achievements recalc failed:', err);
+      }
+    }, this.ACHIEVEMENTS_RECALC_DEBOUNCE_MS);
   }
 
   private startOfflineRetry() {
@@ -483,7 +523,7 @@ class HybridSyncManager {
     }
 
     this.setLastLocalSaveNow();
-    this.persistLocalSnapshot();
+    // Snapshot is persisted again right before upload — no need twice here.
     this.syncState.pendingChanges++;
     this.emit();
 
@@ -508,7 +548,10 @@ class HybridSyncManager {
         this.debounceTimer = null;
         logger.info(`🔄 Debounce settled, syncing (${this.debounceResolvers.length} queued calls)...`);
 
-        const success = await this.syncToWorker();
+        // FAST PATH: just upload current state. The full download+merge runs
+        // on init, on `online`, and on a background interval — that's enough
+        // to keep multi-device safety without paying for it on every save.
+        const success = await this.directUpload();
         const result = success
           ? { success: true, synced: true, message: 'נשמר בדרופבוקס בהצלחה' }
           : { success: true, synced: false, message: 'נשמר מקומית, ננסה שוב בעוד 2 דקות' };
@@ -528,7 +571,6 @@ class HybridSyncManager {
     }
 
     this.setLastLocalSaveNow();
-    this.persistLocalSnapshot();
     this.syncState.pendingChanges++;
     this.emit();
 
@@ -569,17 +611,22 @@ class HybridSyncManager {
     try {
       const data = this.gatherAllData();
       this.persistLocalSnapshot();
+
+      // Cheap structural sanity check (no full stringify just to measure size).
+      if (!this.hasValidDataShape(data)) {
+        logger.error('❌ PREVENTED UPLOAD - data shape invalid, refusing to overwrite cloud');
+        this.setCloudError('DATA_SHAPE_INVALID');
+        return false;
+      }
+
       const result = await workerApi.uploadVersioned(data);
 
       if (result.success) {
         this.setCloudSuccessNow();
         logger.info('✅ Direct upload to worker completed');
 
-        try {
-          recalculateAllMonthlyAchievements();
-        } catch (err) {
-          logger.warn('⚠️ Failed to recalc achievements after direct upload:', err);
-        }
+        // Heavy recompute — push off the critical path and coalesce.
+        this.scheduleAchievementsRecalc();
 
         return true;
       } else {
@@ -603,7 +650,7 @@ class HybridSyncManager {
     }
 
     if (this.isSyncingInternal) {
-      // Don't drop — mark that we need a resync after current one finishes
+      // Don't drop — mark that we need a re-upload after current one finishes
       logger.info('⏳ Sync in progress — marking pending resync');
       this.pendingResync = true;
       return true; // optimistic: it will be synced
@@ -626,12 +673,9 @@ class HybridSyncManager {
       const mergedData = this.mergeDataWithConflictResolution(localData, remoteData);
       logger.info('🔀 Merged local and remote changes');
 
-      const dataSize = JSON.stringify(mergedData).length;
-      logger.info(`📦 Data size: ${(dataSize / 1024).toFixed(2)} KB`);
-
-      if (dataSize < 100) {
-        logger.error('❌ PREVENTED SYNC - Data too small, likely corrupted');
-        this.setCloudError('DATA_TOO_SMALL');
+      if (!this.hasValidDataShape(mergedData)) {
+        logger.error('❌ PREVENTED SYNC - merged data shape invalid');
+        this.setCloudError('DATA_SHAPE_INVALID');
         return false;
       }
 
@@ -643,12 +687,7 @@ class HybridSyncManager {
         this.setCloudSuccessNow();
         logger.info('✅ Worker sync completed with conflict resolution');
 
-        try {
-          recalculateAllMonthlyAchievements();
-          logger.info('✅ Achievements recalculated after sync');
-        } catch (error) {
-          logger.warn('⚠️ Failed to recalculate achievements after sync:', error);
-        }
+        this.scheduleAchievementsRecalc();
 
         return true;
       } else {
@@ -664,11 +703,12 @@ class HybridSyncManager {
       this.isSyncingInternal = false;
       this.setSyncing(false);
 
-      // If another change came in while we were syncing, run one more sync
+      // If another change came in while we were syncing, just upload the
+      // current state — no need to repeat the full download+merge.
       if (this.pendingResync) {
         this.pendingResync = false;
-        logger.info('🔄 Running pending resync (data changed during sync)...');
-        await this.syncToWorker();
+        logger.info('🔄 Running pending re-upload (data changed during sync)...');
+        await this.directUpload();
       }
     }
   }
@@ -807,6 +847,8 @@ class HybridSyncManager {
 
   destroy() {
     if (this.retryInterval) clearInterval(this.retryInterval);
+    if (this.backgroundMergeInterval) clearInterval(this.backgroundMergeInterval);
+    if (this.achievementsRecalcTimer) clearTimeout(this.achievementsRecalcTimer);
   }
 }
 
