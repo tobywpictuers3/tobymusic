@@ -1,6 +1,5 @@
 import { Message } from './types';
-import { recordTombstones } from './storage';
-import { isDevMode, getDevStore, getStudents, loadLocalMessages, saveLocalMessages } from './storage';
+import { isDevMode, getDevStore, getStudents, loadLocalMessages, saveLocalMessages, recordTombstones } from './storage';
 import { hybridSync } from './hybridSync';
 import { workerApi } from './workerApi';
 import { sanitizeHtml } from './sanitize';
@@ -426,6 +425,7 @@ export const hardDeleteMessage = async (messageId: string): Promise<void> => {
     }
   }
   
+  recordTombstones('messages', [messageId]);
   saveMessages(messages.filter(m => m.id !== messageId));
 };
 
@@ -452,6 +452,7 @@ export const emptyTrash = async (userId: string): Promise<void> => {
     }
   }
   
+  recordTombstones('messages', trashMessages.map(m => m.id));
   saveMessages(messages.filter(m => !m.isDeleted?.[userId]));
 };
 
