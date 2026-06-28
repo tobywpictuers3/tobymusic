@@ -1,4 +1,5 @@
 import { Message } from './types';
+import { recordTombstones } from './storage';
 import { isDevMode, getDevStore, getStudents, loadLocalMessages, saveLocalMessages } from './storage';
 import { hybridSync } from './hybridSync';
 import { workerApi } from './workerApi';
@@ -107,12 +108,7 @@ export const addMessage = (message: Omit<Message, 'id' | 'createdAt'>): Message 
 export const deleteMessage = (messageId: string): void => {
   const messages = getMessages();
   const updatedMessages = messages.filter(m => m.id !== messageId);
-  try {
-    // dynamic require to avoid circular imports at module init
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { recordTombstones } = require('./storage');
-    recordTombstones('messages', [messageId]);
-  } catch {}
+  recordTombstones('messages', [messageId]);
   saveMessages(updatedMessages);
 };
 
