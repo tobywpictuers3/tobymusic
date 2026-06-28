@@ -439,6 +439,52 @@ class HybridSyncManager {
       if (localData[key]) merged[key] = localData[key];
     });
 
+    // ---- Tombstones: union local + remote, keep latest deletedAt per id ----
+    const TOMB_KEY = 'musicSystem___tombstones';
+    const localTomb = (localData[TOMB_KEY] && typeof localData[TOMB_KEY] === 'object') ? localData[TOMB_KEY] : {};
+    const remoteTomb = (remoteData[TOMB_KEY] && typeof remoteData[TOMB_KEY] === 'object') ? remoteData[TOMB_KEY] : {};
+    const mergedTomb: Record<string, Record<string, string>> = {};
+    const allCats = new Set([...Object.keys(localTomb), ...Object.keys(remoteTomb)]);
+    const TOMB_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+    allCats.forEach((cat) => {
+      const a = localTomb[cat] || {};
+      const b = remoteTomb[cat] || {};
+      const ids = new Set([...Object.keys(a), ...Object.keys(b)]);
+      const out: Record<string, string> = {};
+      ids.forEach((id) => {
+        const ta = a[id] ? new Date(a[id]).getTime() : 0;
+        const tb = b[id] ? new Date(b[id]).getTime() : 0;
+        const latest = Math.max(ta, tb);
+        if (latest <= 0) return;
+        // Drop tombstones older than TTL — safe cleanup
+        if (nowMs - latest > TOMB_TTL_MS) return;
+        out[id] = new Date(latest).toISOString();
+      });
+      if (Object.keys(out).length > 0) mergedTomb[cat] = out;
+    });
+    merged[TOMB_KEY] = mergedTomb;
+
+    // Mapping from conflict array key → tombstone category name
+    const tombCategoryFor: Record<string, string> = {
+      'musicSystem_practiceSessions': 'practiceSessions',
+      'musicSystem_students': 'students',
+      'musicSystem_lessons': 'lessons',
+      'musicSystem_payments': 'payments',
+      'musicSystem_performances': 'performances',
+      'musicSystem_monthlyAchievements': 'monthlyAchievements',
+      'musicSystem_medalRecords': 'medalRecords',
+      'musicSystem_swapRequests': 'swapRequests',
+      'musicSystem_files': 'files',
+      'musicSystem_scheduleTemplates': 'scheduleTemplates',
+      'musicSystem_holidays': 'holidays',
+      'oneTimePayments': 'oneTimePayments',
+      'musicSystem_messages': 'messages',
+      'musicSystem_perLessonPayments': 'perLessonPayments',
+      'musicSystem_storeItems': 'storeItems',
+      'musicSystem_storePurchases': 'storePurchases',
+    };
+
     conflictKeys.forEach((key) => {
       const localRecords = localData[key];
       const remoteRecords = remoteData[key];
@@ -449,17 +495,27 @@ class HybridSyncManager {
             typeof localRecords === 'string' ? JSON.parse(localRecords) : localRecords;
           const remoteArray =
             typeof remoteRecords === 'string' ? JSON.parse(remoteRecords) : remoteRecords;
-          merged[key] = this.mergeRecords(localArray, remoteArray);
+          const tombMap = mergedTomb[tombCategoryFor[key]] || undefined;
+          merged[key] = this.mergeRecords(localArray, remoteArray, tombMap);
         } catch (error) {
           logger.warn(`Failed to merge ${key}, using local:`, error);
           merged[key] = localRecords;
         }
       } else if (localRecords) {
-        merged[key] = localRecords;
+        const tombMap = mergedTomb[tombCategoryFor[key]] || undefined;
+        merged[key] = tombMap
+          ? this.mergeRecords(Array.isArray(localRecords) ? localRecords : [], [], tombMap)
+          : localRecords;
+      } else if (remoteRecords) {
+        const tombMap = mergedTomb[tombCategoryFor[key]] || undefined;
+        if (tombMap) {
+          merged[key] = this.mergeRecords([], Array.isArray(remoteRecords) ? remoteRecords : [], tombMap);
+        }
       }
     });
 
     Object.keys(localData).forEach((key) => {
+      if (key === TOMB_KEY) return; // already handled
       if (!conflictKeys.includes(key) && key !== 'timestamp') merged[key] = localData[key];
     });
 
@@ -467,16 +523,44 @@ class HybridSyncManager {
     return merged;
   }
 
-  private mergeRecords(localRecords: any[], remoteRecords: any[]): any {
+  private mergeRecords(
+    localRecords: any[],
+    remoteRecords: any[],
+    tombstones?: Record<string, string>,
+  ): any {
     const recordMap = new Map<string, any>();
+    const tombTimeFor = (id: string): number => {
+      if (!tombstones) return 0;
+      const raw = tombstones[id];
+      return raw ? new Date(raw).getTime() : 0;
+    };
+    const recordTimeOf = (rec: any): number => {
+      if (!rec) return 0;
+      if (rec.lastModified) return new Date(rec.lastModified).getTime();
+      if (rec.createdAt) return new Date(rec.createdAt).getTime();
+      return 0;
+    };
+    const passesTombstone = (rec: any): boolean => {
+      const t = tombTimeFor(String(rec.id));
+      if (t <= 0) return true;
+      // record survives only if it was updated AFTER the tombstone
+      return recordTimeOf(rec) > t;
+    };
 
     // Seed map with remote records (so anything only in remote survives)
     (remoteRecords || []).forEach((record) => {
-      if (record && record.id != null) recordMap.set(String(record.id), record);
+      if (record && record.id != null && passesTombstone(record)) {
+        recordMap.set(String(record.id), record);
+      }
     });
 
     (localRecords || []).forEach((localRecord) => {
       if (!localRecord || localRecord.id == null) return;
+      if (!passesTombstone(localRecord)) {
+        // local explicitly deleted (or older than tombstone) → drop
+        recordMap.delete(String(localRecord.id));
+        return;
+      }
       const key = String(localRecord.id);
       const remoteRecord = recordMap.get(key);
 
