@@ -226,6 +226,7 @@ export const deleteStudent = (id: string): boolean => {
   if (updatedStudents.length === students.length) {
     return false; // No student was deleted
   }
+  recordTombstones('students', [id]);
   if (isDevMode()) {
     devData['students'] = updatedStudents;
   } else {
@@ -292,6 +293,7 @@ export const deleteLesson = async (id: string): Promise<boolean> => {
   if (updatedLessons.length === lessons.length) {
     return false; // No lesson was deleted
   }
+  recordTombstones('lessons', [id]);
   if (isDevMode()) {
     devData['lessons'] = updatedLessons;
   } else {
@@ -327,6 +329,22 @@ export const deleteLessonCascade = async (lessonId: string): Promise<boolean> =>
 
   const { studentId, date, startTime } = lesson;
 
+  // Capture swap-request IDs being removed by the cascade so they survive merges
+  const swapIdsToDelete = (
+    (isDevMode() ? (devData['swapRequests'] || []) : (inMemoryStorage['swapRequests'] || []))
+  )
+    .filter((r: any) => {
+      const byLessonId = r.requesterLessonId === lessonId || r.targetLessonId === lessonId;
+      const byLegacyFields =
+        (r.requesterId === studentId && r.date === date && r.time === startTime) ||
+        (r.targetId === studentId && r.targetDate === date && r.targetTime === startTime);
+      return byLessonId || byLegacyFields;
+    })
+    .map((r: any) => r.id);
+
+  recordTombstones('lessons', [lessonId]);
+  if (swapIdsToDelete.length) recordTombstones('swapRequests', swapIdsToDelete);
+
   await persistCascadeChanges(store => {
     // 1. Delete the lesson itself
     store['lessons'] = (store['lessons'] || []).filter((l: any) => l.id !== lessonId);
@@ -351,6 +369,21 @@ export const deleteLessonCascade = async (lessonId: string): Promise<boolean> =>
 export const deleteStudentCascade = async (studentId: string): Promise<boolean> => {
   const exists = getStudents().some(s => s.id === studentId);
   if (!exists) return false;
+
+  // Snapshot related IDs BEFORE filtering so tombstones cover everything
+  const _store: any = isDevMode() ? devData : inMemoryStorage;
+  recordTombstones('students', [studentId]);
+  recordTombstones('lessons', (_store['lessons'] || []).filter((l: any) => l.studentId === studentId).map((l: any) => l.id));
+  recordTombstones('payments', (_store['payments'] || []).filter((p: any) => p.studentId === studentId).map((p: any) => p.id));
+  recordTombstones('files', (_store['files'] || []).filter((f: any) => f.studentId === studentId).map((f: any) => f.id));
+  recordTombstones('practiceSessions', (_store['practiceSessions'] || []).filter((s: any) => s.studentId === studentId).map((s: any) => s.id));
+  recordTombstones('monthlyAchievements', (_store['monthlyAchievements'] || []).filter((a: any) => a.studentId === studentId).map((a: any) => a.id));
+  recordTombstones('medalRecords', (_store['medalRecords'] || []).filter((m: any) => m.studentId === studentId).map((m: any) => m.id));
+  recordTombstones('swapRequests', (_store['swapRequests'] || []).filter((r: any) => {
+    const oldShape = r.requesterId === studentId || r.targetId === studentId;
+    const newShape = r.requesterStudentId === studentId || r.targetStudentId === studentId;
+    return oldShape || newShape;
+  }).map((r: any) => r.id));
 
   await persistCascadeChanges(store => {
     store['students'] = (store['students'] || []).filter((s: any) => s.id !== studentId);
