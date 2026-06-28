@@ -1,5 +1,5 @@
 import { Message } from './types';
-import { isDevMode, getDevStore, getStudents, loadLocalMessages, saveLocalMessages } from './storage';
+import { isDevMode, getDevStore, getStudents, loadLocalMessages, saveLocalMessages, recordTombstones } from './storage';
 import { hybridSync } from './hybridSync';
 import { workerApi } from './workerApi';
 import { sanitizeHtml } from './sanitize';
@@ -107,6 +107,7 @@ export const addMessage = (message: Omit<Message, 'id' | 'createdAt'>): Message 
 export const deleteMessage = (messageId: string): void => {
   const messages = getMessages();
   const updatedMessages = messages.filter(m => m.id !== messageId);
+  recordTombstones('messages', [messageId]);
   saveMessages(updatedMessages);
 };
 
@@ -424,6 +425,7 @@ export const hardDeleteMessage = async (messageId: string): Promise<void> => {
     }
   }
   
+  recordTombstones('messages', [messageId]);
   saveMessages(messages.filter(m => m.id !== messageId));
 };
 
@@ -450,6 +452,7 @@ export const emptyTrash = async (userId: string): Promise<void> => {
     }
   }
   
+  recordTombstones('messages', trashMessages.map(m => m.id));
   saveMessages(messages.filter(m => !m.isDeleted?.[userId]));
 };
 
@@ -458,6 +461,7 @@ export const deleteMessagesForStudentCascade = async (studentId: string): Promis
   const messages = getMessages();
   const remaining: Message[] = [];
   const { workerApi } = await import('./workerApi');
+  const removedIds: string[] = [];
 
   for (const msg of messages) {
     const isSender = msg.senderId === studentId;
@@ -470,6 +474,7 @@ export const deleteMessagesForStudentCascade = async (studentId: string): Promis
           if (att.path) await workerApi.deleteAttachment(att.path).catch(() => {});
         }
       }
+      removedIds.push(msg.id);
       continue;
     }
 
@@ -484,6 +489,7 @@ export const deleteMessagesForStudentCascade = async (studentId: string): Promis
           if (att.path) await workerApi.deleteAttachment(att.path).catch(() => {});
         }
       }
+      removedIds.push(msg.id);
       continue;
     }
 
@@ -500,6 +506,7 @@ export const deleteMessagesForStudentCascade = async (studentId: string): Promis
     remaining.push(msg);
   }
 
+  if (removedIds.length) recordTombstones('messages', removedIds);
   saveMessages(remaining);
 };
 

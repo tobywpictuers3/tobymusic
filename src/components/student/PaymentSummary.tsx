@@ -1,16 +1,30 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CreditCard, DollarSign, CheckCircle2 } from 'lucide-react';
-import { getPayments, getStudents } from '@/lib/storage';
+import { CreditCard, DollarSign, CheckCircle2, Receipt } from 'lucide-react';
+import {
+  getPayments,
+  getStudents,
+  getStudentPerLessonPayments,
+} from '@/lib/storage';
 import { Payment } from '@/lib/types';
 
 interface PaymentSummaryProps {
   studentId: string;
 }
 
+type HistoryRow = {
+  date: string; // YYYY-MM-DD
+  type: 'monthly' | 'perLesson' | 'performance';
+  typeLabel: string;
+  description: string;
+  amount: number;
+  method?: string;
+};
+
 const PaymentSummary = ({ studentId }: PaymentSummaryProps) => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [annualAmount, setAnnualAmount] = useState(0);
+  const [history, setHistory] = useState<HistoryRow[]>([]);
 
   useEffect(() => {
     const allPayments = getPayments();
@@ -23,6 +37,35 @@ const PaymentSummary = ({ studentId }: PaymentSummaryProps) => {
       const effectiveAmount = student.calculatedAmount || student.annualAmount || 0;
       setAnnualAmount(effectiveAmount);
     }
+
+    // Build unified history across monthly, per-lesson, performances
+    const rows: HistoryRow[] = [];
+
+    studentPayments
+      .filter(p => p.status === 'paid' && (p.amount || 0) > 0)
+      .forEach(p => {
+        rows.push({
+          date: p.paidDate || `${p.month}-01`,
+          type: 'monthly',
+          typeLabel: 'תשלום חודשי',
+          description: `חודש ${p.month}`,
+          amount: p.amount,
+          method: p.paymentMethod,
+        });
+      });
+
+    getStudentPerLessonPayments(studentId).forEach(p => {
+      rows.push({
+        date: p.paymentDate,
+        type: 'perLesson',
+        typeLabel: 'תשלום שיעור',
+        description: p.notes || `${p.lessonsCount} שיעורים`,
+        amount: p.amount,
+      });
+    });
+
+    rows.sort((a, b) => (a.date < b.date ? 1 : -1));
+    setHistory(rows);
   }, [studentId]);
 
   const totalPaid = payments
@@ -40,6 +83,7 @@ const PaymentSummary = ({ studentId }: PaymentSummaryProps) => {
   const getPaymentMethodLabel = (method: string) => {
     const labels: Record<string, string> = {
       bank_transfer: 'העברה בנקאית',
+      bank: 'העברה בנקאית',
       cash: 'מזומן',
       check: 'צ\'ק',
       credit_card: 'כרטיס אשראי',
@@ -115,6 +159,36 @@ const PaymentSummary = ({ studentId }: PaymentSummaryProps) => {
                   <div key={method} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{getPaymentMethodLabel(method)}</span>
                     <span className="font-medium">₪{amount}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Full history across all payment types */}
+          {history.length > 0 && (
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                היסטוריית כל התשלומים שלך
+              </h4>
+              <div className="space-y-2 max-h-[260px] overflow-auto pr-1">
+                {history.map((row, idx) => (
+                  <div
+                    key={`${row.type}-${row.date}-${idx}`}
+                    className="flex items-center justify-between gap-3 text-sm p-2 rounded-md bg-muted/30 border border-border/40"
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="text-xs text-muted-foreground">{row.date}</span>
+                      <span className="font-medium">{row.typeLabel}</span>
+                      <span className="text-xs text-muted-foreground">{row.description}</span>
+                      {row.method && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {getPaymentMethodLabel(row.method)}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-primary">₪{row.amount}</span>
                   </div>
                 ))}
               </div>

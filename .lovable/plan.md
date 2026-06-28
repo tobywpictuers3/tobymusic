@@ -1,47 +1,57 @@
-## למה השמירה כל כך איטית היום
+## בקשה 1: מחיקות לא נקלטות בסינכרון
 
-מעקב הקוד ב-`src/lib/hybridSync.ts` ו-`src/components/ui/save-button.tsx` מראה שכל לחיצה על "שמור שינויים" (וגם כל `onDataChange` אוטומטי) עוברת רצף כבד מאוד:
+**שורש הבעיה**
+ב-`hybridSync.ts` הפונקציה `mergeRecords` בונה Map מהרשומות המרוחקות, ואז עוברת על המקומיות ומוסיפה מה שחסר. **רשומה שנמחקה מקומית אך עדיין קיימת ברימוט — תמיד מוחזרת לחיים**. אותו דבר ב-`mergeDataWithConflictResolution` לטיפוסים שלא נמצאים ב-`conflictKeys` (נעשה `merged[key] = localData[key]` ללא מודעות למחיקות ברימוט).
 
-1. `SaveButton.handleSave` קורא ל-`clearClientCaches()` **לפני** השמירה — מנקה caches גם כשלא צריך.
-2. `onDataChange` שומר local + עושה `persistLocalSnapshot` (JSON.stringify של כל ה-DB ל-localStorage).
-3. Debounce של 500ms.
-4. `syncToWorker` עושה **download_latest מלא מדרופבוקס** (round-trip של כל ה-DB) → merge כבד (`mergeDataWithConflictResolution` עובר על כל המפתחות, מפענח JSON, ממזג רשומה-רשומה לפי id) → `JSON.stringify` נוסף רק כדי למדוד גודל → upload מלא.
-5. אחרי ההעלאה: `updateInMemoryStorage(mergedData)` (re-init של כל ה-storage) → `persistLocalSnapshot` שוב → `recalculateAllMonthlyAchievements()` סינכרוני שעובר על כל התלמידות וכל הסשנים.
-6. אם משתמש שמר עוד פעם תוך כדי — `pendingResync` מריץ **את כל הרצף הזה שוב מההתחלה** (download+merge+upload+recalc).
+זה בדיוק תואם לתלונה: תלמידות רושמות אימון/מוחקות, ובסנכרון הבא הוא "חוזר" כי גרסה ישנה מהרימוט (או ממכשיר אחר) משוחזרת.
 
-כלומר כל שמירה = download מלא + merge מלא + upload מלא + recalc מלא, וכל לחיצה נוספת מכפילה את זה. זה גם הסיבה שלפעמים נראה שהשמירה "תקועה".
+**פתרון: Tombstones (סימוני מחיקה) קלים**
+1. **חתימת מחיקה לכל ישות**: ב-`storage.ts`, בכל פונקציית `delete*` (lessons, payments, students, messages, practiceSessions, swapRequests, files, performances, oneTimePayments, perLessonPayments, storeItems, storePurchases, monthlyAchievements, medalRecords, scheduleTemplates, holidays) — במקום לסלק את הרשומה לגמרי, נסמן אותה כ-`_deleted: true` עם `lastModified = now`. הקריאות הקיימות לקריאה (`getX()`) יסננו `_deleted` כדי שה-UI לא יראה אותן.
+2. **מיזוג מודע למחיקות** ב-`mergeRecords`:
+   - אם בצד אחד `_deleted=true` ובצד השני לא, מנצח ה-`lastModified` המאוחר ביותר. אם המחיקה מאוחרת — היא שורדת (כ-tombstone), אם השיחזור/עדכון מאוחר — הרשומה חיה.
+   - שני הצדדים מחזיקים את אותה רשומה עם זמני שינוי — `lastModified` מנצח (זהה לקיים).
+3. **ניקוי tombstones**: ברגע ש-tombstone גדול מ-30 יום ושני הצדדים כבר ראו אותו, נסיר אותו פיזית במהלך `mergeRecords` (גיל בלבד, ללא מעקב מורכב). זה שומר על גודל סביר.
+4. **`directUpload`/`syncToWorker`** ימשיכו לשלוח את כל הסטייט (כולל ה-tombstones). אין שינוי במסלול ההעלאה ולא בביצועים.
+5. **בדיקה ידנית**: מחיקת אימון אצל תלמידה → רענון → אינו חוזר. גם הוספה של תלמידה אחרת באותו זמן שורדת.
 
-## עקרון התיקון
+**מה נשמר ללא שינוי**
+- אסטרטגיית `directUpload` המהירה, ה-debounce של 500ms, מיזוג רקע כל 3 דקות.
+- שום מחיקה "מסוכנת" של רשומות שלא סומנו במפורש.
 
-לשמור על אותה אמינות סנכרון לדרופבוקס (שום שינוי באמינות, שום ויתור על merge נגד התנגשויות), אבל להוציא את העבודה הכבדה מהמסלול הקריטי. ה-merge מול הענן הכרחי רק כשבאמת הייתה כתיבה מקבילה ממכשיר אחר — לא בכל לחיצה.
+---
 
-## שינויים
+## בקשה 2: עמודת "יתרה לתשלום שנתי" בעמוד תשלומים קבועים
 
-### 1. `src/components/ui/save-button.tsx`
-- להסיר את `await clearClientCaches()` מלפני `hybridSync.onDataChange()`. אין סיבה לנקות caches לפני שמירה; אם בכלל צריך — אפשר להשאיר את הקריאה אחרי הצלחה, או להסיר לגמרי (cache נקי קורה בלוגין/לוגאוט).
+ב-`PaymentManagement.tsx`, בטבלת "תשלומים קבועים" (`fixedPaymentsView === 'annual'`):
+- להוסיף עמודה חדשה אחרי "סה"כ שולם": **"יתרה לתשלום שנתי"** = `(student.calculatedAmount ?? student.annualAmount) - calculateTotalPaid(student.id)`.
+- אם היתרה ≤ 0 → להציג "✓ שולם במלואו" בירוק. אם > 0 → להציג `₪{יתרה}` באדום-בורדו.
+- להוסיף תא סיכום בשורת ה-Total התחתונה (אם קיימת).
 
-### 2. `src/lib/hybridSync.ts` — מסלול שמירה רגיל (`onDataChange` → `syncToWorker`)
-- **להשמיט את `downloadLatest` בכל שמירה.** במקום זאת:
-  - לבצע `directUpload` (upload בלבד) כברירת מחדל.
-  - להריץ download+merge רק במצבים שבהם יש סיכוי ממשי להתנגשות: על init (כבר קורה ב-`loadDataOnInit`), ובאינטרוול רקע נמוך-תדירות (למשל כל 2–5 דקות, או כשחזרנו online אחרי ניתוק). ה-`mergeRecords` הקיים נשאר ללא שינוי כך שכשבאמת רצים merge — ההגנה על הודעות/סשנים נשמרת.
-- **`persistLocalSnapshot` פעם אחת בלבד** לכל שמירה (כרגע נקרא גם ב-`onDataChange` וגם ב-`syncToWorker`/`directUpload`).
-- **למחוק את ה-`JSON.stringify(mergedData).length` "למדידה"** — לבצע את בדיקת ה-"data too small" על מבנה (קיום מפתחות `musicSystem_*`) במקום stringify של כל ה-DB פעם נוספת.
-- **`recalculateAllMonthlyAchievements` יוצא מהמסלול הקריטי**: לקרוא לו ב-`queueMicrotask` / `setTimeout(..., 0)` אחרי שהצלחנו, ולעטוף ב-debounce פנימי (פעם אחת לכל "שקט" של כמה שניות) כדי שלא ירוץ שוב ושוב בלחיצות רצופות.
-- **`pendingResync` יהפוך ל-`directUpload` בלבד** במקום `syncToWorker` מלא — אם המשתמש לחץ שמור שוב בזמן שמירה קודמת, די להעלות שוב את הסטייט הנוכחי, בלי עוד download+merge.
-- אחרי `directUpload` מוצלח: לא צריך `updateInMemoryStorage` (הסטייט בזיכרון כבר נכון, רק הענן עודכן).
+---
 
-### 3. סנכרון רקע חדש (קל)
-- להוסיף `setInterval` שקט של ~3 דקות שמריץ `syncToWorker` המלא (download+merge+upload) **רק אם** יש סימן שיכול להיות שינוי מרוחק (למשל מאז ה-cloud sync האחרון עברה מספיק זמן ויש משתמשים מקבילים). זה משאיר את ההגנה מפני התנגשויות במקומה, בלי לשלם עליה בכל לחיצה.
-- בנוסף, להריץ `syncToWorker` המלא ברגע שחוזרים online (כבר יש hook `online` — להחליף את הקריאה הנוכחית להריץ merge פעם אחת).
+## בקשה 3: תצוגת כל התשלומים בכרטיס התלמידה
 
-### 4. ללא שינוי (חשוב לציין)
-- `mergeDataWithConflictResolution` ו-`mergeRecords` — נשארים בדיוק כמו שהם, כולל מפתחות ה-conflict על הודעות, סשנים, תשלומים וכו'. ההגנה מהבאג הקודם של הודעות שנעלמות נשמרת לחלוטין.
-- `beforeunload` עם `sendBeacon` — נשאר.
-- `loadDataOnInit` — נשאר, כולל ה-local snapshot fallback.
-- `workerApi.ts` — לא נוגעים.
-- `restoreData` / שיחזור גיבוי — לא נוגעים.
+ב-`StudentDashboard` (כרטיס תשלומים של התלמידה), להחליף/להרחיב את `PaymentSummary.tsx` כך שיציג **את כל סוגי התשלומים** של התלמידה:
+
+1. **תשלומים חודשיים קבועים** (`musicSystem_payments`) — רשימה של כל החודשים ששולמו, כולל סכום, תאריך תשלום ואופן (בנק/צ'ק/מזומן).
+2. **תשלומי שיעורים חד-פעמיים** (`musicSystem_perLessonPayments`) — כבר חלקית מוצג ב-`StudentDetails`; להעביר לתצוגה אחידה בכרטיס.
+3. **תשלומים חד-פעמיים** (`oneTimePayments`) — אם משויכים לתלמידה (לפי `studentId` אם קיים, אחרת לדלג).
+4. **תשלומי הופעות** (`performance.performancePayments`) — אם הופעה כוללת את התלמידה.
+
+**מבנה התצוגה** (`PaymentSummary.tsx` המורחב, ללא שבירת הקיים):
+- אזור עליון: הסיכומים הקיימים (סכום שנתי, שולם, יתרה).
+- אזור חדש: **"היסטוריית כל התשלומים שלך"** — טבלה/רשימה ממוינת מהחדש לישן עם עמודות: תאריך, סוג (חודשי/חד-פעמי/שיעור/הופעה), תיאור, סכום, אופן תשלום. הצגה גם כשאין משויך לחודש (תשלום חד-פעמי). בלבד-קריאה — תלמידה לא יכולה לערוך.
+
+---
+
+## קבצים שיתעדכנו
+- `src/lib/storage.ts` — המרת מחיקות ל-tombstones + סינון ב-getters.
+- `src/lib/hybridSync.ts` — `mergeRecords` מודע ל-`_deleted` + ניקוי tombstones ישנים. `mergeDataWithConflictResolution` יוודא שגם מפתחות לא-קונפליקט לא דורסים מחיקות.
+- `src/lib/types.ts` — שדה אופציונלי `_deleted?: boolean` ו-`lastModified?: string` (אם חסר) על הטיפוסים הרלוונטיים.
+- `src/components/admin/PaymentManagement.tsx` — עמודת יתרה.
+- `src/components/student/PaymentSummary.tsx` — הרחבה לכל סוגי התשלומים.
 
 ## תוצאה צפויה
-- שמירה רגילה: HTTP אחד בלבד (upload), בלי download, בלי merge, בלי recalc סינכרוני. אמורה להרגיש מיידית (מאות מילישניות במקום שניות).
-- אמינות מול דרופבוקס: זהה — כי merge ממשיך לרוץ ב-init, ב-online, ובאינטרוול רקע.
-- שום שינוי ב-UI/UX, רק מהירות.
+- מחיקות שורדות סנכרון בכל הכיוונים, בלי לאבד מידע שלא נמחק במפורש.
+- עמוד התשלומים מציג גם יתרה שנתית לכל תלמידה.
+- כל תלמידה רואה את כל ההיסטוריה הכספית שלה במקום אחד.

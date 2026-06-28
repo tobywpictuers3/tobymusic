@@ -75,6 +75,11 @@ export const initializeStorage = (data: any) => {
       keysFound++;
     }
   });
+
+  // Ensure tombstones map exists even after a fresh load
+  if (!inMemoryStorage['__tombstones'] || typeof inMemoryStorage['__tombstones'] !== 'object') {
+    inMemoryStorage['__tombstones'] = {};
+  }
   
   // Ensure swapRequests exists as empty array if not provided
   if (!inMemoryStorage['swapRequests']) {
@@ -109,6 +114,10 @@ export const exportAllData = (allowEmpty: boolean = false): Record<string, any> 
   const data: Record<string, any> = {};
   
   Object.keys(inMemoryStorage).forEach(key => {
+    if (key === '__tombstones') {
+      // handled below with the special prefix
+      return;
+    }
     // Handle special keys that need musicSystem_ prefix
     if (key === 'oneTimePayments') {
       data[key] = inMemoryStorage[key];
@@ -119,6 +128,9 @@ export const exportAllData = (allowEmpty: boolean = false): Record<string, any> 
       data[`musicSystem_${key}`] = inMemoryStorage[key];
     }
   });
+
+  // Always include tombstones map so deletions propagate to other devices
+  data['musicSystem___tombstones'] = inMemoryStorage['__tombstones'] || {};
   
   data.timestamp = new Date().toISOString();
   
@@ -140,6 +152,26 @@ export const exportAllData = (allowEmpty: boolean = false): Record<string, any> 
 // Utility function to simulate server-side ID generation
 const generateId = (): string => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
+
+// =====================================================================
+// TOMBSTONES — track deleted record IDs so deletions survive sync merges
+// =====================================================================
+export const recordTombstones = (category: string, ids: Array<string | number>): void => {
+  if (!ids || ids.length === 0) return;
+  const store: any = isDevMode() ? devData : inMemoryStorage;
+  if (!store['__tombstones']) store['__tombstones'] = {};
+  if (!store['__tombstones'][category]) store['__tombstones'][category] = {};
+  const now = new Date().toISOString();
+  for (const rawId of ids) {
+    if (rawId == null) continue;
+    store['__tombstones'][category][String(rawId)] = now;
+  }
+};
+
+export const getTombstones = (): Record<string, Record<string, string>> => {
+  const store: any = isDevMode() ? devData : inMemoryStorage;
+  return store['__tombstones'] || {};
 };
 
 // Students
@@ -194,6 +226,7 @@ export const deleteStudent = (id: string): boolean => {
   if (updatedStudents.length === students.length) {
     return false; // No student was deleted
   }
+  recordTombstones('students', [id]);
   if (isDevMode()) {
     devData['students'] = updatedStudents;
   } else {
@@ -260,6 +293,7 @@ export const deleteLesson = async (id: string): Promise<boolean> => {
   if (updatedLessons.length === lessons.length) {
     return false; // No lesson was deleted
   }
+  recordTombstones('lessons', [id]);
   if (isDevMode()) {
     devData['lessons'] = updatedLessons;
   } else {
@@ -295,6 +329,22 @@ export const deleteLessonCascade = async (lessonId: string): Promise<boolean> =>
 
   const { studentId, date, startTime } = lesson;
 
+  // Capture swap-request IDs being removed by the cascade so they survive merges
+  const swapIdsToDelete = (
+    (isDevMode() ? (devData['swapRequests'] || []) : (inMemoryStorage['swapRequests'] || []))
+  )
+    .filter((r: any) => {
+      const byLessonId = r.requesterLessonId === lessonId || r.targetLessonId === lessonId;
+      const byLegacyFields =
+        (r.requesterId === studentId && r.date === date && r.time === startTime) ||
+        (r.targetId === studentId && r.targetDate === date && r.targetTime === startTime);
+      return byLessonId || byLegacyFields;
+    })
+    .map((r: any) => r.id);
+
+  recordTombstones('lessons', [lessonId]);
+  if (swapIdsToDelete.length) recordTombstones('swapRequests', swapIdsToDelete);
+
   await persistCascadeChanges(store => {
     // 1. Delete the lesson itself
     store['lessons'] = (store['lessons'] || []).filter((l: any) => l.id !== lessonId);
@@ -319,6 +369,21 @@ export const deleteLessonCascade = async (lessonId: string): Promise<boolean> =>
 export const deleteStudentCascade = async (studentId: string): Promise<boolean> => {
   const exists = getStudents().some(s => s.id === studentId);
   if (!exists) return false;
+
+  // Snapshot related IDs BEFORE filtering so tombstones cover everything
+  const _store: any = isDevMode() ? devData : inMemoryStorage;
+  recordTombstones('students', [studentId]);
+  recordTombstones('lessons', (_store['lessons'] || []).filter((l: any) => l.studentId === studentId).map((l: any) => l.id));
+  recordTombstones('payments', (_store['payments'] || []).filter((p: any) => p.studentId === studentId).map((p: any) => p.id));
+  recordTombstones('files', (_store['files'] || []).filter((f: any) => f.studentId === studentId).map((f: any) => f.id));
+  recordTombstones('practiceSessions', (_store['practiceSessions'] || []).filter((s: any) => s.studentId === studentId).map((s: any) => s.id));
+  recordTombstones('monthlyAchievements', (_store['monthlyAchievements'] || []).filter((a: any) => a.studentId === studentId).map((a: any) => a.id));
+  recordTombstones('medalRecords', (_store['medalRecords'] || []).filter((m: any) => m.studentId === studentId).map((m: any) => m.id));
+  recordTombstones('swapRequests', (_store['swapRequests'] || []).filter((r: any) => {
+    const oldShape = r.requesterId === studentId || r.targetId === studentId;
+    const newShape = r.requesterStudentId === studentId || r.targetStudentId === studentId;
+    return oldShape || newShape;
+  }).map((r: any) => r.id));
 
   await persistCascadeChanges(store => {
     store['students'] = (store['students'] || []).filter((s: any) => s.id !== studentId);
@@ -411,6 +476,7 @@ export const deletePayment = async (id: string): Promise<boolean> => {
   if (updatedPayments.length === payments.length) {
     return false; // No payment was deleted
   }
+  recordTombstones('payments', [id]);
   inMemoryStorage['payments'] = updatedPayments;
   await hybridSync.onDestructiveChange();
   return true;
@@ -573,6 +639,7 @@ export const deleteFile = async (id: string): Promise<boolean> => {
   const updatedFiles = files.filter(file => file.id !== id);
   if (updatedFiles.length === files.length) return false;
 
+  recordTombstones('files', [id]);
   if (isDevMode()) {
     devData['files'] = updatedFiles;
   } else {
@@ -675,6 +742,7 @@ export const deleteScheduleTemplate = async (id: string): Promise<boolean> => {
   if (updatedTemplates.length === templates.length) {
     return false; // No template was deleted
   }
+  recordTombstones('scheduleTemplates', [id]);
   if (isDevMode()) {
     devData['scheduleTemplates'] = updatedTemplates;
   } else {
@@ -929,6 +997,7 @@ export const deletePerformance = async (id: string): Promise<boolean> => {
   if (updatedPerformances.length === performances.length) {
     return false;
   }
+  recordTombstones('performances', [id]);
   if (isDevMode()) {
     devData['performances'] = updatedPerformances;
   } else {
@@ -968,6 +1037,7 @@ export const deleteOneTimePayment = async (id: string): Promise<boolean> => {
   const updated = payments.filter(p => p.id !== id);
   if (updated.length === payments.length) return false;
   
+  recordTombstones('oneTimePayments', [id]);
   if (isDevMode()) {
     devData['oneTimePayments'] = updated;
   } else {
@@ -1162,6 +1232,7 @@ export const deletePerLessonPayment = async (id: string): Promise<boolean> => {
 
   const updated = payments.filter(p => p.id !== id);
 
+  recordTombstones('perLessonPayments', [id]);
   if (isDevMode()) {
     devData['perLessonPayments'] = updated;
   } else {
@@ -1303,6 +1374,8 @@ export const deleteHoliday = async (date: string): Promise<boolean> => {
   if (updatedHolidays.length === holidays.length) {
     return false;
   }
+  const removedIds = holidays.filter(h => h.date === date).map(h => h.id);
+  recordTombstones('holidays', removedIds);
   if (isDevMode()) {
     devData['holidays'] = updatedHolidays;
   } else {
@@ -1409,6 +1482,7 @@ export const deletePracticeSession = async (id: string): Promise<boolean> => {
   const updatedSessions = sessions.filter(s => s.id !== id);
   if (updatedSessions.length === sessions.length) return false;
 
+  recordTombstones('practiceSessions', [id]);
   if (isDevMode()) {
     devData['practiceSessions'] = updatedSessions;
 
@@ -2082,6 +2156,7 @@ export const deleteStoreItem = async (id: string): Promise<boolean> => {
   const updatedItems = items.filter(i => i.id !== id);
   if (updatedItems.length === items.length) return false;
   
+  recordTombstones('storeItems', [id]);
   if (isDevMode()) {
     devData['storeItems'] = updatedItems;
   } else {
