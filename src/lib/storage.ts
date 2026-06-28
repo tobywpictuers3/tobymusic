@@ -114,6 +114,10 @@ export const exportAllData = (allowEmpty: boolean = false): Record<string, any> 
   const data: Record<string, any> = {};
   
   Object.keys(inMemoryStorage).forEach(key => {
+    if (key === '__tombstones') {
+      // handled below with the special prefix
+      return;
+    }
     // Handle special keys that need musicSystem_ prefix
     if (key === 'oneTimePayments') {
       data[key] = inMemoryStorage[key];
@@ -124,6 +128,9 @@ export const exportAllData = (allowEmpty: boolean = false): Record<string, any> 
       data[`musicSystem_${key}`] = inMemoryStorage[key];
     }
   });
+
+  // Always include tombstones map so deletions propagate to other devices
+  data['musicSystem___tombstones'] = inMemoryStorage['__tombstones'] || {};
   
   data.timestamp = new Date().toISOString();
   
