@@ -1,11 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreditCard, DollarSign, CheckCircle2, Receipt } from 'lucide-react';
 import {
   getPayments,
   getStudents,
   getStudentPerLessonPayments,
-  getPerformances,
 } from '@/lib/storage';
 import { Payment } from '@/lib/types';
 
@@ -64,18 +63,6 @@ const PaymentSummary = ({ studentId }: PaymentSummaryProps) => {
         amount: p.amount,
       });
     });
-
-    try {
-      const performances = getPerformances();
-      performances.forEach(perf => {
-        // Show performance payments that name this student via notes or include them
-        // (the data model doesn't link students to performances directly,
-        //  so we skip unless they were explicitly the payer — most installs
-        //  won't surface anything here, which is correct)
-      });
-    } catch {
-      // performances optional
-    }
 
     rows.sort((a, b) => (a.date < b.date ? 1 : -1));
     setHistory(rows);
