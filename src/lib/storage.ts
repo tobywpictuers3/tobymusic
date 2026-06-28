@@ -75,6 +75,11 @@ export const initializeStorage = (data: any) => {
       keysFound++;
     }
   });
+
+  // Ensure tombstones map exists even after a fresh load
+  if (!inMemoryStorage['__tombstones'] || typeof inMemoryStorage['__tombstones'] !== 'object') {
+    inMemoryStorage['__tombstones'] = {};
+  }
   
   // Ensure swapRequests exists as empty array if not provided
   if (!inMemoryStorage['swapRequests']) {
@@ -140,6 +145,26 @@ export const exportAllData = (allowEmpty: boolean = false): Record<string, any> 
 // Utility function to simulate server-side ID generation
 const generateId = (): string => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
+
+// =====================================================================
+// TOMBSTONES — track deleted record IDs so deletions survive sync merges
+// =====================================================================
+export const recordTombstones = (category: string, ids: Array<string | number>): void => {
+  if (!ids || ids.length === 0) return;
+  const store: any = isDevMode() ? devData : inMemoryStorage;
+  if (!store['__tombstones']) store['__tombstones'] = {};
+  if (!store['__tombstones'][category]) store['__tombstones'][category] = {};
+  const now = new Date().toISOString();
+  for (const rawId of ids) {
+    if (rawId == null) continue;
+    store['__tombstones'][category][String(rawId)] = now;
+  }
+};
+
+export const getTombstones = (): Record<string, Record<string, string>> => {
+  const store: any = isDevMode() ? devData : inMemoryStorage;
+  return store['__tombstones'] || {};
 };
 
 // Students
