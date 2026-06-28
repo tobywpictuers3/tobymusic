@@ -461,6 +461,7 @@ export const deleteMessagesForStudentCascade = async (studentId: string): Promis
   const messages = getMessages();
   const remaining: Message[] = [];
   const { workerApi } = await import('./workerApi');
+  const removedIds: string[] = [];
 
   for (const msg of messages) {
     const isSender = msg.senderId === studentId;
@@ -473,6 +474,7 @@ export const deleteMessagesForStudentCascade = async (studentId: string): Promis
           if (att.path) await workerApi.deleteAttachment(att.path).catch(() => {});
         }
       }
+      removedIds.push(msg.id);
       continue;
     }
 
@@ -487,6 +489,7 @@ export const deleteMessagesForStudentCascade = async (studentId: string): Promis
           if (att.path) await workerApi.deleteAttachment(att.path).catch(() => {});
         }
       }
+      removedIds.push(msg.id);
       continue;
     }
 
@@ -503,6 +506,7 @@ export const deleteMessagesForStudentCascade = async (studentId: string): Promis
     remaining.push(msg);
   }
 
+  if (removedIds.length) recordTombstones('messages', removedIds);
   saveMessages(remaining);
 };
 
