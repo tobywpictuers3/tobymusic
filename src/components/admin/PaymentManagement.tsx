@@ -1082,6 +1082,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                   );
                 })}
                 <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[100px] w-[100px] text-center px-2 py-3 font-bold">סה"כ שולם</th>
+                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[120px] w-[120px] text-center px-2 py-3 font-bold">יתרה לתשלום שנתי</th>
                 <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[100px] w-[100px] text-center px-2 py-3 font-bold">יעד שנתי</th>
               </tr>
             </thead>
@@ -1132,6 +1133,15 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                       );
                     })}
                     <td className="text-center font-semibold px-2 py-2">₪{formatCurrencyAmount(totalPaid)}</td>
+                    <td className="text-center font-semibold px-2 py-2">
+                      {(() => {
+                        const remaining = Math.max(0, annualTarget - totalPaid);
+                        if (remaining <= 0) {
+                          return <span className="text-green-700">✓ שולם במלואו</span>;
+                        }
+                        return <span className="text-[#8B2942]">₪{formatCurrencyAmount(remaining)}</span>;
+                      })()}
+                    </td>
                     <td className="text-center font-semibold px-2 py-2">₪{formatCurrencyAmount(annualTarget)}</td>
                   </tr>
                 );
