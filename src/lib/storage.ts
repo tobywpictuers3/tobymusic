@@ -476,6 +476,7 @@ export const deletePayment = async (id: string): Promise<boolean> => {
   if (updatedPayments.length === payments.length) {
     return false; // No payment was deleted
   }
+  recordTombstones('payments', [id]);
   inMemoryStorage['payments'] = updatedPayments;
   await hybridSync.onDestructiveChange();
   return true;
@@ -638,6 +639,7 @@ export const deleteFile = async (id: string): Promise<boolean> => {
   const updatedFiles = files.filter(file => file.id !== id);
   if (updatedFiles.length === files.length) return false;
 
+  recordTombstones('files', [id]);
   if (isDevMode()) {
     devData['files'] = updatedFiles;
   } else {
@@ -740,6 +742,7 @@ export const deleteScheduleTemplate = async (id: string): Promise<boolean> => {
   if (updatedTemplates.length === templates.length) {
     return false; // No template was deleted
   }
+  recordTombstones('scheduleTemplates', [id]);
   if (isDevMode()) {
     devData['scheduleTemplates'] = updatedTemplates;
   } else {
@@ -994,6 +997,7 @@ export const deletePerformance = async (id: string): Promise<boolean> => {
   if (updatedPerformances.length === performances.length) {
     return false;
   }
+  recordTombstones('performances', [id]);
   if (isDevMode()) {
     devData['performances'] = updatedPerformances;
   } else {
@@ -1033,6 +1037,7 @@ export const deleteOneTimePayment = async (id: string): Promise<boolean> => {
   const updated = payments.filter(p => p.id !== id);
   if (updated.length === payments.length) return false;
   
+  recordTombstones('oneTimePayments', [id]);
   if (isDevMode()) {
     devData['oneTimePayments'] = updated;
   } else {
@@ -1227,6 +1232,7 @@ export const deletePerLessonPayment = async (id: string): Promise<boolean> => {
 
   const updated = payments.filter(p => p.id !== id);
 
+  recordTombstones('perLessonPayments', [id]);
   if (isDevMode()) {
     devData['perLessonPayments'] = updated;
   } else {
@@ -1368,6 +1374,8 @@ export const deleteHoliday = async (date: string): Promise<boolean> => {
   if (updatedHolidays.length === holidays.length) {
     return false;
   }
+  const removedIds = holidays.filter(h => h.date === date).map(h => h.id);
+  recordTombstones('holidays', removedIds);
   if (isDevMode()) {
     devData['holidays'] = updatedHolidays;
   } else {
@@ -1474,6 +1482,7 @@ export const deletePracticeSession = async (id: string): Promise<boolean> => {
   const updatedSessions = sessions.filter(s => s.id !== id);
   if (updatedSessions.length === sessions.length) return false;
 
+  recordTombstones('practiceSessions', [id]);
   if (isDevMode()) {
     devData['practiceSessions'] = updatedSessions;
 
@@ -2147,6 +2156,7 @@ export const deleteStoreItem = async (id: string): Promise<boolean> => {
   const updatedItems = items.filter(i => i.id !== id);
   if (updatedItems.length === items.length) return false;
   
+  recordTombstones('storeItems', [id]);
   if (isDevMode()) {
     devData['storeItems'] = updatedItems;
   } else {
