@@ -1072,26 +1072,26 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
   const renderFixedAnnualView = () => {
     return (
       <div className="rounded-lg border bg-background overflow-hidden">
-        <div className="max-h-[68vh] overflow-auto" dir="rtl">
-          <table className="w-full min-w-[1000px] table-fixed border-separate border-spacing-0">
+        <div className="max-h-[68vh] overflow-x-hidden overflow-y-auto" dir="rtl">
+          <table className="w-full table-fixed border-separate border-spacing-0">
             <thead className="sticky top-0 z-30 bg-background shadow-sm">
               <tr>
-                <th className="sticky top-0 right-0 z-40 bg-primary/25 dark:bg-primary/45 text-foreground border-b border-border min-w-[110px] w-[110px] text-right px-2 py-2 font-bold text-xs">תלמידה</th>
-                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[60px] w-[60px] text-center px-1 py-2 font-bold text-xs">אמצ'ת</th>
+                <th className="sticky top-0 right-0 z-40 bg-primary/25 dark:bg-primary/45 text-foreground border-b border-border w-[12%] text-right px-1 py-2 font-bold text-xs truncate">תלמידה</th>
+                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border w-[5%] text-center px-0 py-2 font-bold text-xs">אמצ'ת</th>
                 {academicMonths.map(month => {
                   const isHighlighted = regularMonthFilter === month.key;
                   return (
                     <th
                       key={month.key}
-                      className={`sticky top-0 z-30 min-w-[52px] w-[52px] text-center px-0 py-2 font-bold border-b border-border text-foreground text-xs ${isHighlighted ? 'bg-primary/20 dark:bg-primary/35' : 'bg-muted/95 dark:bg-muted/80'}`}
+                      className={`sticky top-0 z-30 w-[5%] text-center px-0 py-2 font-bold border-b border-border text-foreground text-xs ${isHighlighted ? 'bg-primary/20 dark:bg-primary/35' : 'bg-muted/95 dark:bg-muted/80'}`}
                     >
                       <span title={month.fullName || month.name}>{(month.name || '').slice(0,3)}</span>
                     </th>
                   );
                 })}
                 <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[100px] w-[100px] text-center px-2 py-3 font-bold">סה"כ שולם</th>
-                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[72px] w-[72px] text-center px-1 py-2 font-bold text-xs">יתרה</th>
-                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[65px] w-[65px] text-center px-1 py-2 font-bold text-xs">יעד</th>
+                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border w-[6%] text-center px-1 py-2 font-bold text-xs">יתרה</th>
+                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border w-[5%] text-center px-1 py-2 font-bold text-xs">יעד</th>
               </tr>
             </thead>
             <tbody>
@@ -1102,10 +1102,10 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
 
                 return (
                   <tr key={student.id} className="hover:bg-muted/30">
-                    <td className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold px-1 py-1 text-xs">
+                    <td className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold px-1 py-1 text-xs truncate max-w-0">
                       {getStudentFullName(student)}
                     </td>
-                    <td className="text-center px-1 py-1 text-xs">{getPaymentMethodLabel(method)}</td>
+                    <td className="text-center px-0 py-1 text-xs">{getPaymentMethodLabel(method)}</td>
                     {academicMonths.map(month => {
                       const year = parseInt(month.key, 10) >= 9 ? selectedYear : selectedYear + 1;
                       const monthKey = getMonthKey(month.key, year);
@@ -1289,8 +1289,8 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
       <div className="space-y-3">
         <p className="text-xs text-muted-foreground">בשורת "תשלומים אחר" נכללים תשלומים חד-פעמיים כלליים, וכן תשלומים קבועים שסומנו כמזומן.</p>
         <div className="rounded-lg border bg-background overflow-hidden">
-          <div className="max-h-[68vh] overflow-auto" dir="rtl">
-            <table className="w-full min-w-[1000px] table-fixed border-separate border-spacing-0">
+          <div className="max-h-[68vh] overflow-x-hidden overflow-y-auto" dir="rtl">
+            <table className="w-full table-fixed border-separate border-spacing-0">
               <thead className="sticky top-0 z-30 bg-background shadow-sm">
                 <tr>
                   <th className="sticky top-0 right-0 z-40 bg-primary/25 dark:bg-primary/45 text-foreground border-b border-border text-right min-w-[200px] w-[200px] px-3 py-3 font-bold">סוג תשלום</th>
