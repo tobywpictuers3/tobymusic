@@ -44,7 +44,6 @@ const BRAND_BGS = [
 const BrandSection = ({ index, children }: { index: number; children: React.ReactNode }) => {
   const bg = BRAND_BGS[index % BRAND_BGS.length];
   return (
-    <DateModeProvider>
     <div
       className="relative rounded-xl overflow-hidden"
       style={{
