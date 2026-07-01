@@ -1,4 +1,4 @@
-import { workerApi, WorkerResponse } from './workerApi';
+import { workerApi, type WorkerResponse } from './workerApi';
 import { logger } from './logger';
 import {
   clearDirtyDataKeys,
@@ -201,8 +201,10 @@ class HybridSyncManager {
       if (this.hasValidDataShape(data)) {
         const allDataKeys = Object.keys(data).filter((key) => key !== 'timestamp');
         const dirtyDataKeys = options.full ? allDataKeys : peekDirtyDataKeys();
-        const keysToPersist = (dirtyDataKeys.length > 0 ? dirtyDataKeys : allDataKeys)
+        const keysToPersist = (options.full || dirtyDataKeys.length > 0 ? dirtyDataKeys : [])
           .filter((key) => key in data);
+
+        if (keysToPersist.length === 0) return;
 
         const existingIndexRaw = localStorage.getItem(LS_LOCAL_SNAPSHOT_INDEX);
         const existingIndex = existingIndexRaw ? JSON.parse(existingIndexRaw) : [];
