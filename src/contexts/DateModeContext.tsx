@@ -14,6 +14,10 @@ const DateModeContext = createContext<DateModeContextType>({
   formatDate: (d) => d || '-',
 });
 
+export function useDateMode() {
+  return useContext(DateModeContext);
+}
+
 export function DateModeProvider({ children }: { children: ReactNode }) {
   const [dateMode, setDateMode] = useState<DateMode>('gregorian');
 
@@ -23,14 +27,13 @@ export function DateModeProvider({ children }: { children: ReactNode }) {
       return dateStr.split('-').reverse().join('/');
     }
     try {
-      // T12:00:00 מונע הזזות timezone שמשנות את היום
       const date = new Date(dateStr + 'T12:00:00');
       return new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
       }).format(date);
-    } catch {
+    } catch (e) {
       return dateStr.split('-').reverse().join('/');
     }
   };
@@ -40,13 +43,4 @@ export function DateModeProvider({ children }: { children: ReactNode }) {
       {children}
     </DateModeContext.Provider>
   );
-}
-
-export function DateDisplay({ date }: { date?: string }) {
-  const { formatDate } = useDateMode();
-  return <>{formatDate(date)}</>;
-}
-
-export function useDateMode() {
-  return useContext(DateModeContext);
 }
