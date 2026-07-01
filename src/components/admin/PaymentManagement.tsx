@@ -1072,8 +1072,8 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
   const renderFixedAnnualView = () => {
     return (
       <div className="rounded-lg border bg-background overflow-hidden">
-        <div className="max-h-[68vh] overflow-y-auto overflow-x-hidden" dir="rtl">
-          <table className="w-full table-fixed border-separate border-spacing-0">
+        <div className="max-h-[68vh] overflow-auto" dir="rtl">
+          <table className="w-full min-w-[1000px] table-fixed border-separate border-spacing-0">
             <thead className="sticky top-0 z-30 bg-background shadow-sm">
               <tr>
                 <th className="sticky top-0 right-0 z-40 bg-primary/25 dark:bg-primary/45 text-foreground border-b border-border min-w-[110px] w-[110px] text-right px-2 py-2 font-bold text-xs">תלמידה</th>
@@ -1289,8 +1289,8 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
       <div className="space-y-3">
         <p className="text-xs text-muted-foreground">בשורת "תשלומים אחר" נכללים תשלומים חד-פעמיים כלליים, וכן תשלומים קבועים שסומנו כמזומן.</p>
         <div className="rounded-lg border bg-background overflow-hidden">
-          <div className="max-h-[68vh] overflow-y-auto overflow-x-hidden" dir="rtl">
-            <table className="w-full table-fixed border-separate border-spacing-0">
+          <div className="max-h-[68vh] overflow-auto" dir="rtl">
+            <table className="w-full min-w-[1000px] table-fixed border-separate border-spacing-0">
               <thead className="sticky top-0 z-30 bg-background shadow-sm">
                 <tr>
                   <th className="sticky top-0 right-0 z-40 bg-primary/25 dark:bg-primary/45 text-foreground border-b border-border text-right min-w-[200px] w-[200px] px-3 py-3 font-bold">סוג תשלום</th>
