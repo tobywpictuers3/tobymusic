@@ -31,7 +31,6 @@ const LessonJournal = () => {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const { formatDate, dateMode } = useDateMode();
-  const { formatDate, dateMode } = useDateMode();
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const fmtDate = (d: Date, opts?: Intl.DateTimeFormatOptions) => {
     const locale = dateMode === 'hebrew' ? 'he-IL-u-ca-hebrew' : 'he-IL';
