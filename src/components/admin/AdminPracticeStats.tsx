@@ -12,6 +12,7 @@ import { Student, PracticeSession } from '@/lib/types';
 import { recalcAllForStudent } from '@/lib/practiceEngine';
 import { getCurrentStreak } from '@/lib/medalEngine';
 import AdminStoreManagement from './AdminStoreManagement';
+import { useDateMode } from '@/contexts/DateModeContext';
 
 interface LeaderboardEntry {
   studentId: string;
@@ -22,6 +23,7 @@ interface LeaderboardEntry {
 }
 
 const AdminPracticeStats = () => {
+  const { formatDate } = useDateMode();
   const [students, setStudents] = useState<Student[]>([]);
   const [viewMode, setViewMode] = useState<'leaderboard' | 'student' | 'daily'>('leaderboard');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
@@ -290,7 +292,7 @@ const AdminPracticeStats = () => {
                     <TableBody>
                       {studentSessions.map((session) => (
                         <TableRow key={session.id}>
-                          <TableCell>{new Date(session.date).toLocaleDateString('he-IL')}</TableCell>
+                          <TableCell>{formatDate(session.date)}</TableCell>
                           <TableCell>
                             {session.startTime && session.endTime 
                               ? `${session.startTime} - ${session.endTime}`
@@ -345,7 +347,7 @@ const AdminPracticeStats = () => {
                         <TableCell className="font-medium">
                           {getStudentName(session.studentId)}
                         </TableCell>
-                        <TableCell>{new Date(session.date).toLocaleDateString('he-IL')}</TableCell>
+                        <TableCell>{formatDate(session.date)}</TableCell>
                         <TableCell>
                           {session.startTime && session.endTime 
                             ? `${session.startTime} - ${session.endTime}`
