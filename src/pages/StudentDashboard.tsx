@@ -44,6 +44,7 @@ const BRAND_BGS = [
 const BrandSection = ({ index, children }: { index: number; children: React.ReactNode }) => {
   const bg = BRAND_BGS[index % BRAND_BGS.length];
   return (
+    <DateModeProvider>
     <div
       className="relative rounded-xl overflow-hidden"
       style={{
@@ -58,6 +59,18 @@ const BrandSection = ({ index, children }: { index: number; children: React.Reac
     </div>
   );
 };
+
+
+function StudentDateToggle() {
+  const { dateMode, setDateMode } = useDateMode();
+  return (
+    <button
+      onClick={() => setDateMode(dateMode === 'gregorian' ? 'hebrew' : 'gregorian')}
+      className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium bg-background hover:bg-muted transition-colors"
+      title="החלף תצוגת תאריך"
+    >{dateMode === 'gregorian' ? 'ע"ב / לו' : 'לו / ע"ב'}</button>
+  );
+}
 
 const StudentDashboard = () => {
   const { studentId } = useParams();
@@ -139,6 +152,7 @@ const StudentDashboard = () => {
   const allStudents = getStudents();
 
   return (
+    <DateModeProvider>
     <div className="relative z-10 min-h-screen p-4 md:p-8 space-y-6 page-enter">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
@@ -152,7 +166,8 @@ const StudentDashboard = () => {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap justify-end">
-          <ThemeToggle />
+          <StudentDateToggle />
+                <ThemeToggle />
           <UnreadMessagesBadge userId={student.id} />
           <SyncStatusBadge />
           <SaveButton />
@@ -270,6 +285,7 @@ const StudentDashboard = () => {
         </TabsContent>
       </Tabs>
     </div>
+  </DateModeProvider>
   );
 };
 
