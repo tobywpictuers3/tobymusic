@@ -328,6 +328,13 @@ export interface Message {
     action?: 'approve_or_reject';
     [key: string]: any;
   };
+  // Email bridge fields
+  emailSent?: boolean;            // was this sent via email?
+  emailSentAt?: string;           // ISO timestamp of email send
+  emailSource?: 'lovable' | 'email'; // origin of message
+  pendingApproval?: boolean;      // student→all: waiting for Toby OK
+  approvalRequestedAt?: string;   // when approval was requested
+  approvedAt?: string;            // when Toby approved
 }
 
 // Store Item for the medal store
