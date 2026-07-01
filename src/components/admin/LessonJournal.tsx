@@ -33,8 +33,15 @@ const LessonJournal = () => {
   const { formatDate, dateMode } = useDateMode();
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const fmtDate = (d: Date, opts?: Intl.DateTimeFormatOptions) => {
-    const locale = dateMode === 'hebrew' ? 'he-IL-u-ca-hebrew' : 'he-IL';
-    return d.toLocaleDateString(locale, opts);
+    if (dateMode !== 'hebrew') return d.toLocaleDateString('he-IL', opts);
+    // השתמש ב-formatDate עם string לקבלת אותיות עבריות נקיות
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const full = formatDate(iso);
+    // לתצוגת יום/חודש בלבד — הסר את השנה
+    if (opts && opts.year === undefined) {
+      return full.replace(/\s+[א-ת]{3,}$/, '').trim();
+    }
+    return full;
   };
 
 
