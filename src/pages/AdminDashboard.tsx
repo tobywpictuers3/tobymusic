@@ -23,6 +23,7 @@ import { ASSETS } from '@/brand/assets';
 
 import StudentsManagement from '@/components/admin/StudentsManagement';
 import LessonJournal from '@/components/admin/LessonJournal';
+import Metronome from './Metronome';
 import PaymentManagement from '@/components/admin/PaymentManagement';
 import PerformancesManagement from '@/components/admin/PerformancesManagement';
 import BackupImport from '@/components/admin/BackupImport';
@@ -64,11 +65,7 @@ function DateToggle() {
       className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium bg-background hover:bg-muted transition-colors"
       title="החלף בין תצוגת תאריך לועזי / עברי"
     >
-      {dateMode === 'gregorian' ? (
-        <><span>ע"ב</span><span className="text-muted-foreground">/ לו</span></>
-      ) : (
-        <><span>לו</span><span className="text-muted-foreground">/ ע"ב</span></>
-      )}
+{dateMode === 'gregorian' ? 'לועזי' : 'עברי'}
     </button>
   );
 }
@@ -248,6 +245,10 @@ const AdminDashboard = () => {
                 תקשורת
               </TabsTrigger>
 
+              <TabsTrigger value="aids" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
+                <span>🎵</span>
+                <span className="hidden sm:inline">עזרים</span>
+              </TabsTrigger>
               <TabsTrigger value="backup" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
                 <FileText className="h-4 w-4" />
                 גיבוי
@@ -306,7 +307,10 @@ const AdminDashboard = () => {
               </BrandSection>
             </TabsContent>
 
-            <TabsContent value="backup" className="fade-slide-in">
+            <TabsContent value="aids" className="fade-slide-in">
+            <Metronome />
+          </TabsContent>
+          <TabsContent value="backup" className="fade-slide-in">
               <div className="space-y-6">
                 <BrandSection index={3}>
                   <div>
