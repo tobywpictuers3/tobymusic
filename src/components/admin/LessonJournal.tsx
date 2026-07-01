@@ -1060,7 +1060,12 @@ const StudentLessonView = ({
     }));
 
   // שיעורים מתוזמנים שטרם בוצעו עד סוף שנה
-  const remainingLessons = lessons
+  // חשב כמה שבועות עד סוף שנה (getAllLessonsIncludingTemplates מייצר ברירת מחדל 4 שבועות בלבד)
+  const weeksUntilEnd = Math.ceil(
+    (new Date(yearEnd).getTime() - now.getTime()) / (7 * 24 * 60 * 60 * 1000)
+  ) + 2;
+  const allLessonsToEnd = getAllLessonsIncludingTemplates(weeksUntilEnd);
+  const remainingLessons = allLessonsToEnd
     .filter(l =>
       l.studentId === studentId &&
       l.status === 'scheduled' &&
