@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/s
 import { Label } from '@/components/safe-ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/safe-ui/select';
 import { Badge } from '@/components/safe-ui/badge';
-import { Grid, List, UserPlus, Edit, Trash2, Users, History, Coins } from 'lucide-react';
+import { Grid, List, UserPlus, Edit, Trash2, Users, History, Coins, UserX, DoorOpen } from 'lucide-react';
 import { NumberStepper } from '@/components/ui/number-stepper';
 import { getStudents, addStudent, updateStudent, deleteStudentCascade, getCompletedLessonsCount, convertAnnualToPerLesson, getPayments } from '@/lib/storage';
 import { deleteMessagesForStudentCascade } from '@/lib/messages';
@@ -230,6 +230,27 @@ const StudentsManagement = () => {
     }
   };
 
+  const handleMarkLeft = (student: import('@/lib/types').Student) => {
+    const reason = window.prompt(\`סיבת עזיבה של \${student.firstName} \${student.lastName} (אפשרי לרשום "סיום שנה" / "עברה" / "הפסקה זמנית"):'\`);
+    if (reason === null) return; // ביטול
+    const leftDate = new Date().toISOString().split('T')[0];
+    const updated = { ...student, isActive: false, leftDate, leftReason: reason || 'לא צוין' };
+    import('@/lib/storage').then(({ updateStudent }) => {
+      updateStudent(updated);
+      refreshStudents();
+      const { toast } = require && toast ? { toast } : window.__toast || {};
+    });
+    // עדכן ישירות
+    const saved = JSON.parse(localStorage.getItem('musicSystem_students') || '[]');
+    const idx = saved.findIndex((s: any) => s.id === student.id);
+    if (idx >= 0) {
+      saved[idx] = { ...saved[idx], isActive: false, leftDate, leftReason: reason || 'לא צוין' };
+      localStorage.setItem('musicSystem_students', JSON.stringify(saved));
+      refreshStudents();
+      alert(\`✅ \${student.firstName} סומנה כ"עזבה" — לא תקבל יותר דוחות חודשיים\`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card className="card-gradient card-shadow">
@@ -312,6 +333,15 @@ const StudentsManagement = () => {
                           onClick={() => handleEditStudent(student)}
                         >
                           <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-yellow-600 text-yellow-600 hover:bg-yellow-50"
+                          onClick={() => handleMarkLeft(student)}
+                          title="סמן כ-עזבה (לא ימחק נתונים)"
+                        >
+                          <DoorOpen className="h-3 w-3" />
                         </Button>
                         <Button
                           size="sm"
