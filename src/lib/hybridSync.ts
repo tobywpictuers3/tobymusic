@@ -607,7 +607,9 @@ class HybridSyncManager {
     }
 
     this.setLastLocalSaveNow();
-    // Snapshot is persisted again right before upload — no need twice here.
+    // Snapshot MUST be captured now (not only before upload) — otherwise a
+    // refresh during the 500ms debounce loses the just-written data.
+    this.persistLocalSnapshot();
     this.syncState.pendingChanges++;
     this.emit();
 
