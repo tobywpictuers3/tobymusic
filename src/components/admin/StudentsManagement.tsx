@@ -1,3 +1,4 @@
+import { useDateMode } from '@/contexts/DateModeContext';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/card';
 import { Button } from '@/components/safe-ui/button';
@@ -18,6 +19,7 @@ import StudentLessonHistory from './StudentLessonHistory';
 import PracticeStats from './PracticeStats';
 
 const StudentsManagement = () => {
+  const { formatDate } = useDateMode();
   const [students, setStudents] = useState<Student[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showDialog, setShowDialog] = useState(false);
@@ -360,7 +362,7 @@ const StudentsManagement = () => {
                           }
                         </div>
                       </TableCell>
-                      <TableCell>{new Date(student.startDate).toLocaleDateString('he-IL')}</TableCell>
+                      <TableCell>{formatDate(student.startDate)}</TableCell>
                       <TableCell>₪{student.monthlyAmount}</TableCell>
                       <TableCell>₪{student.annualAmount}</TableCell>
                       <TableCell>
