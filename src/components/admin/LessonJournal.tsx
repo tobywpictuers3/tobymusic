@@ -13,6 +13,7 @@ import { getStudents, getLessons, addLesson, updateLesson, deleteLesson, getActi
 import { Student, Lesson, Performance } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import { syncManager } from '@/lib/syncManager';
+import { useDateMode } from '@/contexts/DateModeContext';
 
 type ViewMode = 'week' | 'day' | 'year' | 'student';
 
@@ -29,7 +30,15 @@ const LessonJournal = () => {
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const { formatDate, dateMode } = useDateMode();
+  const { formatDate, dateMode } = useDateMode();
   const [viewMode, setViewMode] = useState<ViewMode>('week');
+  const fmtDate = (d: Date, opts?: Intl.DateTimeFormatOptions) => {
+    const locale = dateMode === 'hebrew' ? 'he-IL-u-ca-hebrew' : 'he-IL';
+    return d.toLocaleDateString(locale, opts);
+  };
+
+
   const [selectedStudent, setSelectedStudent] = useState<string>('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showBankTimeDialog, setShowBankTimeDialog] = useState(false);
@@ -653,7 +662,7 @@ const LessonJournal = () => {
                   שבוע קודם
                 </Button>
                 <h3 className="text-lg font-semibold">
-                  {weekDates[0].toLocaleDateString('he-IL')} - {weekDates[5].toLocaleDateString('he-IL')}
+                  {fmtDate(weekDates[0])} - {fmtDate(weekDates[5])}
                 </h3>
                 <Button onClick={handleNextWeek} variant="outline" size="sm">
                   שבוע הבא
@@ -694,7 +703,7 @@ const LessonJournal = () => {
                           {hasCollision && <AlertTriangle className="h-3 w-3 text-destructive" />}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {date.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}
+                          {fmtDate(date, { day: 'numeric', month: 'numeric' })}
                         </div>
                         {isDayHoliday && (
                           <Badge variant="outline" className="text-[10px] mt-1 bg-red-100 text-red-700">
@@ -1060,7 +1069,7 @@ const StudentLessonView = ({
               <div className="flex justify-between items-center">
                 <div>
                   <div className="font-medium">
-                    {new Date(lesson.date).toLocaleDateString('he-IL')} - {lesson.startTime}
+                    {formatDate(lesson.date)} - {lesson.startTime}
                   </div>
                   {lesson.lessonNumber > 0 && (
                     <div className="text-sm">שיעור #{lesson.lessonNumber}</div>
@@ -1135,7 +1144,7 @@ const DayView = ({
           יום קודם
         </Button>
         <h3 className="text-lg font-semibold">
-          {currentDate.toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          {fmtDate(currentDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </h3>
         <Button onClick={handleNextDay} variant="outline" size="sm">
           יום הבא
