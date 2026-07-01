@@ -1036,70 +1036,97 @@ const StudentLessonView = ({
   calculateLessonNumber: (student: Student, date: string, id?: string) => number;
   getBankTimeFromNotes: (notes?: string) => number;
 }) => {
+  const { formatDate } = useDateMode();
   const student = students.find(s => s.id === studentId);
   if (!student) return null;
 
-  const studentLessons = lessons
+  const today = new Date().toISOString().split('T')[0];
+  // סוף שנת לימודים — 30 יוני של השנה הנוכחית (או הבאה אם אנחנו ביולי+)
+  const now = new Date();
+  const yearEnd = now.getMonth() >= 6
+    ? `${now.getFullYear() + 1}-06-30`
+    : `${now.getFullYear()}-06-30`;
+
+  // שיעורים שבוצעו
+  const completedLessons = lessons
     .filter(l => l.studentId === studentId && l.status === 'completed')
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .map(l => ({
       ...l,
       lessonNumber: calculateLessonNumber(student, l.date, l.id),
-      bankTime: getBankTimeFromNotes(l.notes)
+      bankTime: getBankTimeFromNotes(l.notes),
+      isFuture: false as const
     }));
 
-  const totalBankTime = studentLessons.reduce((sum, l) => sum + l.bankTime, 0);
-  const today = new Date().toISOString().split('T')[0];
+  // שיעורים מתוזמנים שטרם בוצעו עד סוף שנה
+  const remainingLessons = lessons
+    .filter(l =>
+      l.studentId === studentId &&
+      l.status === 'scheduled' &&
+      l.date > today &&
+      l.date <= yearEnd
+    )
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .map(l => ({ ...l, lessonNumber: 0, bankTime: 0, isFuture: true as const }));
+
+  const totalBankTime = completedLessons.reduce((sum, l) => sum + l.bankTime, 0);
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">
-        {student.firstName} {student.lastName}
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">
+          {student.firstName} {student.lastName}
+        </h3>
+        <div className="flex gap-3 text-sm">
+          <span className="text-[#8B2942] font-medium">✓ {completedLessons.length} שיעורים בוצעו</span>
+          {remainingLessons.length > 0 && (
+            <span className="text-muted-foreground">• {remainingLessons.length} נותרו עד סוף שנה</span>
+          )}
+        </div>
+      </div>
 
       <div className="space-y-2">
-        {studentLessons.map(lesson => {
-          const isFuture = lesson.date > today;
-          
-          return (
-            <div
-              key={lesson.id}
-              className={`p-3 rounded border ${
-                isFuture
-                  ? 'bg-gray-100 text-gray-400 border-gray-300'
-                  : lesson.status === 'completed'
-                  ? 'bg-[#8B2942]/10 border-[#8B2942]/30'
-                  : 'bg-secondary/20 border-border'
-              }`}
-            >
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="font-medium">
-                    {formatDate(lesson.date)} - {lesson.startTime}
+        {completedLessons.map(lesson => (
+          <div key={lesson.id} className="p-3 rounded border bg-[#8B2942]/10 border-[#8B2942]/30">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="font-medium">{formatDate(lesson.date)} — {lesson.startTime}</div>
+                {lesson.lessonNumber > 0 && (
+                  <div className="text-sm text-muted-foreground">שיעור #{lesson.lessonNumber}</div>
+                )}
+                {lesson.bankTime !== 0 && (
+                  <div className="text-sm text-muted-foreground">
+                    בנק זמן: {lesson.bankTime > 0 ? '+' : ''}{lesson.bankTime} דק'
                   </div>
-                  {lesson.lessonNumber > 0 && (
-                    <div className="text-sm">שיעור #{lesson.lessonNumber}</div>
-                  )}
-                  {lesson.bankTime !== 0 && (
-                    <div className="text-sm text-muted-foreground">
-                      בנק זמן: {lesson.bankTime > 0 ? '+' : ''}{lesson.bankTime} דקות
-                    </div>
-                  )}
-                </div>
-                {lesson.status === 'completed' && (
-                  <Badge variant="outline" className="bg-[#8B2942]/10">
-                    הושלם
-                  </Badge>
                 )}
               </div>
+              <Badge variant="outline" className="bg-[#8B2942]/10 text-xs">הושלם</Badge>
             </div>
-          );
-        })}
+          </div>
+        ))}
+
+        {remainingLessons.length > 0 && (
+          <>
+            <div className="text-xs text-muted-foreground pt-2 pb-1 font-medium border-t">
+              שיעורים מתוזמנים שנותרו ({remainingLessons.length})
+            </div>
+            {remainingLessons.map(lesson => (
+              <div key={lesson.id} className="p-3 rounded border bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700 opacity-60">
+                <div className="text-gray-500 dark:text-gray-400 text-sm">
+                  {formatDate(lesson.date)} — {lesson.startTime}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
-      <div className="p-4 bg-secondary/20 rounded-lg">
-        <div className="font-semibold">סיכום בנק זמן: {totalBankTime > 0 ? '+' : ''}{totalBankTime} דקות</div>
-      </div>
+      {totalBankTime !== 0 && (
+        <div className="p-3 bg-secondary/20 rounded-lg text-sm">
+          <span className="font-semibold">סיכום בנק זמן: </span>
+          {totalBankTime > 0 ? '+' : ''}{totalBankTime} דקות
+        </div>
+      )}
     </div>
   );
 };
