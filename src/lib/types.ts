@@ -12,6 +12,9 @@ export interface Student {
   swapCode: string; // 4-digit swap code for automatic swap approvals (required)
   startDate: string; // ISO date string (default: September 1st)
   endDate?: string; // Optional end date - when student stops lessons
+  isActive?: boolean; // true=active (default), false=left
+  leftDate?: string; // ISO date - when student left
+  leftReason?: string; // Optional: why student left
   startingLessonNumber: number; // Starting lesson number (default: 1)
   annualAmount: number; // Annual payment amount
   paymentMonths: number; // Number of payment months (default: 12)
