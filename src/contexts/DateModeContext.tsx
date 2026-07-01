@@ -8,7 +8,6 @@ interface DateModeContextType {
   formatDate: (dateStr?: string) => string;
 }
 
-// המרת מספר יום לאותיות עבריות (ללא גרשיים)
 function hebrewDayNum(n: number): string {
   const map: Record<number, string> = {
     1:'א', 2:'ב', 3:'ג', 4:'ד', 5:'ה', 6:'ו', 7:'ז', 8:'ח', 9:'ט',
@@ -19,37 +18,24 @@ function hebrewDayNum(n: number): string {
   return map[n] || String(n);
 }
 
-// המרת מספר שנה עברית לאותיות (ללא אלפים וגרשיים)
-// למשל: 5786 → תשפו, 5787 → תשפז
-function hebrewYearStr(n: number): string {
-  const year = n % 1000;
-  const hundreds: Record<number, string> = {
-    100:'ק', 200:'ר', 300:'ש', 400:'ת',
-    500:'תק', 600:'תר', 700:'תש', 800:'תת', 900:'תתק'
-  };
+// שנה קצרה: 5786 → פו (רק עשרות ואחדות, ללא מאות ואלפים)
+function hebrewShortYear(n: number): string {
+  const last2 = n % 100;
   const tens: Record<number, string> = {
     10:'י', 20:'כ', 30:'ל', 40:'מ', 50:'נ', 60:'ס', 70:'ע', 80:'פ', 90:'צ'
   };
   const units: Record<number, string> = {
     1:'א', 2:'ב', 3:'ג', 4:'ד', 5:'ה', 6:'ו', 7:'ז', 8:'ח', 9:'ט'
   };
-  const h = Math.floor(year / 100) * 100;
-  const rem = year % 100;
-  const t = Math.floor(rem / 10) * 10;
-  const u = rem % 10;
-  const h_str = hundreds[h] || '';
-  // טו/טז — מקרים מיוחדים (לא יה/יו שהם שמות)
-  const rem_str = rem === 15 ? 'טו' : rem === 16 ? 'טז'
-    : (tens[t] || '') + (units[u] || '');
-  return h_str + rem_str;
+  const t = Math.floor(last2 / 10) * 10;
+  const u = last2 % 10;
+  if (last2 === 15) return 'טו';
+  if (last2 === 16) return 'טז';
+  return (tens[t] || '') + (units[u] || '');
 }
 
-// ניקוי אות עברית: הסר ניקוד וגרשיים
 function cleanHebrew(s: string): string {
-  return s
-    .replace(/[\u05B0-\u05C7]/g, '')   // ניקוד
-    .replace(/[\u05F3\u05F4"'״׳]/g, '') // גרשיים
-    .trim();
+  return s.replace(/[\u05B0-\u05C7]/g, '').replace(/[\u05F3\u05F4"'״׳]/g, '').trim();
 }
 
 const DateModeContext = createContext<DateModeContextType>({
@@ -67,9 +53,7 @@ export function DateModeProvider({ children }: { children: ReactNode }) {
 
   const formatDate = (dateStr?: string): string => {
     if (!dateStr) return '-';
-    if (dateMode === 'gregorian') {
-      return dateStr.split('-').reverse().join('/');
-    }
+    if (dateMode === 'gregorian') return dateStr.split('-').reverse().join('/');
     try {
       const [y, m, d] = dateStr.split('-').map(Number);
       const date = new Date(y, m - 1, d, 12, 0, 0);
@@ -77,23 +61,19 @@ export function DateModeProvider({ children }: { children: ReactNode }) {
         day: 'numeric', month: 'long', year: 'numeric',
       }).formatToParts(date);
 
-      const rawDay   = parts.find(p => p.type === 'day')?.value   || '';
-      const rawMonth = parts.find(p => p.type === 'month')?.value || '';
-      const rawYear  = parts.find(p => p.type === 'year')?.value  || '';
+      const rawDay  = parts.find(p => p.type === 'day')?.value  || '';
+      const rawMon  = parts.find(p => p.type === 'month')?.value || '';
+      const rawYear = parts.find(p => p.type === 'year')?.value  || '';
 
-      // יום: ספרה ערבית → אותיות, אות עברית → נקה גרשיים
-      const dayAsNum = parseInt(rawDay.replace(/\D/g, ''), 10);
-      const dayStr   = (!isNaN(dayAsNum) && dayAsNum > 0 && dayAsNum <= 30)
-        ? hebrewDayNum(dayAsNum)
-        : cleanHebrew(rawDay);
+      const dayAsNum  = parseInt(rawDay.replace(/\D/g, ''), 10);
+      const dayStr    = (!isNaN(dayAsNum) && dayAsNum > 0 && dayAsNum <= 30)
+        ? hebrewDayNum(dayAsNum) : cleanHebrew(rawDay);
 
-      // שנה: ספרה ערבית → אותיות, אות עברית → נקה גרשיים
       const yearAsNum = parseInt(rawYear.replace(/\D/g, ''), 10);
       const yearStr   = (!isNaN(yearAsNum) && yearAsNum > 1000)
-        ? hebrewYearStr(yearAsNum)
-        : cleanHebrew(rawYear);
+        ? hebrewShortYear(yearAsNum) : cleanHebrew(rawYear);
 
-      return `${dayStr} ${cleanHebrew(rawMonth)} ${yearStr}`.trim();
+      return `${dayStr} ${cleanHebrew(rawMon)} ${yearStr}`.trim();
     } catch (e) {
       return dateStr.split('-').reverse().join('/');
     }
