@@ -67,7 +67,7 @@ function StudentDateToggle() {
       onClick={() => setDateMode(dateMode === 'gregorian' ? 'hebrew' : 'gregorian')}
       className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium bg-background hover:bg-muted transition-colors"
       title="החלף תצוגת תאריך"
-    >{dateMode === 'gregorian' ? 'ע"ב / לו' : 'לו / ע"ב'}</button>
+    >{dateMode === 'gregorian' ? 'לועזי' : 'עברי'}</button>
   );
 }
 
