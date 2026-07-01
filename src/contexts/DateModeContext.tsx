@@ -42,6 +42,11 @@ export function DateModeProvider({ children }: { children: ReactNode }) {
   );
 }
 
+export function DateDisplay({ date }: { date?: string }) {
+  const { formatDate } = useDateMode();
+  return <>{formatDate(date)}</>;
+}
+
 export function useDateMode() {
   return useContext(DateModeContext);
 }
