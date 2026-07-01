@@ -18,6 +18,7 @@ import { UnreadMessagesBadge } from '@/components/ui/unread-messages-badge';
 import SyncStatusBadge from '@/components/ui/SyncStatusBadge';
 import { clearClientCaches } from '@/lib/cacheManager';
 import { ThemeToggle } from '@/brand/ThemeToggle';
+import { DateModeProvider, useDateMode } from '@/contexts/DateModeContext';
 import { ASSETS } from '@/brand/assets';
 
 import StudentsManagement from '@/components/admin/StudentsManagement';
@@ -41,6 +42,7 @@ const BRAND_BGS = [
 const BrandSection = ({ index, children }: { index: number; children: React.ReactNode }) => {
   const bg = BRAND_BGS[index % BRAND_BGS.length];
   return (
+    <DateModeProvider>
     <div
       className="relative rounded-xl overflow-hidden"
       style={{
@@ -54,6 +56,24 @@ const BrandSection = ({ index, children }: { index: number; children: React.Reac
     </div>
   );
 };
+
+
+function DateToggle() {
+  const { dateMode, setDateMode } = useDateMode();
+  return (
+    <button
+      onClick={() => setDateMode(dateMode === 'gregorian' ? 'hebrew' : 'gregorian')}
+      className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium bg-background hover:bg-muted transition-colors"
+      title="החלף בין תצוגת תאריך לועזי / עברי"
+    >
+      {dateMode === 'gregorian' ? (
+        <><span>ע"ב</span><span className="text-muted-foreground">/ לו</span></>
+      ) : (
+        <><span>לו</span><span className="text-muted-foreground">/ ע"ב</span></>
+      )}
+    </button>
+  );
+}
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -150,6 +170,7 @@ const AdminDashboard = () => {
   };
 
   return (
+    <DateModeProvider>
     <div className="relative z-10 min-h-screen musical-gradient overflow-hidden page-enter">
       {/* Sticky Header */}
       <div className="sticky top-0 z-50 bg-gradient-to-b from-background via-background to-background/95 backdrop-blur-sm border-b border-primary/20 shadow-lg">
@@ -162,6 +183,7 @@ const AdminDashboard = () => {
               </h1>
 
               <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center justify-center sm:justify-end">
+                <DateToggle />
                 <ThemeToggle />
                 <UnreadMessagesBadge userId="admin" />
                 <SyncStatusBadge />
@@ -314,6 +336,8 @@ const AdminDashboard = () => {
         </div>
       </div>
     </div>
+  );
+    </DateModeProvider>
   );
 };
 
