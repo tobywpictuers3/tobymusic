@@ -1,7 +1,14 @@
-import { workerApi } from './workerApi';
+import { workerApi, type WorkerResponse } from './workerApi';
 import { logger } from './logger';
-import { exportAllData, initializeStorage, isDevMode } from './storage';
+import {
+  clearDirtyDataKeys,
+  exportAllData,
+  initializeStorage,
+  isDevMode,
+  peekDirtyDataKeys,
+} from './storage';
 import { recalculateAllMonthlyAchievements } from './recalculateAchievements';
+import { getManagerCode } from './devMode';
 
 /**
  * Hybrid Sync Manager - Worker as source of truth, in-memory storage as app state
@@ -38,7 +45,10 @@ const LS_LAST_CLOUD = 'musicSystem_lastCloudSyncAt';
 const LS_LAST_ERROR = 'musicSystem_lastCloudSyncError';
 const LS_LAST_ERROR_MSG = 'musicSystem_lastCloudSyncErrorMessage';
 const LS_LOCAL_SNAPSHOT = 'musicSystem_localSnapshot';
+const LS_LOCAL_SNAPSHOT_INDEX = 'musicSystem_localSnapshotIndex';
+const LS_LOCAL_SNAPSHOT_PREFIX = 'musicSystem_localSnapshot:';
 const LS_HAS_UNSYNCED = 'musicSystem_hasUnsyncedChanges';
+const WORKER_BASE_URL = 'https://lovable-dropbox-api.w0504124161.workers.dev';
 
 type SyncListener = (state: SyncUiState) => void;
 
@@ -66,6 +76,13 @@ class HybridSyncManager {
   private pendingResync = false;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private debounceResolvers: Array<(result: { success: boolean; synced: boolean; message: string }) => void> = [];
+  private dataVersion = 0;
+  private cloudVersion = 0;
+  private uploadInFlight = false;
+  private pendingUploadAfterCurrent = false;
+  private uploadWorker: Worker | null = null;
+  private uploadWorkerSeq = 0;
+  private uploadWorkerCallbacks = new Map<number, (result: WorkerResponse) => void>();
 
   // Background full-merge sync (download+merge+upload). Heavy, so it runs at
   // long intervals — NOT on every save.
@@ -137,16 +154,17 @@ class HybridSyncManager {
     this.emit();
   }
 
-  private setCloudSuccessNow() {
+  private setCloudSuccessNow(uploadedVersion: number = this.dataVersion) {
     const now = new Date().toISOString();
+    this.cloudVersion = Math.max(this.cloudVersion, uploadedVersion);
     this.syncState.lastSyncTime = now;
     this.syncState.lastCloudSyncAt = now;
     this.syncState.lastError = null;
-    this.syncState.pendingChanges = 0;
+    this.syncState.pendingChanges = Math.max(0, this.dataVersion - this.cloudVersion);
 
     try {
       localStorage.setItem(LS_LAST_CLOUD, now);
-      localStorage.setItem(LS_HAS_UNSYNCED, 'false');
+      localStorage.setItem(LS_HAS_UNSYNCED, this.syncState.pendingChanges === 0 ? 'false' : 'true');
       localStorage.removeItem(LS_LAST_ERROR);
       localStorage.removeItem(LS_LAST_ERROR_MSG);
     } catch {}
@@ -177,11 +195,29 @@ class HybridSyncManager {
     );
   }
 
-  private persistLocalSnapshot(): void {
+  private persistLocalSnapshot(options: { full?: boolean } = {}): void {
     try {
       const data = this.gatherAllData();
       if (this.hasValidDataShape(data)) {
-        localStorage.setItem(LS_LOCAL_SNAPSHOT, JSON.stringify(data));
+        const allDataKeys = Object.keys(data).filter((key) => key !== 'timestamp');
+        const dirtyDataKeys = options.full ? allDataKeys : peekDirtyDataKeys();
+        const keysToPersist = (options.full || dirtyDataKeys.length > 0 ? dirtyDataKeys : [])
+          .filter((key) => key in data);
+
+        if (keysToPersist.length === 0) return;
+
+        const existingIndexRaw = localStorage.getItem(LS_LOCAL_SNAPSHOT_INDEX);
+        const existingIndex = existingIndexRaw ? JSON.parse(existingIndexRaw) : [];
+        const nextIndex = new Set<string>(Array.isArray(existingIndex) ? existingIndex : []);
+
+        for (const key of keysToPersist) {
+          localStorage.setItem(`${LS_LOCAL_SNAPSHOT_PREFIX}${key}`, JSON.stringify(data[key]));
+          nextIndex.add(key);
+        }
+
+        localStorage.setItem(`${LS_LOCAL_SNAPSHOT_PREFIX}timestamp`, JSON.stringify(data.timestamp));
+        localStorage.setItem(LS_LOCAL_SNAPSHOT_INDEX, JSON.stringify(Array.from(nextIndex)));
+        clearDirtyDataKeys(keysToPersist);
       }
     } catch (error) {
       logger.warn('⚠️ Could not persist local sync snapshot:', error);
@@ -190,6 +226,21 @@ class HybridSyncManager {
 
   private readLocalSnapshot(): any | null {
     try {
+      const indexRaw = localStorage.getItem(LS_LOCAL_SNAPSHOT_INDEX);
+      if (indexRaw) {
+        const index = JSON.parse(indexRaw);
+        if (Array.isArray(index) && index.length > 0) {
+          const data: Record<string, any> = {};
+          for (const key of index) {
+            const valueRaw = localStorage.getItem(`${LS_LOCAL_SNAPSHOT_PREFIX}${key}`);
+            if (valueRaw != null) data[key] = JSON.parse(valueRaw);
+          }
+          const timestampRaw = localStorage.getItem(`${LS_LOCAL_SNAPSHOT_PREFIX}timestamp`);
+          if (timestampRaw != null) data.timestamp = JSON.parse(timestampRaw);
+          if (this.hasValidDataShape(data)) return data;
+        }
+      }
+
       const raw = localStorage.getItem(LS_LOCAL_SNAPSHOT);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
@@ -365,7 +416,7 @@ class HybridSyncManager {
             : result.data;
           logger.info(snapshot ? '✅ Data loaded from Worker and merged with local snapshot' : '✅ Data loaded from Worker');
           this.updateInMemoryStorage(dataToLoad);
-          this.persistLocalSnapshot();
+          this.persistLocalSnapshot({ full: true });
           // Treat init load as "cloud ok" (but do not reset pendingChanges)
           this.syncState.lastSyncTime = new Date().toISOString();
           this.emit();
@@ -606,11 +657,12 @@ class HybridSyncManager {
       return { success: true, synced: true, message: 'נשמר במצב מפתחים' };
     }
 
+    this.dataVersion += 1;
     this.setLastLocalSaveNow();
-    // Snapshot MUST be captured now (not only before upload) — otherwise a
-    // refresh during the 500ms debounce loses the just-written data.
+    // Persist only changed buckets immediately. This keeps refresh-safe local
+    // durability without blocking the UI with a full database stringify.
     this.persistLocalSnapshot();
-    this.syncState.pendingChanges++;
+    this.syncState.pendingChanges = Math.max(1, this.dataVersion - this.cloudVersion);
     this.emit();
 
     if (!this.syncState.isOnline) {
@@ -622,32 +674,31 @@ class HybridSyncManager {
       };
     }
 
-    // Debounce: wait 500ms for rapid-fire changes to settle
-    return new Promise((resolve) => {
-      this.debounceResolvers.push(resolve);
+    this.scheduleCloudUpload(700);
+    return {
+      success: true,
+      synced: false,
+      message: 'נשמר מיידית ומסתנכרן ברקע',
+    };
+  }
 
-      if (this.debounceTimer) {
-        clearTimeout(this.debounceTimer);
-      }
+  private scheduleCloudUpload(delayMs: number) {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
 
-      this.debounceTimer = setTimeout(async () => {
-        this.debounceTimer = null;
-        logger.info(`🔄 Debounce settled, syncing (${this.debounceResolvers.length} queued calls)...`);
+    this.debounceTimer = setTimeout(async () => {
+      this.debounceTimer = null;
+      logger.info('🔄 Background cloud upload scheduled');
+      await this.directUpload();
 
-        // FAST PATH: just upload current state. The full download+merge runs
-        // on init, on `online`, and on a background interval — that's enough
-        // to keep multi-device safety without paying for it on every save.
-        const success = await this.directUpload();
-        const result = success
-          ? { success: true, synced: true, message: 'נשמר בדרופבוקס בהצלחה' }
-          : { success: true, synced: false, message: 'נשמר מקומית, ננסה שוב בעוד 2 דקות' };
-
-        // Resolve all waiting callers
-        const resolvers = [...this.debounceResolvers];
-        this.debounceResolvers = [];
-        resolvers.forEach((r) => r(result));
-      }, 500);
-    });
+      const successResult = this.syncState.lastError
+        ? { success: true, synced: false, message: 'נשמר מקומית, ננסה שוב בעוד 2 דקות' }
+        : { success: true, synced: true, message: 'נשמר בדרופבוקס בהצלחה' };
+      const resolvers = [...this.debounceResolvers];
+      this.debounceResolvers = [];
+      resolvers.forEach((r) => r(successResult));
+    }, delayMs);
   }
 
   async onDestructiveChange(): Promise<{ success: boolean; synced: boolean; message: string }> {
@@ -656,8 +707,10 @@ class HybridSyncManager {
       return { success: true, synced: true, message: 'נשמר במצב מפתחים' };
     }
 
+    this.dataVersion += 1;
     this.setLastLocalSaveNow();
-    this.syncState.pendingChanges++;
+    this.persistLocalSnapshot();
+    this.syncState.pendingChanges = Math.max(1, this.dataVersion - this.cloudVersion);
     this.emit();
 
     if (!this.syncState.isOnline) {
@@ -669,17 +722,8 @@ class HybridSyncManager {
       };
     }
 
-    const success = await this.directUpload();
-
-    if (success) {
-      return { success: true, synced: true, message: 'נמחק בדרופבוקס בהצלחה' };
-    } else {
-      return {
-        success: true,
-        synced: false,
-        message: 'נמחק מקומית, סנכרון לדרופבוקס נכשל – ננסה שוב',
-      };
-    }
+    this.scheduleCloudUpload(120);
+    return { success: true, synced: false, message: 'נשמר מקומית ומסתנכרן ברקע' };
   }
 
   /* =======================
@@ -692,6 +736,13 @@ class HybridSyncManager {
       return true;
     }
 
+    if (this.uploadInFlight) {
+      this.pendingUploadAfterCurrent = true;
+      return true;
+    }
+
+    this.uploadInFlight = true;
+    const uploadVersion = this.dataVersion;
     this.setSyncing(true);
 
     try {
@@ -705,10 +756,10 @@ class HybridSyncManager {
         return false;
       }
 
-      const result = await workerApi.uploadVersioned(data);
+      const result = await this.uploadVersionedOffMainThread(data);
 
       if (result.success) {
-        this.setCloudSuccessNow();
+        this.setCloudSuccessNow(uploadVersion);
         logger.info('✅ Direct upload to worker completed');
 
         // Heavy recompute — push off the critical path and coalesce.
@@ -725,8 +776,70 @@ class HybridSyncManager {
       this.setCloudError(error);
       return false;
     } finally {
+      this.uploadInFlight = false;
       this.setSyncing(false);
+
+      if (this.pendingUploadAfterCurrent || this.cloudVersion < this.dataVersion) {
+        this.pendingUploadAfterCurrent = false;
+        this.scheduleCloudUpload(250);
+      }
     }
+  }
+
+  private getUploadWorker(): Worker | null {
+    if (typeof Worker === 'undefined') return null;
+    if (this.uploadWorker) return this.uploadWorker;
+
+    try {
+      this.uploadWorker = new Worker(new URL('./syncUploadWorker.ts', import.meta.url), { type: 'module' });
+      this.uploadWorker.onmessage = (event: MessageEvent<WorkerResponse & { id?: number }>) => {
+        const id = event.data?.id;
+        if (typeof id !== 'number') return;
+        const callback = this.uploadWorkerCallbacks.get(id);
+        if (!callback) return;
+        this.uploadWorkerCallbacks.delete(id);
+        callback(event.data);
+      };
+      this.uploadWorker.onerror = (event) => {
+        logger.warn('⚠️ Upload worker failed, falling back to main-thread upload:', event.message);
+        for (const callback of this.uploadWorkerCallbacks.values()) {
+          callback({ success: false, error: 'UPLOAD_WORKER_FAILED' });
+        }
+        this.uploadWorkerCallbacks.clear();
+        this.uploadWorker?.terminate();
+        this.uploadWorker = null;
+      };
+      return this.uploadWorker;
+    } catch (error) {
+      logger.warn('⚠️ Could not start upload worker, falling back:', error);
+      return null;
+    }
+  }
+
+  private async uploadVersionedOffMainThread(data: any): Promise<WorkerResponse> {
+    const uploadWorker = this.getUploadWorker();
+    if (!uploadWorker) return workerApi.uploadVersioned(data);
+
+    const id = ++this.uploadWorkerSeq;
+
+    return new Promise<WorkerResponse>((resolve) => {
+      const timeout = setTimeout(() => {
+        this.uploadWorkerCallbacks.delete(id);
+        resolve({ success: false, error: 'UPLOAD_TIMEOUT' });
+      }, 25_000);
+
+      this.uploadWorkerCallbacks.set(id, (result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      });
+
+      uploadWorker.postMessage({
+        id,
+        db: data,
+        workerBaseUrl: WORKER_BASE_URL,
+        managerCode: getManagerCode(),
+      });
+    });
   }
 
   private async syncToWorker(): Promise<boolean> {
@@ -769,7 +882,7 @@ class HybridSyncManager {
 
       if (result.success) {
         this.updateInMemoryStorage(mergedData);
-        this.persistLocalSnapshot();
+        this.persistLocalSnapshot({ full: true });
         this.setCloudSuccessNow();
         logger.info('✅ Worker sync completed with conflict resolution');
 
@@ -843,7 +956,9 @@ class HybridSyncManager {
 
       this.updateInMemoryStorage(data);
       this.setLastLocalSaveNow();
-      this.syncState.pendingChanges++;
+      this.dataVersion += 1;
+      this.persistLocalSnapshot({ full: true });
+      this.syncState.pendingChanges = Math.max(1, this.dataVersion - this.cloudVersion);
       this.emit();
 
       if (options.uploadImmediately === false || isDevMode()) {
@@ -935,6 +1050,7 @@ class HybridSyncManager {
     if (this.retryInterval) clearInterval(this.retryInterval);
     if (this.backgroundMergeInterval) clearInterval(this.backgroundMergeInterval);
     if (this.achievementsRecalcTimer) clearTimeout(this.achievementsRecalcTimer);
+    this.uploadWorker?.terminate();
   }
 }
 

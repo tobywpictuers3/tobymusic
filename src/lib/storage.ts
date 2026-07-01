@@ -5,7 +5,49 @@ import { isDevMode, setDevMode } from './devMode';
 import { calculateEarnedCopper, formatPriceCompact } from './storeCurrency';
 
 // In-Memory Storage - No localStorage for sensitive data
-const inMemoryStorage: Record<string, any> = {};
+// Track which top-level buckets changed so sync can persist only the changed
+// bucket locally instead of stringifying the whole database on every keystroke.
+const dirtyStorageKeys = new Set<string>();
+
+const storageKeyToDataKey = (key: string): string => {
+  if (key === 'oneTimePayments') return 'oneTimePayments';
+  if (key === '__tombstones') return 'musicSystem___tombstones';
+  return `musicSystem_${key}`;
+};
+
+export const markStorageKeyDirty = (key: string): void => {
+  dirtyStorageKeys.add(key);
+};
+
+export const peekDirtyDataKeys = (): string[] => {
+  return Array.from(dirtyStorageKeys).map(storageKeyToDataKey);
+};
+
+export const clearDirtyDataKeys = (dataKeys?: string[]): void => {
+  if (!dataKeys) {
+    dirtyStorageKeys.clear();
+    return;
+  }
+
+  const normalized = new Set(dataKeys);
+  Array.from(dirtyStorageKeys).forEach((storageKey) => {
+    if (normalized.has(storageKeyToDataKey(storageKey))) {
+      dirtyStorageKeys.delete(storageKey);
+    }
+  });
+};
+
+const inMemoryStorage: Record<string, any> = new Proxy<Record<string, any>>({}, {
+  set(target, prop, value) {
+    target[prop as string] = value;
+    if (typeof prop === 'string') markStorageKeyDirty(prop);
+    return true;
+  },
+  deleteProperty(target, prop) {
+    if (typeof prop === 'string') markStorageKeyDirty(prop);
+    return delete target[prop as string];
+  }
+});
 
 // Expose storage via window for lessonSwap module access
 if (typeof window !== 'undefined') {
@@ -167,6 +209,7 @@ export const recordTombstones = (category: string, ids: Array<string | number>):
     if (rawId == null) continue;
     store['__tombstones'][category][String(rawId)] = now;
   }
+  if (!isDevMode()) markStorageKeyDirty('__tombstones');
 };
 
 export const getTombstones = (): Record<string, Record<string, string>> => {
