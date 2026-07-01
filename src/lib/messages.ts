@@ -802,3 +802,34 @@ export const restoreFromTrashWithGmail = async (messageId: string, userId: strin
     }
   }
 };
+
+// Email bridge helpers
+export const getEmailPendingMessages = (): Message[] => {
+  return getMessages().filter(m =>
+    !m.emailSent && !m.isDraft && m.emailSource !== 'email'
+  );
+};
+
+export const getApprovalPendingMessages = (): Message[] => {
+  return getMessages().filter(m => m.pendingApproval === true && !m.approvedAt);
+};
+
+export const markEmailSent = (messageId: string): void => {
+  const msgs = getMessages();
+  const m = msgs.find(x => x.id === messageId);
+  if (m) {
+    m.emailSent = true;
+    m.emailSentAt = new Date().toISOString();
+    saveMessages(msgs);
+  }
+};
+
+export const approveMessage = (messageId: string): void => {
+  const msgs = getMessages();
+  const m = msgs.find(x => x.id === messageId);
+  if (m) {
+    m.pendingApproval = false;
+    m.approvedAt = new Date().toISOString();
+    saveMessages(msgs);
+  }
+};
