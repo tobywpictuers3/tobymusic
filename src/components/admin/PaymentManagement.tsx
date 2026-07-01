@@ -5,6 +5,7 @@ import { Input } from '@/components/safe-ui/input';
 import { Textarea } from '@/components/safe-ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/safe-ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
+import { useDateMode } from '@/contexts/DateModeContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/safe-ui/dialog';
 import { Label } from '@/components/safe-ui/label';
 import { CreditCard, ChevronRight, ChevronLeft, Download, Coins, Plus, Pencil, Trash2, Calendar } from 'lucide-react';
@@ -45,6 +46,7 @@ const PaymentManagement = () => {
   const [newOneTimePayment, setNewOneTimePayment] = useState({ description: '', amount: '', monthNum: '', baseYear: selectedYear });
   const [history, setHistory] = useState<Array<{ payments: Payment[]; oneTimePayments: OneTimePayment[] }>>([]);
   const [tithePaid, setTithePaid] = useState<Record<string, boolean>>(() => getTithePaid());
+  const { formatDate } = useDateMode();
   const tableRef = useRef<HTMLDivElement>(null);
   const scrollBarRef = useRef<HTMLDivElement>(null);
   const scrollBarInnerRef = useRef<HTMLDivElement>(null);
@@ -512,7 +514,7 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
                 <TableRow key={row.paymentId} className="hover:bg-muted/40">
                   <TableCell className="text-right font-semibold">{row.performance.name}</TableCell>
                   <TableCell className="text-right">{row.performance.client || '-'}</TableCell>
-                  <TableCell className="text-right">{formatDisplayDate(row.performance.date)}</TableCell>
+                  <TableCell className="text-right">{formatDate(row.performance.date)}</TableCell>
                   <TableCell className="text-right">{formatDisplayDate(row.paymentDate)}</TableCell>
                   <TableCell className="text-right font-semibold">₪{formatCurrencyAmount(row.paidAmount)}</TableCell>
                   <TableCell className="text-right text-muted-foreground">{ppTravel > 0 ? `₪${formatCurrencyAmount(ppTravel)}` : '-'}</TableCell>
@@ -578,7 +580,7 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
             {rows.map(payment => (
               <TableRow key={payment.id} className="hover:bg-muted/40">
                 <TableCell className="text-right">{payment.description}</TableCell>
-                <TableCell className="text-right">{formatDisplayDate(payment.paidDate)}</TableCell>
+                <TableCell className="text-right">{formatDate(payment.paidDate)}</TableCell>
                 <TableCell className="text-right">{payment.month}</TableCell>
                 <TableCell className="text-right font-semibold">₪{formatCurrencyAmount(payment.amount)}</TableCell>
                 <TableCell className="text-center">
@@ -1070,26 +1072,26 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
   const renderFixedAnnualView = () => {
     return (
       <div className="rounded-lg border bg-background overflow-hidden">
-        <div className="max-h-[68vh] overflow-auto" dir="rtl">
-          <table className="w-full min-w-[1280px] table-fixed border-separate border-spacing-0">
+        <div className="max-h-[68vh] overflow-y-auto overflow-x-hidden" dir="rtl">
+          <table className="w-full table-fixed border-separate border-spacing-0">
             <thead className="sticky top-0 z-30 bg-background shadow-sm">
               <tr>
-                <th className="sticky top-0 right-0 z-40 bg-primary/25 dark:bg-primary/45 text-foreground border-b border-border min-w-[180px] w-[180px] text-right px-3 py-3 font-bold">תלמידה</th>
-                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[110px] w-[110px] text-right px-3 py-3 font-bold">אמצעי תשלום</th>
+                <th className="sticky top-0 right-0 z-40 bg-primary/25 dark:bg-primary/45 text-foreground border-b border-border min-w-[110px] w-[110px] text-right px-2 py-2 font-bold text-xs">תלמידה</th>
+                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[60px] w-[60px] text-center px-1 py-2 font-bold text-xs">אמצ'ת</th>
                 {academicMonths.map(month => {
                   const isHighlighted = regularMonthFilter === month.key;
                   return (
                     <th
                       key={month.key}
-                      className={`sticky top-0 z-30 min-w-[78px] w-[78px] text-center px-1 py-3 font-bold border-b border-border text-foreground ${isHighlighted ? 'bg-primary/20 dark:bg-primary/35' : 'bg-muted/95 dark:bg-muted/80'}`}
+                      className={`sticky top-0 z-30 min-w-[52px] w-[52px] text-center px-0 py-2 font-bold border-b border-border text-foreground text-xs ${isHighlighted ? 'bg-primary/20 dark:bg-primary/35' : 'bg-muted/95 dark:bg-muted/80'}`}
                     >
-                      {month.name}
+                      <span title={month.fullName || month.name}>{(month.name || '').slice(0,3)}</span>
                     </th>
                   );
                 })}
                 <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[100px] w-[100px] text-center px-2 py-3 font-bold">סה"כ שולם</th>
-                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[120px] w-[120px] text-center px-2 py-3 font-bold">יתרה לתשלום שנתי</th>
-                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[100px] w-[100px] text-center px-2 py-3 font-bold">יעד שנתי</th>
+                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[72px] w-[72px] text-center px-1 py-2 font-bold text-xs">יתרה</th>
+                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border min-w-[65px] w-[65px] text-center px-1 py-2 font-bold text-xs">יעד</th>
               </tr>
             </thead>
             <tbody>
@@ -1100,10 +1102,10 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
 
                 return (
                   <tr key={student.id} className="hover:bg-muted/30">
-                    <td className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold px-3 py-2">
+                    <td className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold px-1 py-1 text-xs">
                       {getStudentFullName(student)}
                     </td>
-                    <td className="text-right px-3 py-2">{getPaymentMethodLabel(method)}</td>
+                    <td className="text-center px-1 py-1 text-xs">{getPaymentMethodLabel(method)}</td>
                     {academicMonths.map(month => {
                       const year = parseInt(month.key, 10) >= 9 ? selectedYear : selectedYear + 1;
                       const monthKey = getMonthKey(month.key, year);
@@ -1111,7 +1113,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                       const isEditing = editingCell?.studentId === student.id && editingCell?.month === monthKey;
 
                       return (
-                        <td key={month.key} className="p-1 align-top text-center">
+                        <td key={month.key} className="p-0.5 align-top text-center">
                           {isEditing ? (
                             <div className="space-y-1">
                               <Input
@@ -1138,7 +1140,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                         </td>
                       );
                     })}
-                    <td className="text-center font-semibold px-2 py-2">₪{formatCurrencyAmount(totalPaid)}</td>
+                    <td className="text-center font-semibold px-1 py-1 text-xs">₪{formatCurrencyAmount(totalPaid)}</td>
                     <td className="text-center font-semibold px-2 py-2">
                       {(() => {
                         const remaining = Math.max(0, annualTarget - totalPaid);
@@ -1287,8 +1289,8 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
       <div className="space-y-3">
         <p className="text-xs text-muted-foreground">בשורת "תשלומים אחר" נכללים תשלומים חד-פעמיים כלליים, וכן תשלומים קבועים שסומנו כמזומן.</p>
         <div className="rounded-lg border bg-background overflow-hidden">
-          <div className="max-h-[68vh] overflow-auto" dir="rtl">
-            <table className="w-full min-w-[1280px] table-fixed border-separate border-spacing-0">
+          <div className="max-h-[68vh] overflow-y-auto overflow-x-hidden" dir="rtl">
+            <table className="w-full table-fixed border-separate border-spacing-0">
               <thead className="sticky top-0 z-30 bg-background shadow-sm">
                 <tr>
                   <th className="sticky top-0 right-0 z-40 bg-primary/25 dark:bg-primary/45 text-foreground border-b border-border text-right min-w-[200px] w-[200px] px-3 py-3 font-bold">סוג תשלום</th>
@@ -1438,7 +1440,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                         <TableRow key={row.paymentId} className="hover:bg-muted/40">
                           <TableCell className="text-right font-semibold">{row.performance.name}</TableCell>
                           <TableCell className="text-right">{row.performance.client || '-'}</TableCell>
-                          <TableCell className="text-right">{formatDisplayDate(row.performance.date)}</TableCell>
+                          <TableCell className="text-right">{formatDate(row.performance.date)}</TableCell>
                           <TableCell className="text-right">{formatDisplayDate(row.paymentDate)}</TableCell>
                           <TableCell className="text-right font-semibold">₪{formatCurrencyAmount(row.paidAmount)}</TableCell>
                           <TableCell className="text-right">
@@ -1480,7 +1482,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                     {yearOther.map(payment => (
                       <TableRow key={payment.id} className="hover:bg-muted/40">
                         <TableCell className="text-right">{payment.description}</TableCell>
-                        <TableCell className="text-right">{formatDisplayDate(payment.paidDate)}</TableCell>
+                        <TableCell className="text-right">{formatDate(payment.paidDate)}</TableCell>
                         <TableCell className="text-right">{payment.month}</TableCell>
                         <TableCell className="text-right font-semibold">₪{formatCurrencyAmount(payment.amount)}</TableCell>
                         <TableCell className="text-center">
@@ -1528,7 +1530,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
             <TableBody>
               {dailyRows.map(row => (
                 <TableRow key={row.date} className="hover:bg-muted/40">
-                  <TableCell className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold">{formatDisplayDate(row.date)}</TableCell>
+                  <TableCell className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold">{formatDate(row.date)}</TableCell>
                   <TableCell className="text-center">{row.regularChecks > 0 ? `₪${formatCurrencyAmount(row.regularChecks)}` : '-'}</TableCell>
                   <TableCell className="text-center">{row.regularBank > 0 ? `₪${formatCurrencyAmount(row.regularBank)}` : '-'}</TableCell>
                   <TableCell className="text-center">{row.perLesson > 0 ? `₪${formatCurrencyAmount(row.perLesson)}` : '-'}</TableCell>
@@ -1612,7 +1614,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                     {monthOtherPayments.map(payment => (
                       <TableRow key={payment.id} className="hover:bg-muted/40">
                         <TableCell className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))]">{payment.description}</TableCell>
-                        <TableCell className="text-right">{formatDisplayDate(payment.paidDate)}</TableCell>
+                        <TableCell className="text-right">{formatDate(payment.paidDate)}</TableCell>
                         <TableCell className="text-right">{payment.month}</TableCell>
                         <TableCell className="text-right font-semibold">₪{formatCurrencyAmount(payment.amount)}</TableCell>
                         <TableCell className="text-center">
@@ -1662,7 +1664,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                         <TableRow key={row.paymentId} className="hover:bg-muted/40">
                           <TableCell className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold">{row.performance.name}</TableCell>
                           <TableCell className="text-right">{row.performance.client || '-'}</TableCell>
-                          <TableCell className="text-right">{formatDisplayDate(row.performance.date)}</TableCell>
+                          <TableCell className="text-right">{formatDate(row.performance.date)}</TableCell>
                           <TableCell className="text-right">{formatDisplayDate(row.paymentDate)}</TableCell>
                           <TableCell className="text-right font-semibold">₪{formatCurrencyAmount(row.paidAmount)}</TableCell>
                           <TableCell className="text-right">
