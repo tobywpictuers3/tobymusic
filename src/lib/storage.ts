@@ -2448,3 +2448,8 @@ export const getCompletedLessonsCount = (studentId: string): number => {
 export const updatePaidLessonsCount = (studentId: string, count: number): Student | undefined => {
   return updateStudent(studentId, { paidLessonsCount: count });
 };
+
+
+export function getActiveStudents(): Student[] {
+  return getStudents().filter(s => s.isActive !== false);
+}
