@@ -1041,11 +1041,12 @@ const StudentLessonView = ({
   if (!student) return null;
 
   const today = new Date().toISOString().split('T')[0];
-  // סוף שנת לימודים — 30 יוני של השנה הנוכחית (או הבאה אם אנחנו ביולי+)
+  // שנת לימודים: 1 ספטמבר – 31 אוגוסט. אין חופשות.
   const now = new Date();
-  const yearEnd = now.getMonth() >= 6
-    ? `${now.getFullYear() + 1}-06-30`
-    : `${now.getFullYear()}-06-30`;
+  // אם ספטמבר (8) ומעלה → סוף השנה הוא 31 אוגוסט של השנה הבאה
+  const yearEnd = now.getMonth() >= 8
+    ? `${now.getFullYear() + 1}-08-31`
+    : `${now.getFullYear()}-08-31`;
 
   // שיעורים שבוצעו
   const completedLessons = lessons
