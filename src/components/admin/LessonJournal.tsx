@@ -865,6 +865,7 @@ const LessonJournal = () => {
               lessons={lessons}
               calculateLessonNumber={calculateLessonNumber}
               getBankTimeFromNotes={getBankTimeFromNotes}
+              getLessonsForDate={getLessonsForDate}
             />
           )}
         </CardContent>
@@ -1028,22 +1029,22 @@ const StudentLessonView = ({
   students,
   lessons,
   calculateLessonNumber,
-  getBankTimeFromNotes
+  getBankTimeFromNotes,
+  getLessonsForDate
 }: {
   studentId: string;
   students: Student[];
   lessons: Lesson[];
   calculateLessonNumber: (student: Student, date: string, id?: string) => number;
   getBankTimeFromNotes: (notes?: string) => number;
+  getLessonsForDate: (date: Date) => LessonWithStudent[];
 }) => {
   const { formatDate } = useDateMode();
   const student = students.find(s => s.id === studentId);
   if (!student) return null;
 
   const today = new Date().toISOString().split('T')[0];
-  // שנת לימודים: 1 ספטמבר – 31 אוגוסט. אין חופשות.
   const now = new Date();
-  // אם ספטמבר (8) ומעלה → סוף השנה הוא 31 אוגוסט של השנה הבאה
   const yearEnd = now.getMonth() >= 8
     ? `${now.getFullYear() + 1}-08-31`
     : `${now.getFullYear()}-08-31`;
@@ -1059,11 +1060,19 @@ const StudentLessonView = ({
       isFuture: false as const
     }));
 
-  // שיעורים שטרם התקיימו — מתוך מה שקיים כבר במערכת
-  const remainingLessons = lessons
-    .filter(l => l.studentId === studentId && l.date > today && l.date <= yearEnd)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map(l => ({ ...l, lessonNumber: 0, bankTime: 0, isFuture: true as const }));
+  // שיעורים עתידיים — בדיוק כמו התצוגה השבועית, כולל תבנית מערכת
+  // עובר יום-יום מהיום עד 31.8 וקורא ל-getLessonsForDate (אותה פונקציה כמו תצוגת שבוע)
+  const remainingLessons: LessonWithStudent[] = [];
+  const cursor = new Date(now);
+  cursor.setDate(cursor.getDate() + 1);
+  const endDate = new Date(yearEnd);
+  while (cursor <= endDate) {
+    getLessonsForDate(new Date(cursor))
+      .filter(l => l.studentId === studentId && l.status !== 'completed')
+      .forEach(l => remainingLessons.push(l));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  remainingLessons.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
   const totalBankTime = completedLessons.reduce((sum, l) => sum + l.bankTime, 0);
 
