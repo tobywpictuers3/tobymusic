@@ -232,7 +232,8 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
           ...updatedPayments[existingPaymentIndex],
           status,
           amount,
-          paymentMethod: newMethod
+          paymentMethod: newMethod,
+          lastModified: new Date().toISOString()
         };
       } else {
         updatedPayments.push({
@@ -241,7 +242,8 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
           month: monthKey,
           amount,
           status,
-          paymentMethod: newMethod
+          paymentMethod: newMethod,
+          lastModified: new Date().toISOString()
         });
       }
     });
@@ -273,7 +275,8 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
           ...updatedPayments[paymentIndex],
           amount,
           status: 'paid',
-          paidDate: new Date().toISOString().split('T')[0]
+          paidDate: new Date().toISOString().split('T')[0],
+          lastModified: new Date().toISOString()
         };
       } else {
         updatedPayments.push({
@@ -283,7 +286,8 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
           amount,
           status: 'paid',
           paymentMethod,
-          paidDate: new Date().toISOString().split('T')[0]
+          paidDate: new Date().toISOString().split('T')[0],
+          lastModified: new Date().toISOString()
         });
       }
       
@@ -330,7 +334,8 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
         ...updatedPayments[paymentIndex],
         amount: editAmount.trim() === '#' ? 0 : amount,
         status,
-        paidDate: status === 'paid' ? new Date().toISOString().split('T')[0] : undefined
+        paidDate: status === 'paid' ? new Date().toISOString().split('T')[0] : undefined,
+        lastModified: new Date().toISOString()
       };
     } else {
       updatedPayments.push({
@@ -339,7 +344,8 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
         month: editingCell.month,
         amount: editAmount.trim() === '#' ? 0 : amount,
         status,
-        paymentMethod
+        paymentMethod,
+        lastModified: new Date().toISOString()
       });
     }
     
