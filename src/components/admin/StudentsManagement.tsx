@@ -231,14 +231,13 @@ const StudentsManagement = () => {
   };
 
   const handleMarkLeft = (student: import('@/lib/types').Student) => {
-    const reason = window.prompt(\`סיבת עזיבה של \${student.firstName} \${student.lastName} (אפשרי לרשום "סיום שנה" / "עברה" / "הפסקה זמנית"):'\`);
+    const reason = window.prompt(`סיבת עזיבה של ${student.firstName} ${student.lastName} (אפשרי לרשום "סיום שנה" / "עברה" / "הפסקה זמנית"):`);
     if (reason === null) return; // ביטול
     const leftDate = new Date().toISOString().split('T')[0];
     const updated = { ...student, isActive: false, leftDate, leftReason: reason || 'לא צוין' };
     import('@/lib/storage').then(({ updateStudent }) => {
-      updateStudent(updated);
+      updateStudent(student.id, updated);
       refreshStudents();
-      const { toast } = require && toast ? { toast } : window.__toast || {};
     });
     // עדכן ישירות
     const saved = JSON.parse(localStorage.getItem('musicSystem_students') || '[]');
@@ -247,7 +246,7 @@ const StudentsManagement = () => {
       saved[idx] = { ...saved[idx], isActive: false, leftDate, leftReason: reason || 'לא צוין' };
       localStorage.setItem('musicSystem_students', JSON.stringify(saved));
       refreshStudents();
-      alert(\`✅ \${student.firstName} סומנה כ"עזבה" — לא תקבל יותר דוחות חודשיים\`);
+      alert(`✅ ${student.firstName} סומנה כ"עזבה" — לא תקבל יותר דוחות חודשיים`);
     }
   };
 
