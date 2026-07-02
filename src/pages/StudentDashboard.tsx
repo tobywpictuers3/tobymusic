@@ -30,6 +30,7 @@ import SyncStatusBadge from "@/components/ui/SyncStatusBadge";
 import Metronome from "./Metronome";
 
 import StudentSwapPanel, {
+import { DateModeProvider, useDateMode } from '@/contexts/DateModeContext';
   StudentSwapPanelRef,
 } from "@/components/student/lessonSwap/StudentSwapPanel";
 
