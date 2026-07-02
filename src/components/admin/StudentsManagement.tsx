@@ -247,7 +247,7 @@ const StudentsManagement = () => {
       saved[idx] = { ...saved[idx], isActive: false, leftDate, leftReason: reason || 'לא צוין' };
       localStorage.setItem('musicSystem_students', JSON.stringify(saved));
       refreshStudents();
-      alert(\`✅ \${student.firstName} סומנה כ"עזבה" — לא תקבל יותר דוחות חודשיים\`);
+      alert(`✅ ${student.firstName} סומנה כ"עזבה" — לא תקבל יותר דוחות חודשיים`);
     }
   };
 
