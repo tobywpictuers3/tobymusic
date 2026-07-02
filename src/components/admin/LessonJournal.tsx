@@ -1182,7 +1182,7 @@ const DayView = ({
           יום קודם
         </Button>
         <h3 className="text-lg font-semibold">
-          {fmtDate(currentDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          {currentDate.toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </h3>
         <Button onClick={handleNextDay} variant="outline" size="sm">
           יום הבא
