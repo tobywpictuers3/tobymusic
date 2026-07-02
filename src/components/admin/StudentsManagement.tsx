@@ -231,7 +231,7 @@ const StudentsManagement = () => {
   };
 
   const handleMarkLeft = (student: import('@/lib/types').Student) => {
-    const reason = window.prompt(\`סיבת עזיבה של \${student.firstName} \${student.lastName} (אפשרי לרשום "סיום שנה" / "עברה" / "הפסקה זמנית"):'\`);
+    const reason = window.prompt(`סיבת עזיבה של ${student.firstName} ${student.lastName} (אפשרי לרשום "סיום שנה" / "עברה" / "הפסקה זמנית"):`);
     if (reason === null) return; // ביטול
     const leftDate = new Date().toISOString().split('T')[0];
     const updated = { ...student, isActive: false, leftDate, leftReason: reason || 'לא צוין' };
