@@ -236,9 +236,8 @@ const StudentsManagement = () => {
     const leftDate = new Date().toISOString().split('T')[0];
     const updated = { ...student, isActive: false, leftDate, leftReason: reason || 'לא צוין' };
     import('@/lib/storage').then(({ updateStudent }) => {
-      updateStudent(updated);
+      updateStudent(student.id, updated);
       refreshStudents();
-      const { toast } = require && toast ? { toast } : window.__toast || {};
     });
     // עדכן ישירות
     const saved = JSON.parse(localStorage.getItem('musicSystem_students') || '[]');
