@@ -431,3 +431,79 @@
     transform: translateY(0);
   }
 }
+
+
+/* ═══════════════════════════════════════════════════
+   שכבת "ערב גאלה" — יישור מלא לשפת tobymusic.club v3
+   ═══════════════════════════════════════════════════ */
+
+/* הבמה הריקה — רקע קבוע, בדיוק כמו באתר */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url("/assets/stage/empty-light.webp") center bottom / cover no-repeat;
+}
+.dark body::before,
+[data-theme="dark"] body::before {
+  background-image: url("/assets/stage/empty-dark.webp");
+}
+body {
+  background: transparent !important;
+}
+html {
+  background: hsl(var(--background));
+}
+
+/* כפתור ראשי = גרדיאנט האש של האתר (עדין: רק כפתורים אמיתיים, לא תגיות) */
+button.bg-primary,
+a.bg-primary,
+[role="button"].bg-primary {
+  background-image: linear-gradient(110deg, #8B2A37, #C9A961, #FFE5A0, #C9A961, #6B1F2A);
+  background-size: 200% 100%;
+  background-position: 100% 0;
+  color: #1A0F12 !important;
+  border: none;
+  border-radius: 999px;
+  font-weight: 700;
+  transition: background-position 0.5s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+button.bg-primary:hover,
+a.bg-primary:hover,
+[role="button"].bg-primary:hover {
+  background-position: 0% 0;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(201, 169, 97, 0.3);
+}
+
+/* טקסט-אש — כמו כותרות המחץ באתר */
+.fire-text {
+  background: linear-gradient(110deg, #8B2A37 0%, #C9A961 35%, #FFE5A0 55%, #C9A961 75%, #6B1F2A 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* בחירת טקסט וגלילה — חתימת האתר */
+::selection {
+  background: rgba(201, 169, 97, 0.35);
+  color: inherit;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(201, 169, 97, 0.4);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(201, 169, 97, 0.65); }
+
+/* טבעת פוקוס זהב אחידה */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
