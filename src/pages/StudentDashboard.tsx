@@ -9,6 +9,7 @@ import { Student, Lesson } from "@/lib/types";
 import { getAllLessonsIncludingTemplates } from "@/lib/lessonUtils";
 import { clearClientCaches } from "@/lib/cacheManager";
 import { ThemeToggle } from "@/brand/ThemeToggle";
+import { SiteLink } from "@/brand/SiteLink";
 import { ASSETS } from "@/brand/assets";
 
 import EditableStudentDetails from "@/components/student/EditableStudentDetails";
@@ -167,6 +168,7 @@ const StudentDashboard = () => {
 
         <div className="flex items-center gap-3 flex-wrap justify-end">
           <StudentDateToggle />
+                <SiteLink compact />
                 <ThemeToggle />
           <UnreadMessagesBadge userId={student.id} />
           <SyncStatusBadge />

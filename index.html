@@ -14,7 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="TOBY music" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/lovable-uploads/toby-music-logo.png" />
+    <link rel="apple-touch-icon" href="/assets/brand/icon-512.png" />
+    <link rel="icon" type="image/png" href="/assets/brand/icon-192.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -39,6 +40,33 @@
 
   <body>
     <div id="root"></div>
+    <div id="brand-splash" aria-hidden="true">
+      <div class="bs-note">♪</div>
+      <div class="bs-name">TOBY&nbsp;music</div>
+      <div class="bs-sub">מערכת התלמידות</div>
+    </div>
+    <style>
+      #brand-splash {
+        position: fixed; inset: 0; z-index: 9999;
+        background: radial-gradient(ellipse at center, #1a0d0f 0%, #0F0F12 70%);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 10px; transition: opacity .5s ease, visibility .5s ease;
+      }
+      #brand-splash .bs-note {
+        font-size: 64px; color: #C9A961;
+        text-shadow: 0 0 24px rgba(201,169,97,.55), 0 0 60px rgba(139,42,55,.4);
+        animation: bs-pulse 1.6s ease-in-out infinite;
+      }
+      #brand-splash .bs-name {
+        font-family: "Frank Ruhl Libre", Georgia, serif;
+        font-size: 30px; font-weight: 700; letter-spacing: .04em;
+        background: linear-gradient(110deg, #8B2A37, #C9A961, #FFE5A0, #C9A961, #6B1F2A);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      #brand-splash .bs-sub { color: #8C8273; font-size: 13px; font-family: "Heebo", sans-serif; }
+      @keyframes bs-pulse { 0%,100% { transform: translateY(0); opacity:.85 } 50% { transform: translateY(-6px); opacity:1 } }
+      #root:not(:empty) ~ #brand-splash { opacity: 0; visibility: hidden; pointer-events: none; }
+    </style>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

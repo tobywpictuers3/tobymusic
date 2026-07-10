@@ -9,6 +9,7 @@ import { getStudents, setCurrentUser, setDevMode } from "@/lib/storage";
 import { toast } from "@/hooks/use-toast";
 import { useAccessMode } from "@/contexts/AccessModeContext";
 import { ThemeToggle } from "@/brand/ThemeToggle";
+import { SiteLink } from "@/brand/SiteLink";
 import { ASSETS } from "@/brand/assets";
 import BsiataDishmaya from "@/components/ui/BsiataDishmaya";
 import { verifyAdminCode, verifyDevCode, verifyPublicCode } from "@/lib/authCodes";
@@ -83,7 +84,8 @@ const Homepage = () => {
 
    <header className="sticky top-0 z-50">
   <div className="relative flex items-start justify-center px-4 pt-2 pb-1 md:pt-3 md:pb-2">
-    <div className="absolute left-4 top-3">
+    <div className="absolute left-4 top-3 flex items-center gap-2">
+      <SiteLink />
       <ThemeToggle />
     </div>
 
