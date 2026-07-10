@@ -1,12 +1,12 @@
 {
-  "name": "מערכת שיעורי נגינה - סונטה",
-  "short_name": "סונטה",
+  "name": "מערכת התלמידות · TOBY music",
+  "short_name": "TOBY music",
   "version": "1.0.2",
-  "description": "מערכת ניהול שיעורי נגינה של טובי וינברג",
+  "description": "מערכת התלמידות של TOBY music",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a14",
-  "theme_color": "#d4af37",
+  "background_color": "#0F0F12",
+  "theme_color": "#0F0F12",
   "orientation": "portrait-primary",
   "dir": "rtl",
   "lang": "he",
@@ -24,6 +24,9 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["education", "music"],
+  "categories": [
+    "education",
+    "music"
+  ],
   "screenshots": []
 }
