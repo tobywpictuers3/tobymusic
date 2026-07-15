@@ -1,0 +1,93 @@
+name: Commit Admin Global Delete UI
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/commit-admin-global-delete-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch messaging component
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path('src/components/admin/MessagingTab.tsx')
+          text=path.read_text(encoding='utf-8')
+          text=text.replace('import { workerApi } from "@/lib/workerApi";','import { workerApi } from "@/lib/workerApi";\nimport { deleteMessageGloballyAsAdmin } from "@/lib/adminGlobalDelete";',1) if 'deleteMessageGloballyAsAdmin' not in text else text
+          text=text.replace('  const [isSyncingGmail, setIsSyncingGmail] = useState(false);','  const [isSyncingGmail, setIsSyncingGmail] = useState(false);\n  const [isGlobalDeleting, setIsGlobalDeleting] = useState(false);',1) if 'isGlobalDeleting, setIsGlobalDeleting' not in text else text
+          if 'const handleGlobalDelete = async' not in text:
+              anchor='  const handleEmptyTrash = async () => {'
+              handler='''  const handleGlobalDelete = async (message: Message) => {
+    const confirmed = window.confirm(
+      `למחוק את ההודעה "${message.subject || '(ללא נושא)'}" מכל תיקיות הפלטפורמה ומימות המשיח?\\n\\n` +
+      'הפעולה מערכתית, תיצור סימון מחיקה קבוע ולא ניתנת לביטול.'
+    );
+    if (!confirmed) return;
+    const managerCode = window.prompt('הקישי שוב את קוד המנהל לאישור המחיקה המערכתית:');
+    if (!managerCode?.trim()) return;
+    setIsGlobalDeleting(true);
+    try {
+      const result = await deleteMessageGloballyAsAdmin(message.id, managerCode.trim());
+      await hardDeleteMessage(message.id);
+      loadData();
+      setSelectedMessage(null);
+      if (isMobile) setMobileView('list');
+      const externalNote = message.emailSent ? ' מייל שכבר הגיע לתיבה פרטית של תלמידה אינו ניתן למשיכה מרחוק.' : '';
+      const yemotNote = result.removedFromYemotPlayback ? ' ההודעה הוסרה גם מרשימת ההשמעה בימות.' : '';
+      toast.success(`ההודעה נמחקה מכל הפלטפורמה.${yemotNote}${externalNote}`);
+    } catch (error) {
+      console.error('Global message delete failed:', error);
+      toast.error(error instanceof Error ? error.message : 'המחיקה המערכתית נכשלה');
+    } finally {
+      setIsGlobalDeleting(false);
+    }
+  };
+
+'''
+              if anchor not in text: raise SystemExit('handleEmptyTrash anchor missing')
+              text=text.replace(anchor,handler+anchor,1)
+          replacements=[
+            ('                  onHardDelete={() => handleHardDelete(selectedMessage.id)}\n                  onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}','                  onHardDelete={() => handleHardDelete(selectedMessage.id)}\n                  onGlobalDelete={() => handleGlobalDelete(selectedMessage)}\n                  isGlobalDeleting={isGlobalDeleting}\n                  onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}'),
+            ('                onHardDelete={() => handleHardDelete(selectedMessage.id)}\n                onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}','                onHardDelete={() => handleHardDelete(selectedMessage.id)}\n                onGlobalDelete={() => handleGlobalDelete(selectedMessage)}\n                isGlobalDeleting={isGlobalDeleting}\n                onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}')]
+          for old,new in replacements:
+              text=text.replace(old,new)
+          if '  onGlobalDelete: () => void;' not in text:
+              text=text.replace('  onHardDelete: () => void;\n  onMarkAsUnread: () => void;','  onHardDelete: () => void;\n  onGlobalDelete: () => void;\n  isGlobalDeleting: boolean;\n  onMarkAsUnread: () => void;',1)
+          if '  onGlobalDelete,\n  isGlobalDeleting,' not in text:
+              text=text.replace('  onHardDelete,\n  onMarkAsUnread,','  onHardDelete,\n  onGlobalDelete,\n  isGlobalDeleting,\n  onMarkAsUnread,',1)
+          if 'מחק מכל המערכת' not in text:
+              anchor='''      {/* Actions */}
+      <div className="flex flex-wrap gap-2 pt-4 border-t">
+        <Button variant="outline" size="sm" onClick={onReply}>'''
+              button='''      {/* Actions */}
+      <div className="flex flex-wrap gap-2 pt-4 border-t">
+        <Button variant="destructive" size="sm" onClick={onGlobalDelete} disabled={isGlobalDeleting} title="מחיקה מערכתית מכל תיקיות הדואר ומימות המשיח">
+          <Trash2 className="w-4 h-4 mr-2" />
+          {isGlobalDeleting ? 'מוחק מכל המערכת...' : 'מחק מכל המערכת'}
+        </Button>
+        <Button variant="outline" size="sm" onClick={onReply}>'''
+              if anchor not in text: raise SystemExit('actions anchor missing')
+              text=text.replace(anchor,button,1)
+          required=['deleteMessageGloballyAsAdmin','const handleGlobalDelete = async','onGlobalDelete: () => void;','מחק מכל המערכת']
+          missing=[item for item in required if item not in text]
+          if missing: raise SystemExit(f'patch incomplete: {missing}')
+          path.write_text(text,encoding='utf-8')
+          PY
+      - name: Commit and push component
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/admin/MessagingTab.tsx
+          git commit -m 'Add manager-authorized global message deletion [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
