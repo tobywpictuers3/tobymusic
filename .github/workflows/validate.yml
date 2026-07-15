@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,5 +17,48 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - run: npm run build
+      - name: Build and record result
+        run: |
+          set +e
+          npm ci > /tmp/npm-ci.log 2>&1
+          INSTALL_STATUS=$?
+          if [ "$INSTALL_STATUS" -eq 0 ]; then
+            npm run build > /tmp/npm-build.log 2>&1
+            BUILD_STATUS=$?
+          else
+            BUILD_STATUS=99
+          fi
+          python3 - "$INSTALL_STATUS" "$BUILD_STATUS" <<'PY'
+          import json, sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+          install_status = int(sys.argv[1])
+          build_status = int(sys.argv[2])
+          def tail(path, limit=5000):
+              try:
+                  text = Path(path).read_text(encoding='utf-8', errors='replace')
+                  return text[-limit:]
+              except Exception:
+                  return ''
+          report = {
+              'generatedAt': datetime.now(timezone.utc).isoformat(),
+              'installPassed': install_status == 0,
+              'buildPassed': build_status == 0,
+              'installExitCode': install_status,
+              'buildExitCode': build_status,
+              'installLogTail': tail('/tmp/npm-ci.log'),
+              'buildLogTail': tail('/tmp/npm-build.log'),
+          }
+          Path('diagnostics').mkdir(exist_ok=True)
+          Path('diagnostics/platform-build.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics/platform-build.json
+          git commit -m 'Update platform build validation [skip ci]'
+          git pull --rebase origin main
+          git push
+          if [ "$INSTALL_STATUS" -ne 0 ] || [ "$BUILD_STATUS" -ne 0 ]; then
+            echo 'Platform validation failed.'
+            exit 1
+          fi
