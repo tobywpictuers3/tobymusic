@@ -104,6 +104,14 @@ const StudentDashboard = () => {
         if (studentId === "public") { navigate("/", { replace: true }); return; }
         const current = getCurrentUser();
         if (!current) { navigate("/", { replace: true }); return; }
+        // Ownership check: prevent IDOR — only the matching student or an admin may view.
+        const isAdmin = current.type === "admin";
+        const isOwner = current.type === "student" && current.studentId === studentId;
+        if (!isAdmin && !isOwner) {
+          toast({ title: "אין הרשאה", description: "אין לך גישה לאזור האישי הזה.", variant: "destructive" });
+          navigate("/", { replace: true });
+          return;
+        }
         const students = getStudents();
         const found = students.find((s) => s?.id === studentId);
         if (!found) {
