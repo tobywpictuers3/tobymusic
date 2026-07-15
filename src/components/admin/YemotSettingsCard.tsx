@@ -6,6 +6,7 @@ import { Button } from '@/components/safe-ui/button';
 import { Badge } from '@/components/safe-ui/badge';
 import { Phone, Save, ShieldCheck } from 'lucide-react';
 import { getIntegrationSettings, saveIntegrationSettings } from '@/lib/storage';
+import { hybridSync } from '@/lib/hybridSync';
 import { toast } from '@/hooks/use-toast';
 
 interface YemotSettings {
@@ -30,6 +31,7 @@ const YemotSettingsCard = () => {
     yemotCampaignTemplateId: '',
     yemotCampaignCallerId: '0772276778',
   });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const current = (getIntegrationSettings() || {}) as YemotSettings;
@@ -40,7 +42,7 @@ const YemotSettingsCard = () => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const phone = String(settings.teacherPhone || '').replace(/\D/g, '');
     const code = String(settings.teacherCode || '').trim();
 
@@ -53,8 +55,32 @@ const YemotSettingsCard = () => {
       return;
     }
 
-    saveIntegrationSettings(settings as any);
-    toast({ title: 'ההגדרות נשמרו', description: 'הזיהוי הטלפוני והגדרות ימות המשיח עודכנו.' });
+    setIsSaving(true);
+    try {
+      saveIntegrationSettings({
+        ...settings,
+        teacherPhone: phone,
+        teacherCode: code,
+      } as any);
+
+      const synced = await hybridSync.manualSync();
+      if (!synced) {
+        throw new Error('הנתונים נשמרו בדפדפן אך לא התקבל אישור מהענן');
+      }
+
+      toast({
+        title: 'ההגדרות נשמרו בענן',
+        description: 'הזיהוי הטלפוני והגדרות ימות המשיח זמינים כעת למערכת הטלפונית.',
+      });
+    } catch (error) {
+      toast({
+        title: 'שמירת ההגדרות לא הושלמה',
+        description: error instanceof Error ? error.message : 'אירעה שגיאה בסנכרון לענן. נסי שוב.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -106,9 +132,9 @@ const YemotSettingsCard = () => {
           </div>
         </div>
 
-        <Button onClick={handleSave} className="gap-2">
+        <Button onClick={handleSave} disabled={isSaving} className="gap-2">
           <Save className="h-4 w-4" />
-          שמירת הגדרות
+          {isSaving ? 'שומרת ומסנכרנת…' : 'שמירת הגדרות'}
         </Button>
       </CardContent>
     </Card>
