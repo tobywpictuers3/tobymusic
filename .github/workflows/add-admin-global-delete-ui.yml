@@ -52,8 +52,6 @@ jobs:
     setIsGlobalDeleting(true);
     try {
       const result = await deleteMessageGloballyAsAdmin(message.id, managerCode.trim());
-      // Remove the same record from the current in-memory view immediately.
-      // The server already created the authoritative tombstone.
       await hardDeleteMessage(message.id);
       loadData();
       setSelectedMessage(null);
@@ -78,38 +76,43 @@ jobs:
           if 'const handleGlobalDelete = async' not in text:
               text = text.replace(handler_anchor, global_handler + handler_anchor, 1)
 
-          mobile_anchor = '''                  onHardDelete={() => handleHardDelete(selectedMessage.id)}
-                  onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}'''
-          mobile_replacement = '''                  onHardDelete={() => handleHardDelete(selectedMessage.id)}
+          text = text.replace(
+              '''                  onHardDelete={() => handleHardDelete(selectedMessage.id)}
+                  onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}''',
+              '''                  onHardDelete={() => handleHardDelete(selectedMessage.id)}
                   onGlobalDelete={() => handleGlobalDelete(selectedMessage)}
                   isGlobalDeleting={isGlobalDeleting}
-                  onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}'''
-          text = text.replace(mobile_anchor, mobile_replacement)
-
-          desktop_anchor = '''                onHardDelete={() => handleHardDelete(selectedMessage.id)}
-                onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}'''
-          desktop_replacement = '''                onHardDelete={() => handleHardDelete(selectedMessage.id)}
+                  onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}''',
+          )
+          text = text.replace(
+              '''                onHardDelete={() => handleHardDelete(selectedMessage.id)}
+                onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}''',
+              '''                onHardDelete={() => handleHardDelete(selectedMessage.id)}
                 onGlobalDelete={() => handleGlobalDelete(selectedMessage)}
                 isGlobalDeleting={isGlobalDeleting}
-                onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}'''
-          text = text.replace(desktop_anchor, desktop_replacement)
+                onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}''',
+          )
 
-          props_anchor = '''  onHardDelete: () => void;
-  onMarkAsUnread: () => void;'''
-          props_replacement = '''  onHardDelete: () => void;
+          if 'onGlobalDelete: () => void;' not in text:
+              text = text.replace(
+                  '''  onHardDelete: () => void;
+  onMarkAsUnread: () => void;''',
+                  '''  onHardDelete: () => void;
   onGlobalDelete: () => void;
   isGlobalDeleting: boolean;
-  onMarkAsUnread: () => void;'''
-          if 'onGlobalDelete: () => void;' not in text:
-              text = text.replace(props_anchor, props_replacement, 1)
+  onMarkAsUnread: () => void;''',
+                  1,
+              )
 
-          destructure_anchor = '''  onHardDelete,
-  onMarkAsUnread,'''
-          destructure_replacement = '''  onHardDelete,
+          text = text.replace(
+              '''  onHardDelete,
+  onMarkAsUnread,''',
+              '''  onHardDelete,
   onGlobalDelete,
   isGlobalDeleting,
-  onMarkAsUnread,'''
-          text = text.replace(destructure_anchor, destructure_replacement, 1)
+  onMarkAsUnread,''',
+              1,
+          )
 
           actions_anchor = '''      {/* Actions */}
       <div className="flex flex-wrap gap-2 pt-4 border-t">
@@ -130,22 +133,16 @@ jobs:
           if "מחק מכל המערכת" not in text:
               text = text.replace(actions_anchor, actions_replacement, 1)
 
-          required = [
-              'deleteMessageGloballyAsAdmin',
-              'handleGlobalDelete',
-              'onGlobalDelete: () => void;',
-              "'מחק מכל המערכת'",
-          ]
+          required = ['deleteMessageGloballyAsAdmin', 'handleGlobalDelete', 'onGlobalDelete: () => void;', "'מחק מכל המערכת'"]
           missing = [item for item in required if item not in text]
           if missing:
               raise SystemExit(f'Missing UI patches: {missing}')
-
           path.write_text(text, encoding='utf-8')
           PY
 
       - name: Build application
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
 
       - name: Commit UI
