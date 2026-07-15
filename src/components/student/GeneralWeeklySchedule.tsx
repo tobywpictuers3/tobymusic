@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar, ArrowRight, ArrowLeft, CalendarOff } from 'lucide-react';
 import { getStudents, getHolidays } from '@/lib/storage';
+import { hybridSync } from '@/lib/hybridSync';
 import { Holiday, Lesson, Student } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import StudentsSwapRequestDialog from '@/components/students/StudentsSwapRequestDialog';
@@ -31,10 +32,23 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
   const [swapDialogOpen, setSwapDialogOpen] = useState(false);
   const [selectedLessonForSwap, setSelectedLessonForSwap] = useState<Lesson | null>(null);
 
-  useEffect(() => {
+  const refreshSharedScheduleData = useCallback(() => {
     setStudents(getStudents());
     setHolidays(getHolidays());
-  }, [lessons]);
+  }, []);
+
+  useEffect(() => {
+    refreshSharedScheduleData();
+  }, [lessons, refreshSharedScheduleData]);
+
+  useEffect(() => {
+    let lastSeenCloudSync: string | null = null;
+    return hybridSync.subscribeSyncState((state) => {
+      if (!state.lastCloudSyncAt || state.lastCloudSyncAt === lastSeenCloudSync) return;
+      lastSeenCloudSync = state.lastCloudSyncAt;
+      refreshSharedScheduleData();
+    });
+  }, [refreshSharedScheduleData]);
 
   const getWeekDates = (date: Date) => {
     const week = [];
