@@ -1,0 +1,33 @@
+name: Repair Package Lock and Build
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-package-lock-and-build.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Update lock file
+        run: npm install --package-lock-only --no-audit --no-fund
+      - name: Clean install and build
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Commit corrected lock file
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git commit -m 'Synchronize package lock with package manifest [skip ci]' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
