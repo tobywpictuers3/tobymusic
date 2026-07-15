@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import {
   LogOut, Users, Calendar, CreditCard, MessageSquare,
-  FileText, Settings, Music, History, Trophy
+  FileText, Settings, Music, History, Trophy, Phone
 } from 'lucide-react';
 import {
   setCurrentUser, getCurrentUser,
@@ -31,6 +31,7 @@ import BackupHistory from '@/components/admin/BackupHistory';
 import AdminPracticeStats from '@/components/admin/AdminPracticeStats';
 import MessagingTab from '@/components/admin/MessagingTab';
 import FixedScheduleTab from '@/components/admin/FixedScheduleTab';
+import YemotSettingsCard from '@/components/admin/YemotSettingsCard';
 
 /** Brand section backgrounds in order */
 const BRAND_BGS = [
@@ -65,7 +66,7 @@ function DateToggle() {
       className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium bg-background hover:bg-muted transition-colors"
       title="החלף בין תצוגת תאריך לועזי / עברי"
     >
-{dateMode === 'gregorian' ? 'לועזי' : 'עברי'}
+      {dateMode === 'gregorian' ? 'לועזי' : 'עברי'}
     </button>
   );
 }
@@ -114,6 +115,7 @@ const AdminDashboard = () => {
       performances: 'הופעות',
       practice: 'נתוני אימונים',
       messages: 'תקשורת',
+      yemot: 'ימות המשיח',
       backup: 'גיבוי',
       'fixed-schedule': 'מערכת קבועה',
       history: 'היסטוריה'
@@ -166,179 +168,192 @@ const AdminDashboard = () => {
 
   return (
     <DateModeProvider>
-    <div className="relative z-10 min-h-screen musical-gradient overflow-hidden page-enter">
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-50 bg-gradient-to-b from-background via-background to-background/95 backdrop-blur-sm border-b border-primary/20 shadow-lg">
-        <div className="container mx-auto p-2 sm:p-4">
-          <div className="card-gradient card-shadow rounded-xl p-3 sm:p-4">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-              <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-gold title-glow text-center sm:text-right leading-tight">
-                <span className="block sm:inline">דשבורד ניהול</span>
-                <span className="hidden sm:inline"> - מערכת שיעורי נגינה</span>
-              </h1>
+      <div className="relative z-10 min-h-screen musical-gradient overflow-hidden page-enter">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-50 bg-gradient-to-b from-background via-background to-background/95 backdrop-blur-sm border-b border-primary/20 shadow-lg">
+          <div className="container mx-auto p-2 sm:p-4">
+            <div className="card-gradient card-shadow rounded-xl p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-gold title-glow text-center sm:text-right leading-tight">
+                  <span className="block sm:inline">דשבורד ניהול</span>
+                  <span className="hidden sm:inline"> - מערכת שיעורי נגינה</span>
+                </h1>
 
-              <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center justify-center sm:justify-end">
-                <DateToggle />
-                <ThemeToggle />
-                <UnreadMessagesBadge userId="admin" />
-                <SyncStatusBadge />
+                <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center justify-center sm:justify-end">
+                  <DateToggle />
+                  <ThemeToggle />
+                  <UnreadMessagesBadge userId="admin" />
+                  <SyncStatusBadge />
 
-                <div className="relative">
-                  <SaveButton />
-                  <div className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+                  <div className="relative">
+                    <SaveButton />
+                    <div className="absolute -top-1 -right-1 flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+                    </div>
                   </div>
+
+                  <PrintPDFButton contentId="main-content" tabName={getTabName(activeTab)} />
+
+                  <Button
+                    onClick={handleLogout}
+                    variant="outline"
+                    size="sm"
+                    className="border-gold text-wine hover:bg-destructive hover:text-primary-foreground h-9 sm:h-10"
+                  >
+                    <LogOut className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">התנתק</span>
+                  </Button>
                 </div>
-
-                <PrintPDFButton contentId="main-content" tabName={getTabName(activeTab)} />
-
-                <Button
-                  onClick={handleLogout}
-                  variant="outline"
-                  size="sm"
-                  className="border-gold text-wine hover:bg-destructive hover:text-primary-foreground h-9 sm:h-10"
-                >
-                  <LogOut className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">התנתק</span>
-                </Button>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="max-h-screen overflow-y-auto">
-        <div id="main-content" className="container mx-auto p-4 space-y-6 pt-2">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList
-              dir="ltr"
-              className="w-full h-auto card-gradient card-shadow rounded-xl justify-start overflow-x-auto overflow-y-hidden p-1 gap-1 scrollbar-thin"
-            >
-              <TabsTrigger value="journal" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
-                <Calendar className="h-4 w-4" />
-                יומן שיעורים
-              </TabsTrigger>
+        <div className="max-h-screen overflow-y-auto">
+          <div id="main-content" className="container mx-auto p-4 space-y-6 pt-2">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+              <TabsList
+                dir="ltr"
+                className="w-full h-auto card-gradient card-shadow rounded-xl justify-start overflow-x-auto overflow-y-hidden p-1 gap-1 scrollbar-thin"
+              >
+                <TabsTrigger value="journal" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <Calendar className="h-4 w-4" />
+                  יומן שיעורים
+                </TabsTrigger>
 
-              <TabsTrigger value="students" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
-                <Users className="h-4 w-4" />
-                תלמידות
-              </TabsTrigger>
+                <TabsTrigger value="students" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <Users className="h-4 w-4" />
+                  תלמידות
+                </TabsTrigger>
 
-              <TabsTrigger value="payments" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
-                <CreditCard className="h-4 w-4" />
-                תשלומים
-              </TabsTrigger>
+                <TabsTrigger value="payments" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <CreditCard className="h-4 w-4" />
+                  תשלומים
+                </TabsTrigger>
 
-              <TabsTrigger value="performances" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
-                <Music className="h-4 w-4" />
-                הופעות
-              </TabsTrigger>
+                <TabsTrigger value="performances" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <Music className="h-4 w-4" />
+                  הופעות
+                </TabsTrigger>
 
-              <TabsTrigger value="practice" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
-                <Trophy className="h-4 w-4" />
-                נתוני אימונים
-              </TabsTrigger>
+                <TabsTrigger value="practice" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <Trophy className="h-4 w-4" />
+                  נתוני אימונים
+                </TabsTrigger>
 
-              <TabsTrigger value="messages" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
-                <MessageSquare className="h-4 w-4" />
-                תקשורת
-              </TabsTrigger>
+                <TabsTrigger value="messages" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <MessageSquare className="h-4 w-4" />
+                  תקשורת
+                </TabsTrigger>
 
-              <TabsTrigger value="aids" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
-                <span>🎵</span>
-                <span className="hidden sm:inline">עזרים</span>
-              </TabsTrigger>
-              <TabsTrigger value="backup" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
-                <FileText className="h-4 w-4" />
-                גיבוי
-              </TabsTrigger>
+                <TabsTrigger value="yemot" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <Phone className="h-4 w-4" />
+                  ימות המשיח
+                </TabsTrigger>
 
-              <TabsTrigger value="fixed-schedule" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
-                <Settings className="h-4 w-4" />
-                מערכת קבועה
-              </TabsTrigger>
+                <TabsTrigger value="aids" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
+                  <span>🎵</span>
+                  <span className="hidden sm:inline">עזרים</span>
+                </TabsTrigger>
 
-              <TabsTrigger value="history" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
-                <History className="h-4 w-4" />
-                היסטוריה
-              </TabsTrigger>
-            </TabsList>
+                <TabsTrigger value="backup" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <FileText className="h-4 w-4" />
+                  גיבוי
+                </TabsTrigger>
 
-            <TabsContent value="students" className="fade-slide-in">
-              <BrandSection index={0}>
-                <StudentsManagement />
-              </BrandSection>
-            </TabsContent>
+                <TabsTrigger value="fixed-schedule" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <Settings className="h-4 w-4" />
+                  מערכת קבועה
+                </TabsTrigger>
 
-            <TabsContent value="journal" className="fade-slide-in">
-              <BrandSection index={1}>
-                <LessonJournal />
-              </BrandSection>
-            </TabsContent>
+                <TabsTrigger value="history" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
+                  <History className="h-4 w-4" />
+                  היסטוריה
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="fixed-schedule" className="fade-slide-in">
-              <BrandSection index={2}>
-                <FixedScheduleTab />
-              </BrandSection>
-            </TabsContent>
-
-            <TabsContent value="payments" className="fade-slide-in">
-              <BrandSection index={3}>
-                <PaymentManagement />
-              </BrandSection>
-            </TabsContent>
-
-            <TabsContent value="performances" className="fade-slide-in">
-              <BrandSection index={0}>
-                <PerformancesManagement />
-              </BrandSection>
-            </TabsContent>
-
-            <TabsContent value="practice" className="fade-slide-in">
-              <BrandSection index={1}>
-                <AdminPracticeStats />
-              </BrandSection>
-            </TabsContent>
-
-            <TabsContent value="messages" className="fade-slide-in">
-              <BrandSection index={2}>
-                <MessagingTab />
-              </BrandSection>
-            </TabsContent>
-
-            <TabsContent value="aids" className="fade-slide-in">
-            <Metronome />
-          </TabsContent>
-          <TabsContent value="backup" className="fade-slide-in">
-              <div className="space-y-6">
-                <BrandSection index={3}>
-                  <div>
-                    <h2 className="text-xl font-bold text-gold mb-4">ניקוי נתוני אימונים ומדליות</h2>
-                    <p className="text-sm text-foreground mb-4">
-                      לחצי על הכפתור למטה כדי למחוק את כל נתוני האימונים, ההישגים החודשיים והמדליות.
-                      פעולה זו תאפשר להתחיל מחדש מנקודת שוויון.
-                    </p>
-                    <Button onClick={handleClearPracticeData} variant="destructive" className="w-full sm:w-auto">
-                      🧹 מחק כל נתוני אימונים ומדליות
-                    </Button>
-                  </div>
+              <TabsContent value="students" className="fade-slide-in">
+                <BrandSection index={0}>
+                  <StudentsManagement />
                 </BrandSection>
+              </TabsContent>
 
-                <BackupImport />
-              </div>
-            </TabsContent>
+              <TabsContent value="journal" className="fade-slide-in">
+                <BrandSection index={1}>
+                  <LessonJournal />
+                </BrandSection>
+              </TabsContent>
 
-            <TabsContent value="history" className="fade-slide-in">
-              <BrandSection index={0}>
-                <BackupHistory />
-              </BrandSection>
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="fixed-schedule" className="fade-slide-in">
+                <BrandSection index={2}>
+                  <FixedScheduleTab />
+                </BrandSection>
+              </TabsContent>
+
+              <TabsContent value="payments" className="fade-slide-in">
+                <BrandSection index={3}>
+                  <PaymentManagement />
+                </BrandSection>
+              </TabsContent>
+
+              <TabsContent value="performances" className="fade-slide-in">
+                <BrandSection index={0}>
+                  <PerformancesManagement />
+                </BrandSection>
+              </TabsContent>
+
+              <TabsContent value="practice" className="fade-slide-in">
+                <BrandSection index={1}>
+                  <AdminPracticeStats />
+                </BrandSection>
+              </TabsContent>
+
+              <TabsContent value="messages" className="fade-slide-in">
+                <BrandSection index={2}>
+                  <MessagingTab />
+                </BrandSection>
+              </TabsContent>
+
+              <TabsContent value="yemot" className="fade-slide-in">
+                <BrandSection index={3}>
+                  <YemotSettingsCard />
+                </BrandSection>
+              </TabsContent>
+
+              <TabsContent value="aids" className="fade-slide-in">
+                <Metronome />
+              </TabsContent>
+
+              <TabsContent value="backup" className="fade-slide-in">
+                <div className="space-y-6">
+                  <BrandSection index={3}>
+                    <div>
+                      <h2 className="text-xl font-bold text-gold mb-4">ניקוי נתוני אימונים ומדליות</h2>
+                      <p className="text-sm text-foreground mb-4">
+                        לחצי על הכפתור למטה כדי למחוק את כל נתוני האימונים, ההישגים החודשיים והמדליות.
+                        פעולה זו תאפשר להתחיל מחדש מנקודת שוויון.
+                      </p>
+                      <Button onClick={handleClearPracticeData} variant="destructive" className="w-full sm:w-auto">
+                        🧹 מחק כל נתוני אימונים ומדליות
+                      </Button>
+                    </div>
+                  </BrandSection>
+
+                  <BackupImport />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="history" className="fade-slide-in">
+                <BrandSection index={0}>
+                  <BackupHistory />
+                </BrandSection>
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
       </div>
-    </div>
-  </DateModeProvider>
+    </DateModeProvider>
   );
 };
 
