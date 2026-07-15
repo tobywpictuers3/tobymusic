@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar, ArrowRight, ArrowLeft } from 'lucide-react';
-import { getStudents } from '@/lib/storage';
-import { Lesson, Student } from '@/lib/types';
+import { Calendar, ArrowRight, ArrowLeft, CalendarOff } from 'lucide-react';
+import { getStudents, getHolidays } from '@/lib/storage';
+import { Holiday, Lesson, Student } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import StudentsSwapRequestDialog from '@/components/students/StudentsSwapRequestDialog';
 import { isFutureLesson } from '@/lib/lessonSwap/logic';
@@ -16,17 +16,25 @@ interface GeneralWeeklyScheduleProps {
   currentSwapStep?: 1 | 2 | 3 | 4;
 }
 
+const dateKey = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId, lessons, onLessonDoubleClick, isSelectionActive, currentSwapStep = 1 }) => {
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [students, setStudents] = useState<Student[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [swapDialogOpen, setSwapDialogOpen] = useState(false);
   const [selectedLessonForSwap, setSelectedLessonForSwap] = useState<Lesson | null>(null);
 
   useEffect(() => {
-    const studentsData = getStudents();
-    setStudents(studentsData);
-  }, []);
+    setStudents(getStudents());
+    setHolidays(getHolidays());
+  }, [lessons]);
 
   const getWeekDates = (date: Date) => {
     const week = [];
@@ -46,29 +54,22 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
   const weekDates = getWeekDates(currentWeek);
   const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'מוצאי שבת'];
 
-  const calculateEndTime = (startTime: string, duration: number): string => {
-    const [hours, minutes] = startTime.split(':').map(Number);
-    const totalMinutes = hours * 60 + minutes + duration;
-    const newHours = Math.floor(totalMinutes / 60);
-    const newMinutes = totalMinutes % 60;
-    return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
+  const getHolidayForDate = (date: Date): Holiday | undefined => {
+    const key = dateKey(date);
+    return holidays.find(holiday => holiday.date === key);
   };
 
   const getLessonsForDay = (date: Date): Lesson[] => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
-    
-    // Use only lessons from props - no template generation here
-    const dayLessons = lessons
-      .filter(l => l.date === dateStr && l.status !== 'cancelled')
-      .filter(l => {
-        const student = students.find(s => s.id === l.studentId);
-        return student !== undefined;
-      });
-    
-    return dayLessons.sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const dateStr = dateKey(date);
+
+    // Holidays are the same shared records used by the admin journal.
+    // Never display or allow swapping lessons on a date marked as a holiday.
+    if (holidays.some(holiday => holiday.date === dateStr)) return [];
+
+    return lessons
+      .filter(lesson => lesson.date === dateStr && lesson.status !== 'cancelled')
+      .filter(lesson => students.some(student => student.id === lesson.studentId))
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
   };
 
   const getStudentDetails = (studentId: string) => {
@@ -100,16 +101,13 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
     if (isFutureLesson(lesson)) {
       setSelectedLessonForSwap(lesson);
       if (onLessonDoubleClick) {
-        // Use new swap panel logic
         onLessonDoubleClick(lesson);
       } else {
-        // Fallback to old dialog
         setSelectedLesson(lesson);
         setSwapDialogOpen(true);
       }
     }
   };
-
 
   return (
     <Card className="card-gradient card-shadow">
@@ -123,7 +121,6 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
         </p>
       </CardHeader>
       <CardContent>
-        {/* Week Navigation */}
         <div className="flex justify-between items-center mb-6">
           <Button onClick={handleNextWeek} variant="outline" size="sm">
             <ArrowLeft className="h-4 w-4 ml-2" />
@@ -138,40 +135,47 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
           </Button>
         </div>
 
-        {/* Weekly Calendar Grid */}
         <div className="grid grid-cols-7 gap-2" dir="rtl">
           {weekDates.map((date, index) => {
-            const dayLessons = getLessonsForDay(date);
+            const holiday = getHolidayForDate(date);
+            const dayLessons = holiday ? [] : getLessonsForDay(date);
+
             return (
-              <div key={date.toISOString()} className="space-y-1">
-                <div className="text-center p-2 bg-secondary/50 rounded-lg">
+              <div key={dateKey(date)} className="space-y-1">
+                <div className={`text-center p-2 rounded-lg ${holiday ? 'bg-destructive/15 border border-destructive/40' : 'bg-secondary/50'}`}>
                   <div className="font-semibold text-sm">{dayNames[index]}</div>
                   <div className="text-xs text-muted-foreground">
                     {date.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}
                   </div>
                 </div>
+
                 <div className="space-y-1 min-h-[150px]">
-                {dayLessons
-                  .filter(lesson => lesson.status !== 'cancelled')
-                  .sort((a, b) => a.startTime.localeCompare(b.startTime))
-                  .map((lesson) => {
+                  {holiday ? (
+                    <div className="min-h-[150px] rounded-lg border-2 border-destructive/50 bg-destructive/10 p-3 flex flex-col items-center justify-center text-center gap-2">
+                      <CalendarOff className="h-7 w-7 text-destructive" />
+                      <div className="font-bold text-destructive">חופשה — אין שיעורים</div>
+                      {holiday.description && (
+                        <div className="text-xs text-muted-foreground whitespace-pre-wrap">
+                          {holiday.description}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    dayLessons.map((lesson) => {
                       const studentDetails = getStudentDetails(lesson.studentId);
                       if (!studentDetails) return null;
 
                       const isFuture = isFutureLesson(lesson);
                       const isCompleted = lesson.status === 'completed';
                       const isSwapped = isSwappedLesson(lesson);
-                      
-                      // Determine if lesson is clickable based on currentSwapStep
-                      const isClickableForSelection = 
-                        isSelectionActive && 
-                        isFuture && 
-                        onLessonDoubleClick && 
+                      const isClickableForSelection =
+                        isSelectionActive &&
+                        isFuture &&
+                        onLessonDoubleClick &&
                         (
                           (currentSwapStep === 2 && lesson.studentId === studentId) ||
                           (currentSwapStep === 3 && lesson.studentId !== studentId)
                         );
-                      
                       const isClickable = isFuture && onLessonDoubleClick;
                       const isSelected = selectedLessonForSwap?.id === lesson.id;
 
@@ -181,69 +185,52 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
                           className={`p-2 border-2 rounded-lg text-xs transition-all duration-200 hover:shadow-md ${
                             isSelected
                               ? 'bg-primary/20 border-primary border-4 shadow-lg ring-2 ring-primary ring-offset-2'
-                              : isSwapped 
-                                ? 'bg-[#8B4513]/10 border-[#8B4513] text-[#8B4513]' 
-                                : isFuture 
-                                  ? 'bg-white/50 text-gray-700 border-gray-300' 
-                                  : isCompleted 
-                                    ? 'bg-[#FFD700]/10 border-[#FFD700] text-gray-900' 
+                              : isSwapped
+                                ? 'bg-[#8B4513]/10 border-[#8B4513] text-[#8B4513]'
+                                : isFuture
+                                  ? 'bg-white/50 text-gray-700 border-gray-300'
+                                  : isCompleted
+                                    ? 'bg-[#FFD700]/10 border-[#FFD700] text-gray-900'
                                     : 'bg-white border-gray-400 text-black'
                           } ${isClickable ? 'cursor-pointer hover:scale-105' : ''} ${
-                            isSelectionActive && isClickable 
-                              ? 'ring-2 ring-primary ring-offset-2 animate-pulse' 
+                            isSelectionActive && isClickable
+                              ? 'ring-2 ring-primary ring-offset-2 animate-pulse'
                               : ''
                           }`}
                           onClick={() => isClickable && handleLessonClick(lesson)}
-                          title={isClickable ? "לחצי לבחירת שיעור להחלפה" : ""}
+                          title={isClickable ? 'לחצי לבחירת שיעור להחלפה' : ''}
                         >
                           <div className="space-y-1">
-                            <div className="font-bold text-base text-black">
-                              {studentDetails.name}
+                            <div className="font-bold text-base text-black">{studentDetails.name}</div>
+                            <div className="text-sm font-medium text-gray-900">{studentDetails.email}</div>
+                            <div className="text-sm font-medium text-gray-900">{studentDetails.phone}</div>
+                            <div className="text-sm font-bold mt-2 text-black">{lesson.startTime} - {lesson.endTime}</div>
+                            <div className="flex gap-1 flex-wrap mt-1">
+                              {lesson.isSwapped && (
+                                <Badge className="text-[10px] px-1.5 py-0.5 bg-red-600 text-white border-red-600">הוחלף</Badge>
+                              )}
+                              {isClickableForSelection && (
+                                <Badge className="text-[10px] px-1.5 py-0.5 bg-blue-500 text-white animate-pulse">לחצי כאן</Badge>
+                              )}
+                              {isSelected && (
+                                <Badge className="text-[10px] px-1.5 py-0.5 bg-primary text-white">✓ נבחר</Badge>
+                              )}
+                              {lesson.isOneOff && (
+                                <Badge className="text-[10px] px-1.5 py-0.5 bg-[#FFD700] text-black border-[#FFD700]">חד פעמי</Badge>
+                              )}
                             </div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {studentDetails.email}
-                            </div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {studentDetails.phone}
-                            </div>
-                             <div className="text-sm font-bold mt-2 text-black">
-                               {lesson.startTime} - {lesson.endTime}
-                              </div>
-                               <div className="flex gap-1 flex-wrap mt-1">
-                                 {lesson.isSwapped && (
-                                   <Badge className="text-[10px] px-1.5 py-0.5 bg-red-600 text-white border-red-600">
-                                     הוחלף
-                                   </Badge>
-                                 )}
-                                {isClickableForSelection && (
-                                  <Badge className="text-[10px] px-1.5 py-0.5 bg-blue-500 text-white animate-pulse">
-                                    לחצי כאן
-                                  </Badge>
-                                )}
-                                {isSelected && (
-                                  <Badge className="text-[10px] px-1.5 py-0.5 bg-primary text-white">
-                                    ✓ נבחר
-                                  </Badge>
-                                )}
-                                {lesson.isOneOff && (
-                                  <Badge className="text-[10px] px-1.5 py-0.5 bg-[#FFD700] text-black border-[#FFD700]">
-                                    חד פעמי
-                                  </Badge>
-                                )}
-                              </div>
                           </div>
                         </div>
                       );
-                    })}
+                    })
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
-
       </CardContent>
 
-      {/* Swap Request Dialog */}
       <StudentsSwapRequestDialog
         open={swapDialogOpen}
         onOpenChange={setSwapDialogOpen}
