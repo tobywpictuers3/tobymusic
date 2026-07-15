@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { getMessagesForAdmin } from '@/lib/messages';
+import { getMessages } from '@/lib/messages';
 import { Message } from '@/lib/types';
 import { deleteMessageGloballyAsAdmin } from '@/lib/adminGlobalDelete';
 
@@ -25,7 +25,10 @@ export default function GlobalMessageAdminTools() {
 
   const messages = useMemo(() => {
     const search = normalize(query).trim();
-    return getMessagesForAdmin(true)
+    // Use the central message collection rather than the admin mailbox filter.
+    // This intentionally includes broadcasts sent by students to "all", even
+    // when the original message did not name admin as a direct recipient.
+    return getMessages()
       .filter(message => !message.isDraft)
       .filter(message => {
         if (!search) return true;
