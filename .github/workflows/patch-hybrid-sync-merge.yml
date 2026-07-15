@@ -1,0 +1,99 @@
+name: Patch Hybrid Sync Merge
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-hybrid-sync-merge.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch directUpload to merge remote data first
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/lib/hybridSync.ts')
+          text = path.read_text(encoding='utf-8')
+          old = '''    try {
+      const data = this.gatherAllData();
+      this.persistLocalSnapshot();
+
+      // Cheap structural sanity check (no full stringify just to measure size).
+      if (!this.hasValidDataShape(data)) {
+        logger.error('❌ PREVENTED UPLOAD - data shape invalid, refusing to overwrite cloud');
+        this.setCloudError('DATA_SHAPE_INVALID');
+        return false;
+      }
+
+      const result = await this.uploadVersionedOffMainThread(data);
+
+      if (result.success) {
+        this.setCloudSuccessNow(uploadVersion);
+        logger.info('✅ Direct upload to worker completed');'''
+          new = '''    try {
+      const localData = this.gatherAllData();
+      this.persistLocalSnapshot();
+
+      if (!this.hasValidDataShape(localData)) {
+        logger.error('❌ PREVENTED UPLOAD - local data shape invalid, refusing to overwrite cloud');
+        this.setCloudError('DATA_SHAPE_INVALID');
+        return false;
+      }
+
+      const remoteResult = await workerApi.downloadLatest();
+      if (!remoteResult.success || !this.hasValidDataShape(remoteResult.data)) {
+        const errorMessage = remoteResult.error || 'REMOTE_DOWNLOAD_FAILED';
+        logger.error('❌ PREVENTED UPLOAD - could not load latest cloud data:', errorMessage);
+        this.setCloudError(errorMessage);
+        return false;
+      }
+
+      const mergedData = this.mergeDataWithConflictResolution(localData, remoteResult.data);
+      if (!this.hasValidDataShape(mergedData)) {
+        logger.error('❌ PREVENTED UPLOAD - merged data shape invalid');
+        this.setCloudError('MERGED_DATA_SHAPE_INVALID');
+        return false;
+      }
+
+      this.updateInMemoryStorage(mergedData);
+      this.persistLocalSnapshot({ full: true });
+
+      const result = await this.uploadVersionedOffMainThread(mergedData);
+
+      if (result.success) {
+        this.setCloudSuccessNow(uploadVersion);
+        logger.info('✅ Direct upload merged with latest cloud data and completed');'''
+
+          if old not in text:
+              raise RuntimeError('Expected directUpload block was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/hybridSync.ts
+          git commit -m 'Merge latest cloud data before direct upload [skip ci]'
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            git rebase --abort || true
+            sleep $((attempt * 5))
+          done
+          exit 1
