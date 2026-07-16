@@ -477,15 +477,6 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
                 <Plus className="w-4 h-4 mr-2" />
                 הודעה חדשה
               </Button>
-              <Button 
-                variant="outline" 
-                size="icon"
-                onClick={handleSyncGmail}
-                disabled={isSyncingGmail}
-                title="סנכרן מג'ימייל"
-              >
-                <RefreshCw className={cn("w-4 h-4", isSyncingGmail && "animate-spin")} />
-              </Button>
             </div>
 
             {/* Messages List */}
@@ -605,18 +596,6 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
                 <Button onClick={handleCompose} size="sm" className="flex-1">
                   <Plus className="w-4 h-4 mr-1" />
                   חדש
-                </Button>
-              )}
-              {!sidebarCollapsed && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleSyncGmail}
-                  disabled={isSyncingGmail}
-                  title="סנכרן מג'ימייל"
-                  className="h-8 w-8"
-                >
-                  <RefreshCw className={cn("w-4 h-4", isSyncingGmail && "animate-spin")} />
                 </Button>
               )}
               <Button
@@ -764,8 +743,6 @@ interface MessageRowProps {
   selectedFolder: FolderType;
   isSelected: boolean;
   students: Student[];
-  expirationDate: string;
-  setExpirationDate: (value: string) => void;
   onSelect: () => void;
   onToggleStar: () => void;
 }
@@ -860,8 +837,6 @@ function MessageView({
   message,
   userId,
   students,
-  expirationDate,
-  setExpirationDate,
   selectedFolder,
   onReply,
   onForward,
@@ -988,6 +963,8 @@ interface ComposeFormProps {
   composeRecipients: string[];
   setComposeRecipients: (v: string[]) => void;
   students: Student[];
+  expirationDate: string;
+  setExpirationDate: (value: string) => void;
   editorRef: React.RefObject<RichTextEditorHandle>;
   fileInputRef: React.RefObject<HTMLInputElement>;
   attachments: Attachment[];
@@ -1009,6 +986,8 @@ function ComposeForm({
   composeRecipients,
   setComposeRecipients,
   students,
+  expirationDate,
+  setExpirationDate,
   editorRef,
   fileInputRef,
   attachments,
