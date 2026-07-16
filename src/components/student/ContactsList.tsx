@@ -1,77 +1,42 @@
-
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Phone, Mail, MessageCircle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Mail, Phone, Search, Users } from 'lucide-react';
+import { getStudents } from '@/lib/storage';
 
 const ContactsList = () => {
-  const contacts = [
-    {
-      name: 'טובי וינברג - המורה',
-      phone: '0504124161',
-      email: 'toby.musicartist@gmail.com',
-      whatsapp: '0733837098',
-      role: 'מורה לפסנתר',
-      tagline: 'איתך, כל הדרך אל המוסיקה'
-    }
-  ];
+  const [query, setQuery] = useState('');
+  const contacts = useMemo(() => getStudents()
+    .filter(student => student.isActive !== false)
+    .map(student => ({
+      id: student.id,
+      name: `${student.firstName || ''} ${student.lastName || ''}`.trim(),
+      phones: [student.phone, ...(student.additionalPhones || [])].filter(Boolean),
+      emails: [student.email, ...(student.additionalEmails || [])].filter(Boolean),
+    }))
+    .filter(contact => contact.name.toLocaleLowerCase('he-IL').includes(query.trim().toLocaleLowerCase('he-IL')))
+    .sort((a, b) => a.name.localeCompare(b.name, 'he')),
+  [query]);
 
   return (
-    <Card className="card-gradient card-shadow">
-      <CardHeader>
-        <CardTitle className="text-2xl flex items-center gap-2">
-          <Phone className="h-6 w-6" />
-          פרטי קשר
-        </CardTitle>
+    <Card className="overflow-hidden border-[#C9A961]/40 bg-[#fffaf0]/95 shadow-xl dark:bg-[#140c0f]/95" dir="rtl">
+      <CardHeader className="border-b border-[#C9A961]/30 bg-gradient-to-l from-[#6B1F2A] to-[#8B2A37] text-white">
+        <CardTitle className="flex items-center gap-2 text-2xl"><Users className="h-6 w-6 text-[#FFE5A0]" />אנשי הקשר של התלמידות</CardTitle>
+        <p className="text-sm text-white/80">פרטי הקשר המעודכנים של כל התלמידות הפעילות</p>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {contacts.map((contact, index) => (
-            <div key={index} className="p-4 bg-secondary/30 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-lg">{contact.name}</h3>
-                  <p className="text-sm text-muted-foreground mb-3">{contact.role}</p>
-                </div>
-              </div>
-              
-              <div className="space-y-3">
-                {contact.tagline && (
-                  <p className="text-sm italic text-muted-foreground mb-2">{contact.tagline}</p>
-                )}
-                
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-primary" />
-                  <span className="text-sm">נייד:</span>
-                  <a 
-                    href={`tel:${contact.phone}`}
-                    className="text-primary hover:underline font-medium"
-                  >
-                    {contact.phone}
-                  </a>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-primary" />
-                  <span className="text-sm">מייל:</span>
-                  <a 
-                    href={`mailto:${contact.email}`}
-                    className="text-primary hover:underline font-medium"
-                  >
-                    {contact.email}
-                  </a>
-                </div>
-                
-                {contact.whatsapp && (
-                  <div className="flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4 text-primary" />
-                    <span className="text-sm">ווטסאפ טלפוני:</span>
-                    <a 
-                      href={`tel:${contact.whatsapp}`}
-                      className="text-primary hover:underline font-medium"
-                    >
-                      {contact.whatsapp}
-                    </a>
-                  </div>
-                )}
+      <CardContent className="space-y-4 p-5">
+        <div className="relative max-w-md">
+          <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="חיפוש לפי שם" className="pr-9" />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {contacts.map(contact => (
+            <div key={contact.id} className="rounded-xl border border-[#C9A961]/35 bg-white/80 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-black/20">
+              <h3 className="mb-3 text-lg font-bold text-[#6B1F2A] dark:text-[#FFE5A0]">{contact.name}</h3>
+              <div className="space-y-2 text-sm">
+                {contact.phones.map(phone => <a key={phone} href={`tel:${phone}`} className="flex items-center gap-2 hover:text-[#8B2A37]"><Phone className="h-4 w-4 text-[#C9A961]" />{phone}</a>)}
+                {contact.emails.map(email => <a key={email} href={`mailto:${email}`} className="flex items-center gap-2 break-all hover:text-[#8B2A37]"><Mail className="h-4 w-4 shrink-0 text-[#C9A961]" />{email}</a>)}
+                {!contact.phones.length && !contact.emails.length && <span className="text-muted-foreground">לא הוזנו פרטי קשר</span>}
               </div>
             </div>
           ))}
