@@ -25,6 +25,20 @@ const getStorage = () => {
 
 export const getMessages = (): Message[] => {
   const storage = getStorage();
+  const messages: Message[] = storage.messages || [];
+  const now = Date.now();
+  const expiredIds = messages
+    .filter(message => message.expiresAt && new Date(message.expiresAt).getTime() <= now)
+    .map(message => message.id);
+
+  if (expiredIds.length > 0) {
+    storage.messages = messages.filter(message => !expiredIds.includes(message.id));
+    recordTombstones('messages', expiredIds);
+    if (!isDevMode()) {
+      queueMicrotask(() => { void hybridSync.onDestructiveChange(); });
+    }
+  }
+
   return storage.messages || [];
 };
 
