@@ -25,6 +25,8 @@ const dateKey = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
+const todayKey = (): string => dateKey(new Date());
+
 const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId, lessons, onLessonDoubleClick, isSelectionActive, currentSwapStep = 1 }) => {
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [students, setStudents] = useState<Student[]>([]);
@@ -83,7 +85,7 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
     if (holidays.some(holiday => holiday.date === dateStr)) return [];
 
     return lessons
-      .filter(lesson => lesson.date === dateStr && lesson.status !== 'cancelled')
+      .filter(lesson => lesson.date === dateStr && lesson.date >= todayKey() && lesson.status !== 'cancelled')
       .filter(lesson => students.some(student => student.id === lesson.studentId))
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
   };
@@ -100,6 +102,8 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
   const handlePrevWeek = () => {
     const prevWeek = new Date(currentWeek);
     prevWeek.setDate(currentWeek.getDate() - 7);
+    const prevWeekEnd = getWeekDates(prevWeek)[6];
+    if (dateKey(prevWeekEnd) < todayKey()) return;
     setCurrentWeek(prevWeek);
   };
 
@@ -147,7 +151,13 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
           <h3 className="text-lg font-semibold">
             {weekDates[0].toLocaleDateString('he-IL')} - {weekDates[6].toLocaleDateString('he-IL')}
           </h3>
-          <Button onClick={handlePrevWeek} variant="outline" size="sm">
+          <Button
+            onClick={handlePrevWeek}
+            variant="outline"
+            size="sm"
+            disabled={dateKey(weekDates[0]) <= todayKey()}
+            title={dateKey(weekDates[0]) <= todayKey() ? 'אין הצגה של שיעורים קודמים מטעמי פרטיות' : 'שבוע קודם'}
+          >
             שבוע קודם
             <ArrowRight className="h-4 w-4 mr-2" />
           </Button>
