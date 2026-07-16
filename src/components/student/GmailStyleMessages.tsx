@@ -84,6 +84,7 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
   
   const [composeSubject, setComposeSubject] = useState('');
   const [composeRecipients, setComposeRecipients] = useState<string[]>(['admin']);
+  const [expirationDate, setExpirationDate] = useState('');
   const editorRef = useRef<RichTextEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -273,6 +274,7 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
       content: plain,
       contentHtml: html,
       attachments: attachments.length > 0 ? attachments : undefined,
+      expiresAt: expirationDate ? new Date(expirationDate).toISOString() : undefined,
       inReplyTo: isReplying && selectedMessage ? selectedMessage.id : undefined,
       type: 'general',
     });
@@ -308,6 +310,7 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
   };
 
   const resetCompose = () => {
+    setExpirationDate('');
     setIsComposing(false);
     setIsReplying(false);
     setComposeSubject('');
@@ -507,6 +510,8 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
                   composeRecipients={composeRecipients}
                   setComposeRecipients={setComposeRecipients}
                   students={students}
+                  expirationDate={expirationDate}
+                  setExpirationDate={setExpirationDate}
                   editorRef={editorRef}
                   fileInputRef={fileInputRef}
                   attachments={attachments}
@@ -675,6 +680,8 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
                 composeRecipients={composeRecipients}
                 setComposeRecipients={setComposeRecipients}
                 students={students}
+                expirationDate={expirationDate}
+                setExpirationDate={setExpirationDate}
                 editorRef={editorRef}
                 fileInputRef={fileInputRef}
                 attachments={attachments}
@@ -724,6 +731,8 @@ interface MessageRowProps {
   selectedFolder: FolderType;
   isSelected: boolean;
   students: Student[];
+  expirationDate: string;
+  setExpirationDate: (value: string) => void;
   onSelect: () => void;
   onToggleStar: () => void;
 }
@@ -816,6 +825,8 @@ function MessageView({
   message,
   userId,
   students,
+  expirationDate,
+  setExpirationDate,
   selectedFolder,
   onReply,
   onForward,
@@ -1001,6 +1012,18 @@ function ComposeForm({
           onChange={(e) => setComposeSubject(e.target.value)}
           placeholder="נושא ההודעה"
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="message-expiration">תפוגת ההודעה (רשות)</Label>
+        <Input
+          id="message-expiration"
+          type="datetime-local"
+          value={expirationDate}
+          min={new Date().toISOString().slice(0, 16)}
+          onChange={(event) => setExpirationDate(event.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">במועד התפוגה ההודעה תוסר מכל תיבות הדואר בפלטפורמה.</p>
       </div>
 
       <div className="space-y-2">
