@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { LogOut, Calendar, User, Phone, FileText, ChevronDown, ChevronUp } from "lucide-react";
+import { LogOut, Calendar, User, Phone, FileText, Radio } from "lucide-react";
 import { getCurrentUser, setCurrentUser, getStudents } from "@/lib/storage";
 import { toast } from "@/hooks/use-toast";
 import { Student, Lesson } from "@/lib/types";
@@ -15,6 +15,7 @@ import { ASSETS } from "@/brand/assets";
 import EditableStudentDetails from "@/components/student/EditableStudentDetails";
 import GeneralWeeklySchedule from "@/components/student/GeneralWeeklySchedule";
 import ContactsList from "@/components/student/ContactsList";
+import YemotInstructions from "@/components/student/YemotInstructions";
 import StudentFiles from "@/components/student/StudentFiles";
 import PaymentAlert from "@/components/student/PaymentAlert";
 import LessonHistory from "@/components/student/LessonHistory";
@@ -197,7 +198,7 @@ const StudentDashboard = () => {
       <PaymentAlert studentId={student.id} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-10 gap-2 h-auto">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-11 gap-2 h-auto">
           <TabsTrigger value="practice">מעקב אימונים</TabsTrigger>
           <TabsTrigger value="schedule" className="gap-2">
             <Calendar className="w-4 h-4" />
@@ -220,6 +221,10 @@ const StudentDashboard = () => {
             אנשי קשר
           </TabsTrigger>
           <TabsTrigger value="files">קבצים</TabsTrigger>
+          <TabsTrigger value="yemot" className="gap-2">
+            <Radio className="w-4 h-4" />
+            ימות המשיח
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="practice" className="fade-slide-in space-y-6">
@@ -292,6 +297,10 @@ const StudentDashboard = () => {
 
         <TabsContent value="files" className="fade-slide-in space-y-6">
           <StudentFiles studentId={student.id} />
+        </TabsContent>
+
+        <TabsContent value="yemot" className="fade-slide-in space-y-6">
+          <YemotInstructions />
         </TabsContent>
       </Tabs>
     </div>
