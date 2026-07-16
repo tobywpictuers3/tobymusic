@@ -52,6 +52,7 @@ import AttachmentPreview from "@/components/messages/AttachmentPreview";
 import RichTextEditor, { RichTextEditorHandle } from "@/components/messages/RichTextEditor";
 import ReactionBar from "@/components/messages/ReactionBar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { deleteMessageGloballyAsAdmin } from "@/lib/adminGlobalDelete";
 
 // Format message date: HH:MM for today, dd/MM for older
 const formatMessageDate = (createdAt: string): string => {
@@ -341,6 +342,34 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
   };
 
   const [isDeletingTrash, setIsDeletingTrash] = useState(false);
+  const [isDeletingGlobally, setIsDeletingGlobally] = useState(false);
+
+  const handleGlobalDelete = async (message: Message) => {
+    if (studentId !== 'admin') return;
+
+    const confirmed = window.confirm(
+      `למחוק את ההודעה "${message.subject || '(ללא נושא)'}" מכל הפלטפורמה?\n\n` +
+      'היא תוסר מדואר נכנס של כל הנמענות, מדואר יוצא של השולחת ומרשימת ההשמעה בימות. הפעולה אינה ניתנת לביטול.'
+    );
+    if (!confirmed) return;
+
+    const managerCode = window.prompt('הקישי את קוד המנהל לאישור מחיקה מכל הפלטפורמה:');
+    if (!managerCode?.trim()) return;
+
+    setIsDeletingGlobally(true);
+    try {
+      await deleteMessageGloballyAsAdmin(message.id, managerCode.trim());
+      setSelectedMessage(null);
+      loadMessages();
+      toast.success('ההודעה נמחקה מכל הפלטפורמה');
+      window.setTimeout(() => window.location.reload(), 700);
+    } catch (error) {
+      console.error('Global delete failed:', error);
+      toast.error(error instanceof Error ? error.message : 'המחיקה מכל הפלטפורמה נכשלה');
+    } finally {
+      setIsDeletingGlobally(false);
+    }
+  };
 
   const handleHardDelete = async (messageId: string) => {
     try {
@@ -538,6 +567,8 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
                   onMoveToTrash={() => handleMoveToTrash(selectedMessage.id)}
                   onRestore={() => handleRestore(selectedMessage.id)}
                   onHardDelete={() => handleHardDelete(selectedMessage.id)}
+                  onGlobalDelete={studentId === 'admin' ? () => handleGlobalDelete(selectedMessage) : undefined}
+                  isDeletingGlobally={isDeletingGlobally}
                   onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}
                   onToggleReaction={(emoji) => handleToggleReaction(selectedMessage.id, emoji)}
                   onClose={() => {
@@ -708,6 +739,8 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
                 onMoveToTrash={() => handleMoveToTrash(selectedMessage.id)}
                 onRestore={() => handleRestore(selectedMessage.id)}
                 onHardDelete={() => handleHardDelete(selectedMessage.id)}
+                onGlobalDelete={studentId === 'admin' ? () => handleGlobalDelete(selectedMessage) : undefined}
+                isDeletingGlobally={isDeletingGlobally}
                 onMarkAsUnread={() => handleMarkAsUnread(selectedMessage.id)}
                 onToggleReaction={(emoji) => handleToggleReaction(selectedMessage.id, emoji)}
                 onClose={() => setSelectedMessage(null)}
@@ -816,6 +849,8 @@ interface MessageViewProps {
   onMoveToTrash: () => void;
   onRestore: () => void;
   onHardDelete: () => void;
+  onGlobalDelete?: () => void;
+  isDeletingGlobally?: boolean;
   onMarkAsUnread: () => void;
   onToggleReaction: (emoji: string) => void;
   onClose: () => void;
@@ -834,6 +869,8 @@ function MessageView({
   onMoveToTrash,
   onRestore,
   onHardDelete,
+  onGlobalDelete,
+  isDeletingGlobally = false,
   onMarkAsUnread,
   onToggleReaction,
   onClose,
@@ -888,6 +925,17 @@ function MessageView({
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2 pt-4 border-t">
+        {userId === 'admin' && onGlobalDelete && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={onGlobalDelete}
+            disabled={isDeletingGlobally}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            {isDeletingGlobally ? 'מוחק מכל הפלטפורמה...' : 'מחק מכל הפלטפורמה'}
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={onReply}>
           <Reply className="w-4 h-4 mr-2" />
           השב
