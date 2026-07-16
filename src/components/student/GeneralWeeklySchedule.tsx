@@ -6,6 +6,7 @@ import { getStudents, getHolidays } from '@/lib/storage';
 import { hybridSync } from '@/lib/hybridSync';
 import { Holiday, Lesson, Student } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import StudentsSwapRequestDialog from '@/components/students/StudentsSwapRequestDialog';
 import { isFutureLesson } from '@/lib/lessonSwap/logic';
 
@@ -31,6 +32,7 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [swapDialogOpen, setSwapDialogOpen] = useState(false);
   const [selectedLessonForSwap, setSelectedLessonForSwap] = useState<Lesson | null>(null);
+  const [detailsLesson, setDetailsLesson] = useState<Lesson | null>(null);
 
   const refreshSharedScheduleData = useCallback(() => {
     setStudents(getStudents());
@@ -112,7 +114,7 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
   };
 
   const handleLessonClick = (lesson: Lesson) => {
-    if (isFutureLesson(lesson)) {
+    if (isSelectionActive && isFutureLesson(lesson)) {
       setSelectedLessonForSwap(lesson);
       if (onLessonDoubleClick) {
         onLessonDoubleClick(lesson);
@@ -120,18 +122,20 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
         setSelectedLesson(lesson);
         setSwapDialogOpen(true);
       }
+      return;
     }
+    setDetailsLesson(lesson);
   };
 
   return (
-    <Card className="card-gradient card-shadow">
-      <CardHeader>
+    <Card className="overflow-hidden border-[#C9A961]/45 bg-[#fffaf0]/95 shadow-xl dark:bg-[#140c0f]/95">
+      <CardHeader className="border-b border-[#C9A961]/30 bg-gradient-to-l from-[#6B1F2A] to-[#8B2A37] text-white">
         <CardTitle className="text-2xl flex items-center gap-2">
           <Calendar className="h-6 w-6" />
           מערכת שיעורים שבועית
         </CardTitle>
         <p className="text-sm text-muted-foreground mt-2">
-          לחצי על שיעור לבחירה לבקשת החלפה
+          לחצי על שם תלמידה להצגת פרטי השיעור. בזמן בקשת החלפה, הלחיצה בוחרת שיעור.
         </p>
       </CardHeader>
       <CardContent>
@@ -149,7 +153,7 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
           </Button>
         </div>
 
-        <div className="grid grid-cols-7 gap-2" dir="rtl">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7" dir="rtl">
           {weekDates.map((date, index) => {
             const holiday = getHolidayForDate(date);
             const dayLessons = holiday ? [] : getLessonsForDay(date);
@@ -196,7 +200,7 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
                       return (
                         <div
                           key={lesson.id}
-                          className={`p-2 border-2 rounded-lg text-xs transition-all duration-200 hover:shadow-md ${
+                          className={`min-h-16 p-3 border rounded-xl text-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                             isSelected
                               ? 'bg-primary/20 border-primary border-4 shadow-lg ring-2 ring-primary ring-offset-2'
                               : isSwapped
@@ -206,19 +210,16 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
                                   : isCompleted
                                     ? 'bg-[#FFD700]/10 border-[#FFD700] text-gray-900'
                                     : 'bg-white border-gray-400 text-black'
-                          } ${isClickable ? 'cursor-pointer hover:scale-105' : ''} ${
+                          } cursor-pointer ${
                             isSelectionActive && isClickable
                               ? 'ring-2 ring-primary ring-offset-2 animate-pulse'
                               : ''
                           }`}
-                          onClick={() => isClickable && handleLessonClick(lesson)}
-                          title={isClickable ? 'לחצי לבחירת שיעור להחלפה' : ''}
+                          onClick={() => handleLessonClick(lesson)}
+                          title={isSelectionActive ? 'לחצי לבחירת שיעור להחלפה' : 'לחצי להצגת הפרטים'}
                         >
-                          <div className="space-y-1">
-                            <div className="font-bold text-base text-black">{studentDetails.name}</div>
-                            <div className="text-sm font-medium text-gray-900">{studentDetails.email}</div>
-                            <div className="text-sm font-medium text-gray-900">{studentDetails.phone}</div>
-                            <div className="text-sm font-bold mt-2 text-black">{lesson.startTime} - {lesson.endTime}</div>
+                          <div className="space-y-2 text-center">
+                            <div className="font-bold text-base text-[#6B1F2A] dark:text-[#FFE5A0]">{studentDetails.name}</div>
                             <div className="flex gap-1 flex-wrap mt-1">
                               {lesson.isSwapped && (
                                 <Badge className="text-[10px] px-1.5 py-0.5 bg-red-600 text-white border-red-600">הוחלף</Badge>
@@ -250,6 +251,22 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
         onOpenChange={setSwapDialogOpen}
         selectedLesson={selectedLesson}
       />
+      <Dialog open={Boolean(detailsLesson)} onOpenChange={open => !open && setDetailsLesson(null)}>
+        <DialogContent dir="rtl" className="border-[#C9A961]/50">
+          <DialogHeader><DialogTitle className="text-[#6B1F2A] dark:text-[#FFE5A0]">פרטי השיעור</DialogTitle></DialogHeader>
+          {detailsLesson && (() => {
+            const details = getStudentDetails(detailsLesson.studentId);
+            return <div className="space-y-3 rounded-xl bg-[#C9A961]/10 p-4">
+              <div className="text-xl font-bold">{details?.name}</div>
+              <div><strong>תאריך:</strong> {new Date(`${detailsLesson.date}T12:00:00`).toLocaleDateString('he-IL')}</div>
+              <div><strong>שעה:</strong> {detailsLesson.startTime}–{detailsLesson.endTime}</div>
+              {details?.phone && <div><strong>טלפון:</strong> <a className="text-primary hover:underline" href={`tel:${details.phone}`}>{details.phone}</a></div>}
+              {details?.email && <div><strong>מייל:</strong> <a className="text-primary hover:underline" href={`mailto:${details.email}`}>{details.email}</a></div>}
+              {detailsLesson.notes && <div><strong>הערות:</strong> {detailsLesson.notes}</div>}
+            </div>;
+          })()}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };
