@@ -19,7 +19,6 @@ import SyncStatusBadge from '@/components/ui/SyncStatusBadge';
 import { clearClientCaches } from '@/lib/cacheManager';
 import { ThemeToggle } from '@/brand/ThemeToggle';
 import { DateModeProvider, useDateMode } from '@/contexts/DateModeContext';
-import { ASSETS } from '@/brand/assets';
 
 import StudentsManagement from '@/components/admin/StudentsManagement';
 import LessonJournal from '@/components/admin/LessonJournal';
@@ -34,13 +33,9 @@ import GlobalMessageAdminTools from '@/components/admin/GlobalMessageAdminTools'
 import FixedScheduleTab from '@/components/admin/FixedScheduleTab';
 import YemotSettingsCard from '@/components/admin/YemotSettingsCard';
 
-/** Brand section backgrounds in order */
-const BRAND_BGS = [
-  ASSETS.backgrounds.red,
-  ASSETS.backgrounds.gold,
-  ASSETS.backgrounds.ard,
-  ASSETS.backgrounds.lightGold,
-];
+/** רקעי סקשן מותג — אותה תמונת "במה ריקה" המשמשת באתר הראשי (tobymusic.club),
+    כדי לשמור על שפה עיצובית אחידה בין הפלטפורמות (במקום 4 תמונות רקע שלא קיימות באתר) */
+const BRAND_BGS = ["/assets/stage/empty-dark.webp"];
 
 const BrandSection = ({ index, children }: { index: number; children: React.ReactNode }) => {
   const bg = BRAND_BGS[index % BRAND_BGS.length];

@@ -10,7 +10,6 @@ import { getAllLessonsIncludingTemplates } from "@/lib/lessonUtils";
 import { clearClientCaches } from "@/lib/cacheManager";
 import { ThemeToggle } from "@/brand/ThemeToggle";
 import { SiteLink } from "@/brand/SiteLink";
-import { ASSETS } from "@/brand/assets";
 
 import EditableStudentDetails from "@/components/student/EditableStudentDetails";
 import GeneralWeeklySchedule from "@/components/student/GeneralWeeklySchedule";
@@ -36,13 +35,9 @@ import StudentSwapPanel, {
 } from "@/components/student/lessonSwap/StudentSwapPanel";
 import { DateModeProvider, useDateMode } from '@/contexts/DateModeContext';
 
-/** Brand section backgrounds in order */
-const BRAND_BGS = [
-  ASSETS.backgrounds.red,
-  ASSETS.backgrounds.gold,
-  ASSETS.backgrounds.ard,
-  ASSETS.backgrounds.lightGold,
-];
+/** רקעי סקשן מותג — אותה תמונת "במה ריקה" המשמשת באתר הראשי (tobymusic.club),
+    כדי לשמור על שפה עיצובית אחידה בין הפלטפורמות (במקום 4 תמונות רקע שלא קיימות באתר) */
+const BRAND_BGS = ["/assets/stage/empty-dark.webp"];
 
 const BrandSection = ({ index, children }: { index: number; children: React.ReactNode }) => {
   const bg = BRAND_BGS[index % BRAND_BGS.length];
