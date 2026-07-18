@@ -487,6 +487,38 @@ export const workerApi = {
   },
 
   /* -----------------------------------------------------------
+     Gmail: Safe staged inbound import (admin/manual only)
+     ----------------------------------------------------------- */
+  gmailInboundStage: async (): Promise<WorkerResponse<{
+    imported: number;
+    verifiedForImport: number;
+    durableVerified: boolean;
+    serializedThroughPlatformGate: boolean;
+    allowedStudentCodes: string[];
+  }>> => {
+    if (isDevMode()) {
+      logger.warn("DEV MODE: gmailInboundStage blocked");
+      return { success: false, error: "DEV_MODE_BLOCKED" };
+    }
+
+    try {
+      const result = await callWorkerGmail<{
+        ok: true;
+        imported: number;
+        verifiedForImport: number;
+        durableVerified: boolean;
+        serializedThroughPlatformGate: boolean;
+        allowedStudentCodes: string[];
+      }>("gmail_inbound_stage", { method: "POST" });
+
+      return { success: true, data: result };
+    } catch (err) {
+      logger.error("gmailInboundStage error:", err);
+      return { success: false, error: (err as Error).message };
+    }
+  },
+
+  /* -----------------------------------------------------------
      Gmail: Send Message and Add to Local
      ----------------------------------------------------------- */
   gmailSendAndAdd: async (message: any): Promise<WorkerResponse<{ message: any }>> => {

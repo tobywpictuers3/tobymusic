@@ -23,7 +23,6 @@ import {
   canUserRemoveStar,
   saveDraft,
   getMessages,
-  syncMailboxFromGmail,
   sendMessageViaGmail
 } from "@/lib/messages";
 import { getStudents, updateSwapRequestStatus } from "@/lib/storage";
@@ -53,6 +52,7 @@ import {
 import { cn } from "@/lib/utils";
 import { MessageTypeBadge } from "../student/MessageTypeBadge";
 import { workerApi } from "@/lib/workerApi";
+import { hybridSync } from "@/lib/hybridSync";
 import AttachmentPreview from "@/components/messages/AttachmentPreview";
 import RichTextEditor, { RichTextEditorHandle } from "@/components/messages/RichTextEditor";
 import ReactionBar from "@/components/messages/ReactionBar";
@@ -135,9 +135,16 @@ export default function MessagingTab() {
   const handleSyncGmail = async () => {
     setIsSyncingGmail(true);
     try {
-      await syncMailboxFromGmail({ max: 20 });
+      const stageResult = await workerApi.gmailInboundStage();
+      if (!stageResult.success || !stageResult.data?.durableVerified) {
+        throw new Error(stageResult.error || 'ייבוא Gmail לא אומת');
+      }
+      await hybridSync.loadDataOnInit();
       loadData();
-      toast.success('סנכרון מג\'ימייל הושלם');
+      const imported = stageResult.data.imported || 0;
+      toast.success(imported > 0
+        ? `סנכרון מג'ימייל הושלם — יובאו ${imported} הודעות`
+        : 'סנכרון מג\'ימייל הושלם — אין הודעות חדשות');
     } catch (error) {
       console.error('Gmail sync error:', error);
       toast.error('שגיאה בסנכרון מג\'ימייל');
