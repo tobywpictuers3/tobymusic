@@ -519,6 +519,35 @@ export const workerApi = {
   },
 
   /* -----------------------------------------------------------
+     Gmail: Safe staged bidirectional bridge (admin/manual only)
+     ----------------------------------------------------------- */
+  gmailBridgeStageSync: async (): Promise<WorkerResponse<{
+    inbound: { imported: number; durableVerified: boolean };
+    outbound: { sent: number; failed: number; skipped: number };
+    durableVerified: boolean;
+    allowedStudentCodes: string[];
+  }>> => {
+    if (isDevMode()) {
+      logger.warn("DEV MODE: gmailBridgeStageSync blocked");
+      return { success: false, error: "DEV_MODE_BLOCKED" };
+    }
+
+    try {
+      const result = await callWorkerGmail<{
+        ok: true;
+        inbound: { imported: number; durableVerified: boolean };
+        outbound: { sent: number; failed: number; skipped: number };
+        durableVerified: boolean;
+        allowedStudentCodes: string[];
+      }>("gmail_bridge_stage_sync", { method: "POST" });
+      return { success: true, data: result };
+    } catch (err) {
+      logger.error("gmailBridgeStageSync error:", err);
+      return { success: false, error: (err as Error).message };
+    }
+  },
+
+  /* -----------------------------------------------------------
      Gmail: Send Message and Add to Local
      ----------------------------------------------------------- */
   gmailSendAndAdd: async (message: any): Promise<WorkerResponse<{ message: any }>> => {

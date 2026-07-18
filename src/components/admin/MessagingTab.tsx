@@ -5,7 +5,6 @@ import { Button } from "@/components/safe-ui/button";
 import { Badge } from "@/components/safe-ui/badge";
 import { Input } from "@/components/safe-ui/input";
 import { Label } from "@/components/safe-ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/safe-ui/select";
 import { ScrollArea } from "@/components/safe-ui/scroll-area";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/safe-ui/resizable";
 import { 
@@ -135,16 +134,15 @@ export default function MessagingTab() {
   const handleSyncGmail = async () => {
     setIsSyncingGmail(true);
     try {
-      const stageResult = await workerApi.gmailInboundStage();
+      const stageResult = await workerApi.gmailBridgeStageSync();
       if (!stageResult.success || !stageResult.data?.durableVerified) {
-        throw new Error(stageResult.error || 'ייבוא Gmail לא אומת');
+        throw new Error(stageResult.error || 'סנכרון Gmail לא אומת');
       }
       await hybridSync.loadDataOnInit();
       loadData();
-      const imported = stageResult.data.imported || 0;
-      toast.success(imported > 0
-        ? `סנכרון מג'ימייל הושלם — יובאו ${imported} הודעות`
-        : 'סנכרון מג\'ימייל הושלם — אין הודעות חדשות');
+      const imported = stageResult.data.inbound?.imported || 0;
+      const sent = stageResult.data.outbound?.sent || 0;
+      toast.success(`סנכרון Gmail הושלם — התקבלו ${imported}, נשלחו ${sent}`);
     } catch (error) {
       console.error('Gmail sync error:', error);
       toast.error('שגיאה בסנכרון מג\'ימייל');
@@ -287,6 +285,10 @@ export default function MessagingTab() {
   };
 
   const handleSend = async () => {
+    if (composeRecipients.length === 0) {
+      toast.error('נא לבחור לפחות נמענת אחת');
+      return;
+    }
     if (!composeSubject.trim()) {
       toast.error('נא למלא נושא');
       return;
@@ -334,6 +336,21 @@ export default function MessagingTab() {
       inReplyTo: isReplying && selectedMessage ? selectedMessage.id : undefined,
       type: 'general' as const,
     };
+
+    // Explicitly staged test messages are queued for the safe bridge. Normal
+    // production messages retain their existing behaviour until matrix QA ends.
+    if (composeSubject.startsWith('TOBY-BRIDGE-STAGE-')) {
+      addMessage({
+        ...messageData,
+        emailSent: false,
+        emailSource: 'lovable',
+        emailDeliveryStatus: 'pending',
+      });
+      toast.success('הודעת הבדיקה נוספה לתור Gmail המאובטח');
+      resetCompose();
+      loadData();
+      return;
+    }
 
     // Try to send via Gmail if we have recipient emails
     if (recipientEmails.length > 0) {
@@ -1063,22 +1080,44 @@ function ComposeForm({
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>נמענים</Label>
-        <Select
-          value={composeRecipients[0]}
-          onValueChange={(value) => setComposeRecipients([value])}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="בחר נמענים" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">כל התלמידות</SelectItem>
-            {students.map((student) => (
-              <SelectItem key={student.id} value={student.id}>
-                {student.firstName} {student.lastName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="rounded-md border p-2 space-y-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={composeRecipients.includes('all') ? 'default' : 'outline'}
+            onClick={() => setComposeRecipients(['all'])}
+          >
+            כל התלמידות
+          </Button>
+          <ScrollArea className="h-36">
+            <div className="flex flex-wrap gap-2 pe-2">
+              {students.map((student) => {
+                const selected = composeRecipients.includes(student.id);
+                return (
+                  <Button
+                    key={student.id}
+                    type="button"
+                    size="sm"
+                    variant={selected ? 'default' : 'outline'}
+                    onClick={() => setComposeRecipients((current) => {
+                      const withoutAll = current.filter(id => id !== 'all');
+                      return selected
+                        ? withoutAll.filter(id => id !== student.id)
+                        : [...withoutAll, student.id];
+                    })}
+                  >
+                    {student.firstName} {student.lastName}
+                  </Button>
+                );
+              })}
+            </div>
+          </ScrollArea>
+          <p className="text-xs text-muted-foreground">
+            {composeRecipients.includes('all')
+              ? 'נבחרו כל התלמידות'
+              : `נבחרו ${composeRecipients.length} תלמידות`}
+          </p>
+        </div>
       </div>
 
       <div className="space-y-2">

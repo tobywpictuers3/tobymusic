@@ -332,6 +332,12 @@ export interface Message {
   emailSent?: boolean;            // was this sent via email?
   emailSentAt?: string;           // ISO timestamp of email send
   emailSource?: 'lovable' | 'email'; // origin of message
+  emailDeliveryStatus?: 'pending' | 'sent' | 'blocked' | 'failed';
+  emailDeliveryError?: string;
+  emailDeliveredAt?: string;
+  emailDeliveryRoute?: string;
+  emailDeliveryRecipientIds?: string[];
+  emailDeliveryRecipientCount?: number;
   pendingApproval?: boolean;      // student→all: waiting for Toby OK
   approvalRequestedAt?: string;   // when approval was requested
   approvedAt?: string;            // when Toby approved
