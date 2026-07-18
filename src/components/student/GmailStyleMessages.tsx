@@ -5,7 +5,6 @@ import { Button } from "@/components/safe-ui/button";
 import { Badge } from "@/components/safe-ui/badge";
 import { Input } from "@/components/safe-ui/input";
 import { Label } from "@/components/safe-ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/safe-ui/select";
 import { ScrollArea } from "@/components/safe-ui/scroll-area";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/safe-ui/resizable";
 import { 
@@ -259,6 +258,10 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
   };
 
   const handleSend = () => {
+    if (composeRecipients.length === 0) {
+      toast.error('נא לבחור לפחות נמענת אחת');
+      return;
+    }
     if (!composeSubject.trim()) {
       toast.error('נא למלא נושא');
       return;
@@ -278,9 +281,16 @@ export default function GmailStyleMessages({ studentId, studentName }: GmailStyl
       expiresAt: expirationDate ? new Date(expirationDate).toISOString() : undefined,
       inReplyTo: isReplying && selectedMessage ? selectedMessage.id : undefined,
       type: 'general',
+      ...(composeSubject.startsWith('TOBY-BRIDGE-STAGE-') ? {
+        emailSent: false,
+        emailSource: 'lovable' as const,
+        emailDeliveryStatus: 'pending' as const,
+      } : {}),
     });
 
-    toast.success('ההודעה נשלחה בהצלחה');
+    toast.success(composeSubject.startsWith('TOBY-BRIDGE-STAGE-')
+      ? 'הודעת הבדיקה נוספה לתור Gmail המאובטח'
+      : 'ההודעה נשלחה בהצלחה');
     resetCompose();
     loadMessages();
   };
@@ -1006,29 +1016,56 @@ function ComposeForm({
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>נמענים</Label>
-        <Select
-          value={composeRecipients[0]}
-          onValueChange={(value) => setComposeRecipients([value])}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="בחר נמענים" />
-          </SelectTrigger>
-          <SelectContent>
-            {isStudent ? (
-              <>
-                <SelectItem value="admin">למנהל</SelectItem>
-                <SelectItem value="all">לכל התלמידות</SelectItem>
-              </>
-            ) : (
-              <SelectItem value="all">כל התלמידות</SelectItem>
+        <div className="rounded-md border p-2 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {isStudent && (
+              <Button
+                type="button"
+                size="sm"
+                variant={composeRecipients.includes('admin') ? 'default' : 'outline'}
+                onClick={() => setComposeRecipients(['admin'])}
+              >
+                למורה
+              </Button>
             )}
-            {students.map((student) => (
-              <SelectItem key={student.id} value={student.id}>
-                {student.firstName} {student.lastName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <Button
+              type="button"
+              size="sm"
+              variant={composeRecipients.includes('all') ? 'default' : 'outline'}
+              onClick={() => setComposeRecipients(['all'])}
+            >
+              לכל התלמידות
+            </Button>
+          </div>
+          <ScrollArea className="h-36">
+            <div className="flex flex-wrap gap-2 pe-2">
+              {students.map((student) => {
+                const selected = composeRecipients.includes(student.id);
+                return (
+                  <Button
+                    key={student.id}
+                    type="button"
+                    size="sm"
+                    variant={selected ? 'default' : 'outline'}
+                    onClick={() => setComposeRecipients((current) => {
+                      const direct = current.filter(id => id !== 'all' && id !== 'admin');
+                      return selected
+                        ? direct.filter(id => id !== student.id)
+                        : [...direct, student.id];
+                    })}
+                  >
+                    {student.firstName} {student.lastName}
+                  </Button>
+                );
+              })}
+            </div>
+          </ScrollArea>
+          <p className="text-xs text-muted-foreground">
+            {composeRecipients.includes('admin') ? 'נבחרה המורה' :
+              composeRecipients.includes('all') ? 'נבחרו כל התלמידות' :
+              `נבחרו ${composeRecipients.length} תלמידות`}
+          </p>
+        </div>
       </div>
 
       <div className="space-y-2">
