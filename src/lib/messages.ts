@@ -259,8 +259,12 @@ export const getMessagesForAdmin = (includeDeleted: boolean = false): Message[] 
       return false;
     }
     
-    // FIX: Include messages sent TO admin OR sent BY admin
-    return message.recipientIds.includes('admin') || message.senderId === 'admin';
+    // Include direct admin mail, messages sent by admin, and every swap request.
+    // IVR swap recordings are addressed to the swap board ("all"), which the
+    // manager owns even though they are not ordinary inbox messages.
+    return message.recipientIds.includes('admin') ||
+           message.senderId === 'admin' ||
+           message.type === 'swap_request';
   });
 };
 
