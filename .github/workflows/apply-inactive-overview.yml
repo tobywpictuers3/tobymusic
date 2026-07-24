@@ -1,5 +1,6 @@
 name: Apply Persistent Inactive Student Overview
 
+# Trigger existing workflow after initial creation.
 on:
   push:
     branches: [main]
@@ -32,7 +33,6 @@ jobs:
           students_path = Path('src/components/admin/StudentsManagement.tsx')
           text = students_path.read_text(encoding='utf-8')
 
-          # Force a new React array reference after every update.
           text = text.replace(
               '  const refreshStudents = () => {\n    setStudents(getStudents());\n  };',
               '  const refreshStudents = () => {\n    setStudents([...getStudents()]);\n  };',
@@ -78,21 +78,24 @@ jobs:
               if count != 1:
                   raise SystemExit('Could not replace departure handler')
 
-          old_card = '<Card key={student.id} className="hover:shadow-lg transition-shadow">'
-          new_card = '''<Card
+          text = text.replace(
+              '<Card key={student.id} className="hover:shadow-lg transition-shadow">',
+              '''<Card
                   key={student.id}
                   className={student.isActive === false
                     ? "border-2 border-slate-400 bg-slate-100/90 opacity-80 grayscale-[25%] shadow-none transition-all dark:border-slate-600 dark:bg-slate-800/70"
                     : "hover:shadow-lg transition-shadow"
                   }
-                >'''
-          text = text.replace(old_card, new_card, 1)
+                >''',
+              1,
+          )
 
-          old_heading = '''                        <h3 className="font-bold text-lg">
+          text = text.replace(
+              '''                        <h3 className="font-bold text-lg">
                           {student.firstName} {student.lastName}
                         </h3>
-                        {isPerLesson && ('''
-          new_heading = '''                        <h3 className={student.isActive === false ? "font-bold text-lg text-slate-500 line-through" : "font-bold text-lg"}>
+                        {isPerLesson && (''',
+              '''                        <h3 className={student.isActive === false ? "font-bold text-lg text-slate-500 line-through" : "font-bold text-lg"}>
                           {student.firstName} {student.lastName}
                         </h3>
                         {student.isActive === false && (
@@ -101,12 +104,14 @@ jobs:
                             לא פעילה
                           </Badge>
                         )}
-                        {isPerLesson && ('''
-          text = text.replace(old_heading, new_heading, 1)
+                        {isPerLesson && (''',
+              1,
+          )
 
-          old_phone = '''                        <p>📞 {student.phone}</p>
-                        {isPerLesson && ('''
-          new_phone = '''                        <p>📞 {student.phone}</p>
+          text = text.replace(
+              '''                        <p>📞 {student.phone}</p>
+                        {isPerLesson && (''',
+              '''                        <p>📞 {student.phone}</p>
                         {student.isActive === false && (
                           <div className="mt-2 rounded-md border border-slate-300 bg-slate-200/70 p-2 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-700/70 dark:text-slate-200">
                             <p className="font-bold">לא פעילה</p>
@@ -114,10 +119,12 @@ jobs:
                             {student.leftReason && <p>סיבה: {student.leftReason}</p>}
                           </div>
                         )}
-                        {isPerLesson && ('''
-          text = text.replace(old_phone, new_phone, 1)
+                        {isPerLesson && (''',
+              1,
+          )
 
-          old_grid_button = '''                        <Button
+          text = text.replace(
+              '''                        <Button
                           size="sm"
                           variant="outline"
                           className="border-yellow-600 text-yellow-600 hover:bg-yellow-50"
@@ -125,8 +132,8 @@ jobs:
                           title="סמן כ-עזבה (לא ימחק נתונים)"
                         >
                           <DoorOpen className="h-3 w-3" />
-                        </Button>'''
-          new_toggle_button = '''                        <Button
+                        </Button>''',
+              '''                        <Button
                           size="sm"
                           variant="outline"
                           className={student.isActive === false
@@ -138,14 +145,16 @@ jobs:
                           aria-label={student.isActive === false ? "החזירי לפעילות" : "סמני כעזבה"}
                         >
                           <DoorOpen className="h-3 w-3" />
-                        </Button>'''
-          text = text.replace(old_grid_button, new_toggle_button, 1)
+                        </Button>''',
+              1,
+          )
 
-          old_rows = '''                  {students.map((student) => (
+          text = text.replace(
+              '''                  {students.map((student) => (
                     <TableRow key={student.id}>
                       <TableCell className="font-medium">{student.firstName}</TableCell>
-                      <TableCell>{student.lastName}</TableCell>'''
-          new_rows = '''                  {students.map((student) => (
+                      <TableCell>{student.lastName}</TableCell>''',
+              '''                  {students.map((student) => (
                     <TableRow className={student.isActive === false ? "bg-slate-200/70 text-slate-500 opacity-80 dark:bg-slate-800/70" : undefined} key={student.id}>
                       <TableCell className={student.isActive === false ? "font-medium line-through" : "font-medium"}>
                         <div className="flex items-center gap-2">
@@ -155,8 +164,9 @@ jobs:
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className={student.isActive === false ? "line-through" : undefined}>{student.lastName}</TableCell>'''
-          text = text.replace(old_rows, new_rows, 1)
+                      <TableCell className={student.isActive === false ? "line-through" : undefined}>{student.lastName}</TableCell>''',
+              1,
+          )
 
           table_anchor = '''                          <Button
                             size="sm"
@@ -196,7 +206,6 @@ jobs:
           required = [
               'setStudents([...getStudents()])',
               'const handleToggleActive = (student: Student)',
-              'לא פעילה',
               'bg-slate-100/90',
               'onClick={() => handleToggleActive(student)}',
           ]
@@ -205,7 +214,6 @@ jobs:
               raise SystemExit(f'Missing UI changes: {missing}')
           students_path.write_text(text, encoding='utf-8')
 
-          # Make storage updates immutable so every view receives a new reference.
           storage_path = Path('src/lib/storage.ts')
           storage = storage_path.read_text(encoding='utf-8')
           update_pattern = re.compile(
@@ -215,7 +223,6 @@ jobs:
           update_replacement = '''export const updateStudent = (id: string, updatedFields: Partial<Student>): Student | undefined => {
             const students = getStudents();
             const studentIndex = students.findIndex(student => student.id === id);
-
             if (studentIndex === -1) return undefined;
 
             const updatedStudent: Student = {
@@ -237,10 +244,9 @@ jobs:
           };'''
           storage, count = update_pattern.subn(update_replacement, storage, count=1)
           if count != 1:
-              raise SystemExit('Could not replace updateStudent with immutable update')
+              raise SystemExit('Could not replace updateStudent')
           storage_path.write_text(storage, encoding='utf-8')
 
-          # Remove prior DOM decorators; the real component now owns the UI.
           main_path = Path('src/main.tsx')
           main = main_path.read_text(encoding='utf-8')
           main = re.sub(r'import (InactiveStudentStatusDecorator|StudentActiveToggleDecorator) from ".*?";\n', '', main)
