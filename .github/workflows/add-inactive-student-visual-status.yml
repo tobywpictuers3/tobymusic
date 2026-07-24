@@ -1,6 +1,5 @@
-name: Add Inactive Student Visual Status
+name: Toggle Student Active Status
 
-# Merge-trigger marker: apply inactive-student visual distinction on main.
 on:
   workflow_dispatch: {}
   push:
@@ -19,136 +18,171 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Add clear inactive student styling
+      - name: Replace departure marker with active-status toggle
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          path = Path('src/components/admin/StudentsManagement.tsx')
-          text = path.read_text(encoding='utf-8')
+          students_path = Path('src/components/admin/StudentsManagement.tsx')
+          text = students_path.read_text(encoding='utf-8')
 
-          old_card = '<Card key={student.id} className="hover:shadow-lg transition-shadow">'
-          new_card = '''<Card
-                  key={student.id}
-                  className={student.isActive === false
-                    ? "relative overflow-hidden border-2 border-destructive/55 bg-destructive/5 opacity-90 shadow-sm transition-shadow before:absolute before:inset-y-0 before:right-0 before:w-1.5 before:bg-destructive"
-                    : "hover:shadow-lg transition-shadow"
-                  }
-                >'''
-          if old_card in text:
-              text = text.replace(old_card, new_card, 1)
+          # The previous outside decorator is no longer needed.
+          text = text.replace(', UserX, DoorOpen', ', DoorOpen')
 
-          heading_anchor = '''                        <h3 className="font-bold text-lg">
-                           {student.firstName} {student.lastName}
-                         </h3>
-                         {isPerLesson && ('''
-          heading_replacement = '''                        <h3 className={student.isActive === false ? "font-bold text-lg text-muted-foreground line-through decoration-destructive/60" : "font-bold text-lg"}>
-                           {student.firstName} {student.lastName}
-                         </h3>
-                         {student.isActive === false && (
-                           <Badge
-                             variant="destructive"
-                             className="gap-1 whitespace-nowrap text-xs font-bold"
-                             aria-label="תלמידה לא פעילה"
-                           >
-                             <UserX className="h-3.5 w-3.5" aria-hidden="true" />
-                             לא פעילה
-                           </Badge>
-                         )}
-                         {isPerLesson && ('''
-          if heading_anchor in text:
-              text = text.replace(heading_anchor, heading_replacement, 1)
+          handler_pattern = re.compile(
+              r"  const handleMarkLeft = \(student: import\('@/lib/types'\)\.Student\) => \{.*?\n  \};",
+              re.S,
+          )
+          handler_replacement = '''  const handleToggleActive = (student: Student) => {
+    if (student.isActive === false) {
+      updateStudent(student.id, {
+        isActive: true,
+        leftDate: undefined,
+        leftReason: undefined
+      });
+      refreshStudents();
+      toast({
+        title: 'התלמידה חזרה לפעילות',
+        description: `${student.firstName} ${student.lastName} מסומנת שוב כתלמידה פעילה`
+      });
+      return;
+    }
 
-          details_anchor = '''                        <p>📞 {student.phone}</p>
-                         {isPerLesson && ('''
-          details_replacement = '''                        <p>📞 {student.phone}</p>
-                         {student.isActive === false && (
-                           <div className="mt-2 rounded-md border border-destructive/30 bg-background/70 p-2 text-xs text-foreground">
-                             <p className="font-semibold">סטטוס: לא פעילה</p>
-                             {student.leftDate && <p>תאריך סיום: {formatDate(student.leftDate)}</p>}
-                             {student.leftReason && <p>סיבה: {student.leftReason}</p>}
-                           </div>
-                         )}
-                         {isPerLesson && ('''
-          if details_anchor in text:
-              text = text.replace(details_anchor, details_replacement, 1)
+    const reason = window.prompt(
+      `סיבת עזיבה של ${student.firstName} ${student.lastName} (אפשרי לרשום "סיום שנה" / "עברה" / "הפסקה זמנית"):`
+    );
+    if (reason === null) return;
 
-          row_anchor = '''                  {students.map((student) => (
-                     <TableRow key={student.id}>
-                       <TableCell className="font-medium">{student.firstName}</TableCell>
-                       <TableCell>{student.lastName}</TableCell>'''
-          row_replacement = '''                  {students.map((student) => (
-                     <TableRow
-                       key={student.id}
-                       className={student.isActive === false
-                         ? "border-r-4 border-r-destructive bg-destructive/5 text-muted-foreground"
-                         : undefined
-                       }
-                     >
-                       <TableCell className="font-medium">
-                         <div className="flex flex-wrap items-center gap-2">
-                           <span className={student.isActive === false ? "line-through decoration-destructive/60" : undefined}>
-                             {student.firstName}
-                           </span>
-                           {student.isActive === false && (
-                             <Badge variant="destructive" className="gap-1 whitespace-nowrap text-xs font-bold">
-                               <UserX className="h-3.5 w-3.5" aria-hidden="true" />
-                               לא פעילה
-                             </Badge>
-                           )}
-                         </div>
-                       </TableCell>
-                       <TableCell className={student.isActive === false ? "line-through decoration-destructive/60" : undefined}>
-                         {student.lastName}
-                       </TableCell>'''
-          if row_anchor in text:
-              text = text.replace(row_anchor, row_replacement, 1)
+    updateStudent(student.id, {
+      isActive: false,
+      leftDate: new Date().toISOString().split('T')[0],
+      leftReason: reason.trim() || 'לא צוין'
+    });
+    refreshStudents();
+    toast({
+      title: 'התלמידה סומנה כלא פעילה',
+      description: `${student.firstName} לא תקבל עוד דוחות ועדכונים המיועדים לתלמידות פעילות`
+    });
+  };'''
+          text, handler_count = handler_pattern.subn(handler_replacement, text, count=1)
+          if handler_count != 1 and 'const handleToggleActive' not in text:
+              raise SystemExit('Could not replace handleMarkLeft')
 
-          dialog_anchor = '''          <DialogHeader>
-             <DialogTitle>{editingStudent ? 'עריכת תלמידה' : 'הוספת תלמידה חדשה'}</DialogTitle>
-           </DialogHeader>'''
-          dialog_replacement = '''          <DialogHeader>
-             <DialogTitle className="flex flex-wrap items-center gap-2">
-               <span>{editingStudent ? 'עריכת תלמידה' : 'הוספת תלמידה חדשה'}</span>
-               {editingStudent?.isActive === false && (
-                 <Badge variant="destructive" className="gap-1 whitespace-nowrap text-xs font-bold">
-                   <UserX className="h-3.5 w-3.5" aria-hidden="true" />
-                   לא פעילה
-                 </Badge>
-               )}
-             </DialogTitle>
-           </DialogHeader>'''
-          if dialog_anchor in text:
-              text = text.replace(dialog_anchor, dialog_replacement, 1)
+          old_grid_button = '''                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-yellow-600 text-yellow-600 hover:bg-yellow-50"
+                          onClick={() => handleMarkLeft(student)}
+                          title="סמן כ-עזבה (לא ימחק נתונים)"
+                        >
+                          <DoorOpen className="h-3 w-3" />
+                        </Button>'''
+          new_toggle_button = '''                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={student.isActive === false
+                            ? "border-slate-400 bg-slate-200 text-slate-600 hover:bg-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                            : "border-yellow-600 text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-950/30"
+                          }
+                          onClick={() => handleToggleActive(student)}
+                          title={student.isActive === false
+                            ? "החזירי את התלמידה לפעילות"
+                            : "סמני את התלמידה כעזבה"
+                          }
+                          aria-label={student.isActive === false
+                            ? "החזירי את התלמידה לפעילות"
+                            : "סמני את התלמידה כעזבה"
+                          }
+                        >
+                          <DoorOpen className={student.isActive === false ? "h-3 w-3 opacity-60" : "h-3 w-3"} />
+                        </Button>'''
+          if old_grid_button in text:
+              text = text.replace(old_grid_button, new_toggle_button, 1)
+          elif 'onClick={() => handleToggleActive(student)}' not in text:
+              raise SystemExit('Could not replace grid departure button')
+
+          table_edit_button = '''                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditStudent(student)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"'''
+          table_edit_with_toggle = '''                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditStudent(student)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={student.isActive === false
+                              ? "border-slate-400 bg-slate-200 text-slate-600 hover:bg-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                              : "border-yellow-600 text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-950/30"
+                            }
+                            onClick={() => handleToggleActive(student)}
+                            title={student.isActive === false
+                              ? "החזירי את התלמידה לפעילות"
+                              : "סמני את התלמידה כעזבה"
+                            }
+                            aria-label={student.isActive === false
+                              ? "החזירי את התלמידה לפעילות"
+                              : "סמני את התלמידה כעזבה"
+                            }
+                          >
+                            <DoorOpen className={student.isActive === false ? "h-3 w-3 opacity-60" : "h-3 w-3"} />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"'''
+          if table_edit_button in text:
+              text = text.replace(table_edit_button, table_edit_with_toggle, 1)
 
           required = [
-              'aria-label="תלמידה לא פעילה"',
-              'סטטוס: לא פעילה',
-              'border-r-4 border-r-destructive',
-              "editingStudent?.isActive === false",
+              'const handleToggleActive = (student: Student)',
+              'bg-slate-200 text-slate-600',
+              'החזירי את התלמידה לפעילות',
           ]
           missing = [item for item in required if item not in text]
           if missing:
-              raise SystemExit(f'Missing inactive visual patches: {missing}')
+              raise SystemExit(f'Missing active toggle changes: {missing}')
 
-          path.write_text(text, encoding='utf-8')
+          students_path.write_text(text, encoding='utf-8')
+
+          main_path = Path('src/main.tsx')
+          main_text = main_path.read_text(encoding='utf-8')
+          main_text = main_text.replace(
+              'import InactiveStudentStatusDecorator from "./components/admin/InactiveStudentStatusDecorator";\n',
+              '',
+          )
+          main_text = main_text.replace('        <InactiveStudentStatusDecorator />\n', '')
+          main_path.write_text(main_text, encoding='utf-8')
+
+          decorator_path = Path('src/components/admin/InactiveStudentStatusDecorator.tsx')
+          if decorator_path.exists():
+              decorator_path.unlink()
           PY
 
-      - name: Commit visual status
+      - name: Commit toggle behavior
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/admin/StudentsManagement.tsx
+          git add -A src/components/admin/StudentsManagement.tsx src/components/admin/InactiveStudentStatusDecorator.tsx src/main.tsx
           if git diff --cached --quiet; then
-            echo 'Inactive student visual status already present'
+            echo 'Student active-state toggle already present'
           else
-            git commit -m 'Show inactive students clearly in management UI [skip ci]'
+            git commit -m 'Make departure icon toggle student active status [skip ci]'
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
       - name: Build application
-        continue-on-error: true
         run: |
           npm install --no-audit --no-fund
           npm run build
