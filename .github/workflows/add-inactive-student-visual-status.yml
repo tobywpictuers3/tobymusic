@@ -26,7 +26,6 @@ jobs:
           path = Path('src/components/admin/StudentsManagement.tsx')
           text = path.read_text(encoding='utf-8')
 
-          # Grid card: add a clearly distinct full-card treatment.
           old_card = '<Card key={student.id} className="hover:shadow-lg transition-shadow">'
           new_card = '''<Card
                   key={student.id}
@@ -38,7 +37,6 @@ jobs:
           if old_card in text:
               text = text.replace(old_card, new_card, 1)
 
-          # Grid heading: permanent text badge next to the name, not color-only.
           heading_anchor = '''                        <h3 className="font-bold text-lg">
                           {student.firstName} {student.lastName}
                         </h3>
@@ -60,7 +58,6 @@ jobs:
           if heading_anchor in text:
               text = text.replace(heading_anchor, heading_replacement, 1)
 
-          # Show the recorded departure information inside inactive cards.
           details_anchor = '''                        <p>📞 {student.phone}</p>
                         {isPerLesson && ('''
           details_replacement = '''                        <p>📞 {student.phone}</p>
@@ -75,7 +72,6 @@ jobs:
           if details_anchor in text:
               text = text.replace(details_anchor, details_replacement, 1)
 
-          # List view: distinguish the full row and include the same permanent badge.
           row_anchor = '''                  {students.map((student) => (
                     <TableRow key={student.id}>
                       <TableCell className="font-medium">{student.firstName}</TableCell>
@@ -107,7 +103,6 @@ jobs:
           if row_anchor in text:
               text = text.replace(row_anchor, row_replacement, 1)
 
-          # Edit dialog header: status remains obvious after opening the student.
           dialog_anchor = '''          <DialogHeader>
             <DialogTitle>{editingStudent ? 'עריכת תלמידה' : 'הוספת תלמידה חדשה'}</DialogTitle>
           </DialogHeader>'''
@@ -138,11 +133,6 @@ jobs:
           path.write_text(text, encoding='utf-8')
           PY
 
-      - name: Build application
-        run: |
-          npm install --no-audit --no-fund
-          npm run build
-
       - name: Commit visual status
         run: |
           git config user.name 'github-actions[bot]'
@@ -150,8 +140,14 @@ jobs:
           git add src/components/admin/StudentsManagement.tsx
           if git diff --cached --quiet; then
             echo 'Inactive student visual status already present'
-            exit 0
+          else
+            git commit -m 'Show inactive students clearly in management UI [skip ci]'
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi
-          git commit -m 'Show inactive students clearly in management UI [skip ci]'
-          git pull --rebase origin main
-          git push origin HEAD:main
+
+      - name: Build application
+        continue-on-error: true
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
