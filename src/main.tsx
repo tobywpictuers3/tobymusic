@@ -1,7 +1,7 @@
 // src/main.tsx
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
-import InactiveStudentStatusDecorator from "./components/admin/InactiveStudentStatusDecorator";
+import StudentActiveToggleDecorator from "./components/admin/StudentActiveToggleDecorator";
 import "./index.css";
 
 import { ThemeProvider } from "./brand/ThemeProvider";
@@ -172,7 +172,7 @@ async function initializeApp() {
     // ✅ Render app with ThemeProvider only (no BrandProvider -> no duplicates)
     createRoot(root).render(
       <ThemeProvider defaultTheme="system">
-        <InactiveStudentStatusDecorator />
+        <StudentActiveToggleDecorator />
         <App />
       </ThemeProvider>
     );
