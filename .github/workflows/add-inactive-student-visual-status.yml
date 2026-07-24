@@ -1,0 +1,157 @@
+name: Add Inactive Student Visual Status
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-inactive-student-visual-status.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add clear inactive student styling
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/admin/StudentsManagement.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          # Grid card: add a clearly distinct full-card treatment.
+          old_card = '<Card key={student.id} className="hover:shadow-lg transition-shadow">'
+          new_card = '''<Card
+                  key={student.id}
+                  className={student.isActive === false
+                    ? "relative overflow-hidden border-2 border-destructive/55 bg-destructive/5 opacity-90 shadow-sm transition-shadow before:absolute before:inset-y-0 before:right-0 before:w-1.5 before:bg-destructive"
+                    : "hover:shadow-lg transition-shadow"
+                  }
+                >'''
+          if old_card in text:
+              text = text.replace(old_card, new_card, 1)
+
+          # Grid heading: permanent text badge next to the name, not color-only.
+          heading_anchor = '''                        <h3 className="font-bold text-lg">
+                          {student.firstName} {student.lastName}
+                        </h3>
+                        {isPerLesson && ('''
+          heading_replacement = '''                        <h3 className={student.isActive === false ? "font-bold text-lg text-muted-foreground line-through decoration-destructive/60" : "font-bold text-lg"}>
+                          {student.firstName} {student.lastName}
+                        </h3>
+                        {student.isActive === false && (
+                          <Badge
+                            variant="destructive"
+                            className="gap-1 whitespace-nowrap text-xs font-bold"
+                            aria-label="תלמידה לא פעילה"
+                          >
+                            <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                            לא פעילה
+                          </Badge>
+                        )}
+                        {isPerLesson && ('''
+          if heading_anchor in text:
+              text = text.replace(heading_anchor, heading_replacement, 1)
+
+          # Show the recorded departure information inside inactive cards.
+          details_anchor = '''                        <p>📞 {student.phone}</p>
+                        {isPerLesson && ('''
+          details_replacement = '''                        <p>📞 {student.phone}</p>
+                        {student.isActive === false && (
+                          <div className="mt-2 rounded-md border border-destructive/30 bg-background/70 p-2 text-xs text-foreground">
+                            <p className="font-semibold">סטטוס: לא פעילה</p>
+                            {student.leftDate && <p>תאריך סיום: {formatDate(student.leftDate)}</p>}
+                            {student.leftReason && <p>סיבה: {student.leftReason}</p>}
+                          </div>
+                        )}
+                        {isPerLesson && ('''
+          if details_anchor in text:
+              text = text.replace(details_anchor, details_replacement, 1)
+
+          # List view: distinguish the full row and include the same permanent badge.
+          row_anchor = '''                  {students.map((student) => (
+                    <TableRow key={student.id}>
+                      <TableCell className="font-medium">{student.firstName}</TableCell>
+                      <TableCell>{student.lastName}</TableCell>'''
+          row_replacement = '''                  {students.map((student) => (
+                    <TableRow
+                      key={student.id}
+                      className={student.isActive === false
+                        ? "border-r-4 border-r-destructive bg-destructive/5 text-muted-foreground"
+                        : undefined
+                      }
+                    >
+                      <TableCell className="font-medium">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={student.isActive === false ? "line-through decoration-destructive/60" : undefined}>
+                            {student.firstName}
+                          </span>
+                          {student.isActive === false && (
+                            <Badge variant="destructive" className="gap-1 whitespace-nowrap text-xs font-bold">
+                              <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                              לא פעילה
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className={student.isActive === false ? "line-through decoration-destructive/60" : undefined}>
+                        {student.lastName}
+                      </TableCell>'''
+          if row_anchor in text:
+              text = text.replace(row_anchor, row_replacement, 1)
+
+          # Edit dialog header: status remains obvious after opening the student.
+          dialog_anchor = '''          <DialogHeader>
+            <DialogTitle>{editingStudent ? 'עריכת תלמידה' : 'הוספת תלמידה חדשה'}</DialogTitle>
+          </DialogHeader>'''
+          dialog_replacement = '''          <DialogHeader>
+            <DialogTitle className="flex flex-wrap items-center gap-2">
+              <span>{editingStudent ? 'עריכת תלמידה' : 'הוספת תלמידה חדשה'}</span>
+              {editingStudent?.isActive === false && (
+                <Badge variant="destructive" className="gap-1 whitespace-nowrap text-xs font-bold">
+                  <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                  לא פעילה
+                </Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>'''
+          if dialog_anchor in text:
+              text = text.replace(dialog_anchor, dialog_replacement, 1)
+
+          required = [
+              'aria-label="תלמידה לא פעילה"',
+              'סטטוס: לא פעילה',
+              'border-r-4 border-r-destructive',
+              "editingStudent?.isActive === false",
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit(f'Missing inactive visual patches: {missing}')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Build application
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Commit visual status
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/admin/StudentsManagement.tsx
+          if git diff --cached --quiet; then
+            echo 'Inactive student visual status already present'
+            exit 0
+          fi
+          git commit -m 'Show inactive students clearly in management UI [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
