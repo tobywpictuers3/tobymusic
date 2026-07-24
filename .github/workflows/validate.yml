@@ -13,10 +13,252 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+
+      - name: Apply persistent inactive-student overview
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          students_path = Path('src/components/admin/StudentsManagement.tsx')
+          text = students_path.read_text(encoding='utf-8')
+
+          text = text.replace(
+              '  const refreshStudents = () => {\n    setStudents(getStudents());\n  };',
+              '  const refreshStudents = () => {\n    setStudents([...getStudents()]);\n  };',
+          )
+
+          handler_pattern = re.compile(
+              r"  const handleMarkLeft = \(student: import\('@/lib/types'\)\.Student\) => \{.*?\n  \};",
+              re.S,
+          )
+          handler_replacement = '''  const handleToggleActive = (student: Student) => {
+            if (student.isActive === false) {
+              updateStudent(student.id, {
+                isActive: true,
+                leftDate: undefined,
+                leftReason: undefined
+              });
+              refreshStudents();
+              toast({
+                title: 'התלמידה חזרה לפעילות',
+                description: `${student.firstName} ${student.lastName} מסומנת שוב כתלמידה פעילה`
+              });
+              return;
+            }
+
+            const reason = window.prompt(
+              `סיבת עזיבה של ${student.firstName} ${student.lastName} (אפשר לרשום: סיום שנה / עברה / הפסקה זמנית):`
+            );
+            if (reason === null) return;
+
+            updateStudent(student.id, {
+              isActive: false,
+              leftDate: new Date().toISOString().split('T')[0],
+              leftReason: reason.trim() || 'לא צוין'
+            });
+            refreshStudents();
+            toast({
+              title: 'התלמידה סומנה כלא פעילה',
+              description: 'הכרטיס שלה מסומן כעת באפור בסקירת התלמידות'
+            });
+          };'''
+          if 'const handleToggleActive = (student: Student)' not in text:
+              text, count = handler_pattern.subn(handler_replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit('Could not replace handleMarkLeft')
+
+          text = text.replace(
+              '<Card key={student.id} className="hover:shadow-lg transition-shadow">',
+              '''<Card
+                  key={student.id}
+                  className={student.isActive === false
+                    ? "border-2 border-slate-400 bg-slate-100/90 opacity-80 grayscale-[25%] shadow-none transition-all dark:border-slate-600 dark:bg-slate-800/70"
+                    : "hover:shadow-lg transition-shadow"
+                  }
+                >''',
+              1,
+          )
+
+          text = text.replace(
+              '''                        <h3 className="font-bold text-lg">
+                          {student.firstName} {student.lastName}
+                        </h3>
+                        {isPerLesson && (''',
+              '''                        <h3 className={student.isActive === false ? "font-bold text-lg text-slate-500 line-through" : "font-bold text-lg"}>
+                          {student.firstName} {student.lastName}
+                        </h3>
+                        {student.isActive === false && (
+                          <Badge className="gap-1 bg-slate-500 text-white hover:bg-slate-500">
+                            <UserX className="h-3.5 w-3.5" />
+                            לא פעילה
+                          </Badge>
+                        )}
+                        {isPerLesson && (''',
+              1,
+          )
+
+          text = text.replace(
+              '''                        <p>📞 {student.phone}</p>
+                        {isPerLesson && (''',
+              '''                        <p>📞 {student.phone}</p>
+                        {student.isActive === false && (
+                          <div className="mt-2 rounded-md border border-slate-300 bg-slate-200/70 p-2 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-700/70 dark:text-slate-200">
+                            <p className="font-bold">לא פעילה</p>
+                            {student.leftDate && <p>מתאריך: {formatDate(student.leftDate)}</p>}
+                            {student.leftReason && <p>סיבה: {student.leftReason}</p>}
+                          </div>
+                        )}
+                        {isPerLesson && (''',
+              1,
+          )
+
+          text = text.replace(
+              '''                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-yellow-600 text-yellow-600 hover:bg-yellow-50"
+                          onClick={() => handleMarkLeft(student)}
+                          title="סמן כ-עזבה (לא ימחק נתונים)"
+                        >
+                          <DoorOpen className="h-3 w-3" />
+                        </Button>''',
+              '''                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={student.isActive === false
+                            ? "border-slate-400 bg-slate-300 text-slate-700 hover:bg-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+                            : "border-yellow-600 text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-950/30"
+                          }
+                          onClick={() => handleToggleActive(student)}
+                          title={student.isActive === false ? "החזירי לפעילות" : "סמני כעזבה"}
+                          aria-label={student.isActive === false ? "החזירי לפעילות" : "סמני כעזבה"}
+                        >
+                          <DoorOpen className="h-3 w-3" />
+                        </Button>''',
+              1,
+          )
+
+          text = text.replace(
+              '''                  {students.map((student) => (
+                    <TableRow key={student.id}>
+                      <TableCell className="font-medium">{student.firstName}</TableCell>
+                      <TableCell>{student.lastName}</TableCell>''',
+              '''                  {students.map((student) => (
+                    <TableRow className={student.isActive === false ? "bg-slate-200/70 text-slate-500 opacity-80 dark:bg-slate-800/70" : undefined} key={student.id}>
+                      <TableCell className={student.isActive === false ? "font-medium line-through" : "font-medium"}>
+                        <div className="flex items-center gap-2">
+                          {student.firstName}
+                          {student.isActive === false && (
+                            <Badge className="bg-slate-500 text-white hover:bg-slate-500">לא פעילה</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className={student.isActive === false ? "line-through" : undefined}>{student.lastName}</TableCell>''',
+              1,
+          )
+
+          table_anchor = '''                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditStudent(student)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"'''
+          table_replacement = '''                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditStudent(student)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={student.isActive === false
+                              ? "border-slate-400 bg-slate-300 text-slate-700 hover:bg-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                              : "border-yellow-600 text-yellow-600 hover:bg-yellow-50"
+                            }
+                            onClick={() => handleToggleActive(student)}
+                            title={student.isActive === false ? "החזירי לפעילות" : "סמני כעזבה"}
+                          >
+                            <DoorOpen className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"'''
+          table_section = text[text.find('<TableBody>'):]
+          if 'onClick={() => handleToggleActive(student)}' not in table_section:
+              text = text.replace(table_anchor, table_replacement, 1)
+
+          required = [
+              'setStudents([...getStudents()])',
+              'const handleToggleActive = (student: Student)',
+              'bg-slate-100/90',
+              'לא פעילה',
+              'onClick={() => handleToggleActive(student)}',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit(f'Missing required overview changes: {missing}')
+          students_path.write_text(text, encoding='utf-8')
+
+          storage_path = Path('src/lib/storage.ts')
+          storage = storage_path.read_text(encoding='utf-8')
+          update_pattern = re.compile(
+              r"export const updateStudent = \(id: string, updatedFields: Partial<Student>\): Student \| undefined => \{.*?\n\};",
+              re.S,
+          )
+          update_replacement = '''export const updateStudent = (id: string, updatedFields: Partial<Student>): Student | undefined => {
+            const students = getStudents();
+            const studentIndex = students.findIndex(student => student.id === id);
+            if (studentIndex === -1) return undefined;
+
+            const updatedStudent: Student = {
+              ...students[studentIndex],
+              ...updatedFields,
+              lastModified: new Date().toISOString()
+            };
+            const updatedStudents = students.map((student, index) =>
+              index === studentIndex ? updatedStudent : student
+            );
+
+            if (isDevMode()) {
+              devData['students'] = updatedStudents;
+            } else {
+              inMemoryStorage['students'] = updatedStudents;
+              hybridSync.onDataChange();
+            }
+            return updatedStudent;
+          };'''
+          storage, count = update_pattern.subn(update_replacement, storage, count=1)
+          if count != 1:
+              raise SystemExit('Could not make updateStudent immutable')
+          storage_path.write_text(storage, encoding='utf-8')
+
+          main_path = Path('src/main.tsx')
+          main = main_path.read_text(encoding='utf-8')
+          main = re.sub(r'import (InactiveStudentStatusDecorator|StudentActiveToggleDecorator) from ".*?";\n', '', main)
+          main = re.sub(r'\s*<(InactiveStudentStatusDecorator|StudentActiveToggleDecorator) />\n', '\n', main)
+          main_path.write_text(main, encoding='utf-8')
+
+          for obsolete in [
+              Path('src/components/admin/InactiveStudentStatusDecorator.tsx'),
+              Path('src/components/admin/StudentActiveToggleDecorator.tsx'),
+              Path('.github/workflows/apply-inactive-overview.yml'),
+          ]:
+              if obsolete.exists(): obsolete.unlink()
+          PY
+
       - name: Build and record result
         run: |
           set +e
@@ -36,8 +278,7 @@ jobs:
           build_status = int(sys.argv[2])
           def tail(path, limit=5000):
               try:
-                  text = Path(path).read_text(encoding='utf-8', errors='replace')
-                  return text[-limit:]
+                  return Path(path).read_text(encoding='utf-8', errors='replace')[-limit:]
               except Exception:
                   return ''
           report = {
@@ -52,12 +293,81 @@ jobs:
           Path('diagnostics').mkdir(exist_ok=True)
           Path('diagnostics/platform-build.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
+
+          cat > .github/workflows/validate.yml <<'YAML'
+          name: Validate TobyMusic Platform
+
+          on:
+            push:
+              branches: [main]
+            workflow_dispatch: {}
+
+          permissions:
+            contents: write
+
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: 20
+                    cache: npm
+                - name: Build and record result
+                  run: |
+                    set +e
+                    npm ci > /tmp/npm-ci.log 2>&1
+                    INSTALL_STATUS=$?
+                    if [ "$INSTALL_STATUS" -eq 0 ]; then
+                      npm run build > /tmp/npm-build.log 2>&1
+                      BUILD_STATUS=$?
+                    else
+                      BUILD_STATUS=99
+                    fi
+                    python3 - "$INSTALL_STATUS" "$BUILD_STATUS" <<'PY'
+                    import json, sys
+                    from datetime import datetime, timezone
+                    from pathlib import Path
+                    install_status = int(sys.argv[1])
+                    build_status = int(sys.argv[2])
+                    def tail(path, limit=5000):
+                        try:
+                            text = Path(path).read_text(encoding='utf-8', errors='replace')
+                            return text[-limit:]
+                        except Exception:
+                            return ''
+                    report = {
+                        'generatedAt': datetime.now(timezone.utc).isoformat(),
+                        'installPassed': install_status == 0,
+                        'buildPassed': build_status == 0,
+                        'installExitCode': install_status,
+                        'buildExitCode': build_status,
+                        'installLogTail': tail('/tmp/npm-ci.log'),
+                        'buildLogTail': tail('/tmp/npm-build.log'),
+                    }
+                    Path('diagnostics').mkdir(exist_ok=True)
+                    Path('diagnostics/platform-build.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+                    PY
+                    git config user.name 'github-actions[bot]'
+                    git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+                    git add diagnostics/platform-build.json
+                    git commit -m 'Update platform build validation [skip ci]'
+                    git pull --rebase origin main
+                    git push
+                    if [ "$INSTALL_STATUS" -ne 0 ] || [ "$BUILD_STATUS" -ne 0 ]; then
+                      echo 'Platform validation failed.'
+                      exit 1
+                    fi
+          YAML
+
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add diagnostics/platform-build.json
-          git commit -m 'Update platform build validation [skip ci]'
+          git add -A
+          git commit -m 'Persist inactive students and show them in overview [skip ci]'
           git pull --rebase origin main
           git push
+
           if [ "$INSTALL_STATUS" -ne 0 ] || [ "$BUILD_STATUS" -ne 0 ]; then
             echo 'Platform validation failed.'
             exit 1
