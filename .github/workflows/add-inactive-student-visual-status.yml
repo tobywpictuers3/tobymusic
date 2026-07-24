@@ -1,5 +1,6 @@
 name: Add Inactive Student Visual Status
 
+# Merge-trigger marker: apply inactive-student visual distinction on main.
 on:
   workflow_dispatch: {}
   push:
@@ -38,85 +39,85 @@ jobs:
               text = text.replace(old_card, new_card, 1)
 
           heading_anchor = '''                        <h3 className="font-bold text-lg">
-                          {student.firstName} {student.lastName}
-                        </h3>
-                        {isPerLesson && ('''
+                           {student.firstName} {student.lastName}
+                         </h3>
+                         {isPerLesson && ('''
           heading_replacement = '''                        <h3 className={student.isActive === false ? "font-bold text-lg text-muted-foreground line-through decoration-destructive/60" : "font-bold text-lg"}>
-                          {student.firstName} {student.lastName}
-                        </h3>
-                        {student.isActive === false && (
-                          <Badge
-                            variant="destructive"
-                            className="gap-1 whitespace-nowrap text-xs font-bold"
-                            aria-label="תלמידה לא פעילה"
-                          >
-                            <UserX className="h-3.5 w-3.5" aria-hidden="true" />
-                            לא פעילה
-                          </Badge>
-                        )}
-                        {isPerLesson && ('''
+                           {student.firstName} {student.lastName}
+                         </h3>
+                         {student.isActive === false && (
+                           <Badge
+                             variant="destructive"
+                             className="gap-1 whitespace-nowrap text-xs font-bold"
+                             aria-label="תלמידה לא פעילה"
+                           >
+                             <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                             לא פעילה
+                           </Badge>
+                         )}
+                         {isPerLesson && ('''
           if heading_anchor in text:
               text = text.replace(heading_anchor, heading_replacement, 1)
 
           details_anchor = '''                        <p>📞 {student.phone}</p>
-                        {isPerLesson && ('''
+                         {isPerLesson && ('''
           details_replacement = '''                        <p>📞 {student.phone}</p>
-                        {student.isActive === false && (
-                          <div className="mt-2 rounded-md border border-destructive/30 bg-background/70 p-2 text-xs text-foreground">
-                            <p className="font-semibold">סטטוס: לא פעילה</p>
-                            {student.leftDate && <p>תאריך סיום: {formatDate(student.leftDate)}</p>}
-                            {student.leftReason && <p>סיבה: {student.leftReason}</p>}
-                          </div>
-                        )}
-                        {isPerLesson && ('''
+                         {student.isActive === false && (
+                           <div className="mt-2 rounded-md border border-destructive/30 bg-background/70 p-2 text-xs text-foreground">
+                             <p className="font-semibold">סטטוס: לא פעילה</p>
+                             {student.leftDate && <p>תאריך סיום: {formatDate(student.leftDate)}</p>}
+                             {student.leftReason && <p>סיבה: {student.leftReason}</p>}
+                           </div>
+                         )}
+                         {isPerLesson && ('''
           if details_anchor in text:
               text = text.replace(details_anchor, details_replacement, 1)
 
           row_anchor = '''                  {students.map((student) => (
-                    <TableRow key={student.id}>
-                      <TableCell className="font-medium">{student.firstName}</TableCell>
-                      <TableCell>{student.lastName}</TableCell>'''
+                     <TableRow key={student.id}>
+                       <TableCell className="font-medium">{student.firstName}</TableCell>
+                       <TableCell>{student.lastName}</TableCell>'''
           row_replacement = '''                  {students.map((student) => (
-                    <TableRow
-                      key={student.id}
-                      className={student.isActive === false
-                        ? "border-r-4 border-r-destructive bg-destructive/5 text-muted-foreground"
-                        : undefined
-                      }
-                    >
-                      <TableCell className="font-medium">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={student.isActive === false ? "line-through decoration-destructive/60" : undefined}>
-                            {student.firstName}
-                          </span>
-                          {student.isActive === false && (
-                            <Badge variant="destructive" className="gap-1 whitespace-nowrap text-xs font-bold">
-                              <UserX className="h-3.5 w-3.5" aria-hidden="true" />
-                              לא פעילה
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className={student.isActive === false ? "line-through decoration-destructive/60" : undefined}>
-                        {student.lastName}
-                      </TableCell>'''
+                     <TableRow
+                       key={student.id}
+                       className={student.isActive === false
+                         ? "border-r-4 border-r-destructive bg-destructive/5 text-muted-foreground"
+                         : undefined
+                       }
+                     >
+                       <TableCell className="font-medium">
+                         <div className="flex flex-wrap items-center gap-2">
+                           <span className={student.isActive === false ? "line-through decoration-destructive/60" : undefined}>
+                             {student.firstName}
+                           </span>
+                           {student.isActive === false && (
+                             <Badge variant="destructive" className="gap-1 whitespace-nowrap text-xs font-bold">
+                               <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                               לא פעילה
+                             </Badge>
+                           )}
+                         </div>
+                       </TableCell>
+                       <TableCell className={student.isActive === false ? "line-through decoration-destructive/60" : undefined}>
+                         {student.lastName}
+                       </TableCell>'''
           if row_anchor in text:
               text = text.replace(row_anchor, row_replacement, 1)
 
           dialog_anchor = '''          <DialogHeader>
-            <DialogTitle>{editingStudent ? 'עריכת תלמידה' : 'הוספת תלמידה חדשה'}</DialogTitle>
-          </DialogHeader>'''
+             <DialogTitle>{editingStudent ? 'עריכת תלמידה' : 'הוספת תלמידה חדשה'}</DialogTitle>
+           </DialogHeader>'''
           dialog_replacement = '''          <DialogHeader>
-            <DialogTitle className="flex flex-wrap items-center gap-2">
-              <span>{editingStudent ? 'עריכת תלמידה' : 'הוספת תלמידה חדשה'}</span>
-              {editingStudent?.isActive === false && (
-                <Badge variant="destructive" className="gap-1 whitespace-nowrap text-xs font-bold">
-                  <UserX className="h-3.5 w-3.5" aria-hidden="true" />
-                  לא פעילה
-                </Badge>
-              )}
-            </DialogTitle>
-          </DialogHeader>'''
+             <DialogTitle className="flex flex-wrap items-center gap-2">
+               <span>{editingStudent ? 'עריכת תלמידה' : 'הוספת תלמידה חדשה'}</span>
+               {editingStudent?.isActive === false && (
+                 <Badge variant="destructive" className="gap-1 whitespace-nowrap text-xs font-bold">
+                   <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                   לא פעילה
+                 </Badge>
+               )}
+             </DialogTitle>
+           </DialogHeader>'''
           if dialog_anchor in text:
               text = text.replace(dialog_anchor, dialog_replacement, 1)
 
