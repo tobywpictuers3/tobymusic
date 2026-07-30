@@ -28,7 +28,7 @@ import PerformancesManagement from '@/components/admin/PerformancesManagement';
 import BackupImport from '@/components/admin/BackupImport';
 import BackupHistory from '@/components/admin/BackupHistory';
 import AdminPracticeStats from '@/components/admin/AdminPracticeStats';
-import MessagingTab from '@/components/admin/MessagingTab';
+import MessagingHub from '@/components/admin/MessagingHub';
 import GlobalMessageAdminTools from '@/components/admin/GlobalMessageAdminTools';
 import FixedScheduleTab from '@/components/admin/FixedScheduleTab';
 import YemotSettingsCard from '@/components/admin/YemotSettingsCard';
@@ -308,7 +308,7 @@ const AdminDashboard = () => {
               <TabsContent value="messages" className="fade-slide-in">
                 <BrandSection index={2}>
                   <GlobalMessageAdminTools />
-                  <MessagingTab />
+                  <MessagingHub />
                 </BrandSection>
               </TabsContent>
 
