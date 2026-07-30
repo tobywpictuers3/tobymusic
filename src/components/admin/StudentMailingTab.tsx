@@ -67,6 +67,7 @@ export default function StudentMailingTab() {
 
   const bridgeRef = useRef<Window | null>(null);
   const queuedRef = useRef<BridgeMessage | null>(null);
+  const afterSyncRef = useRef<BridgeMessage | null>(null);
   const syncedAfterConnectRef = useRef(false);
   const htmlRef = useRef<HTMLTextAreaElement>(null);
 
@@ -103,6 +104,7 @@ export default function StudentMailingTab() {
     const popup = window.open(BRIDGE_URL, 'toby-students-mail-bridge', 'width=580,height=720,resizable=yes,scrollbars=yes');
     if (!popup) {
       setState('הדפדפן חסם את חלון החיבור. אשרי חלונות קופצים לאתר ונסי שוב.');
+      setBusy(false);
       return false;
     }
     bridgeRef.current = popup;
@@ -110,7 +112,8 @@ export default function StudentMailingTab() {
     return true;
   };
 
-  const sendSync = () => {
+  const sendSync = (after?: BridgeMessage) => {
+    if (after) afterSyncRef.current = after;
     const rows = studentsPayload();
     setBusy(true);
     setSyncResult(`מסנכרנת ${rows.length} כתובות תלמידות…`);
@@ -136,8 +139,7 @@ export default function StudentMailingTab() {
         if (queued && bridgeRef.current) {
           bridgeRef.current.postMessage(queued, SITE_ORIGIN);
         } else if (!syncedAfterConnectRef.current) {
-          syncedAfterConnectRef.current = true;
-          setTimeout(sendSync, 50);
+          setTimeout(() => sendSync(), 50);
         }
         return;
       }
@@ -145,13 +147,24 @@ export default function StudentMailingTab() {
       if (data.type === 'TOBY_STUDENTS_SYNC_RESULT') {
         setBusy(false);
         if (data.ok) {
+          syncedAfterConnectRef.current = true;
           setSyncResult(`סונכרן ✅ · חשבון 1: ${data.account1?.desired ?? 0} · חשבון 2: ${data.account2?.desired ?? 0}`);
           setLists({
             account1: { id: data.account1?.listId, count: data.account1?.desired ?? 0 },
             account2: { id: data.account2?.listId, count: data.account2?.desired ?? 0 },
           });
+          const after = afterSyncRef.current;
+          afterSyncRef.current = null;
+          if (after && bridgeRef.current && !bridgeRef.current.closed) {
+            setBusy(true);
+            if (after.action === 'prepare') setState('הרשימה מעודכנת. מכינה עכשיו את הקמפיין ב-Brevo…');
+            if (after.action === 'send') setState('הרשימה מעודכנת. שולחת עכשיו לתלמידות…');
+            bridgeRef.current.postMessage(after, SITE_ORIGIN);
+          }
         } else {
+          afterSyncRef.current = null;
           setSyncResult(`הסנכרון נכשל: ${data.error || 'שגיאה לא ידועה'}`);
+          setState('הפעולה נעצרה כדי שלא תישלח תפוצה לרשימת תלמידות לא מעודכנת.');
         }
         return;
       }
@@ -192,13 +205,13 @@ export default function StudentMailingTab() {
       if (data.type === 'TOBY_STUDENTS_BRIDGE_ERROR') {
         setBusy(false);
         setBridgeReady(false);
+        afterSyncRef.current = null;
         setState('החיבור לאתר דורש התחברות מחדש. פתחי את חלון החיבור והתחברי בקוד המנהלת.');
       }
     };
 
     window.addEventListener('message', listener);
     return () => window.removeEventListener('message', listener);
-    // sendSync is intentionally invoked only after the READY handshake.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridgeReady, draftId]);
 
@@ -210,9 +223,15 @@ export default function StudentMailingTab() {
 
   const runMailAction = (action: 'test' | 'prepare') => {
     if (!validate()) return;
-    setBusy(true);
-    setState(action === 'test' ? 'שולחת טסט…' : 'מכינה ב-Brevo…');
-    postToBridge({ type: 'TOBY_STUDENTS_MAIL', action, subject, bodyHtml: currentBody });
+    const message: BridgeMessage = { type: 'TOBY_STUDENTS_MAIL', action, subject, bodyHtml: currentBody };
+    if (action === 'test') {
+      setBusy(true);
+      setState('שולחת טסט…');
+      postToBridge(message);
+      return;
+    }
+    setState('מסנכרנת קודם את רשימת התלמידות העדכנית…');
+    sendSync(message);
   };
 
   const sendFinal = () => {
@@ -220,9 +239,8 @@ export default function StudentMailingTab() {
     const c1 = lists?.account1?.count ?? 0;
     const c2 = lists?.account2?.count ?? 0;
     if (!window.confirm(`שליחה סופית לתלמידות בלבד.\nחשבון 1: ${c1}\nחשבון 2: ${c2}\n\nלשלוח עכשיו?`)) return;
-    setBusy(true);
-    setState('שולחת לתלמידות…');
-    postToBridge({ type: 'TOBY_STUDENTS_MAIL', action: 'send', draftId, confirmSend: true, subject, bodyHtml: currentBody });
+    setState('מסנכרנת שוב את רשימת התלמידות לפני השליחה הסופית…');
+    sendSync({ type: 'TOBY_STUDENTS_MAIL', action: 'send', draftId, confirmSend: true, subject, bodyHtml: currentBody });
   };
 
   const insertBlock = (html: string) => {
@@ -260,7 +278,7 @@ export default function StudentMailingTab() {
               <Button type="button" variant="outline" size="sm" onClick={() => postToBridge({ type: 'TOBY_STUDENTS_STATUS', draftId: draftId || null })}>
                 <ExternalLink className="h-4 w-4 ml-1" /> {bridgeReady ? 'מחובר לאתר' : 'חיבור מאובטח לאתר'}
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={sendSync} disabled={busy}>
+              <Button type="button" variant="outline" size="sm" onClick={() => sendSync()} disabled={busy}>
                 <RefreshCw className={`h-4 w-4 ml-1 ${busy ? 'animate-spin' : ''}`} /> סנכרון תלמידות
               </Button>
             </div>
