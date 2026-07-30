@@ -26,12 +26,23 @@ export function toLightBody(body: string): string {
   return out;
 }
 
+function upgradeLegacyTypography(body: string): string {
+  return body
+    .replace(/font-size:19px/gi, "font-size:22px")
+    .replace(/font-size:15px/gi, "font-size:20px")
+    .replace(/font-size:32px;font-weight:700;color:#FFE5A0;margin:0 0 22px/gi, "font-size:36px;font-weight:700;color:#FFE5A0;margin:0 0 26px")
+    .replace(/font-size:24px;font-weight:700;color:#FFE5A0;line-height:1\.6;margin:0 0 22px/gi, "font-size:28px;font-weight:700;color:#FFE5A0;line-height:1.6;margin:0 0 24px")
+    .replace(/font-size:21px;font-style:italic;color:#C9A961;margin:0 0 22px/gi, "font-size:26px;font-style:italic;color:#C9A961;margin:0 0 24px")
+    .replace(/font-size:18px;border-radius:8px;text-decoration:none/gi, "font-size:21px;border-radius:8px;text-decoration:none");
+}
+
 type WrapOpts = { theme?: "dark" | "light" };
 
 export function wrapTobyEmail(subject: string, body: string, opts: WrapOpts = {}): string {
   const light = opts.theme === "light";
   const rawInner = /<[a-z][\s\S]*>/i.test(body) ? body : escHtml(body).replace(/\n/g, "<br>");
-  const inner = light ? toLightBody(rawInner) : rawInner;
+  const upgradedInner = upgradeLegacyTypography(rawInner);
+  const inner = light ? toLightBody(upgradedInner) : upgradedInner;
   const pageBg = light ? "#E9DFC9" : "#0F0F12";
   const cardBg = light ? "#FBF6EC" : "#0F0F12";
   const headerBg = light ? "#FBF6EC" : "#0F0F12";
