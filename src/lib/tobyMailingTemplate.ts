@@ -10,6 +10,7 @@ export function escHtml(s: unknown): string {
 
 const LOGO_WHITE = "https://tobymusic.club/assets/brand/logo-white.webp";
 const LOGO_BLACK = "https://tobymusic.club/assets/brand/logo-dark-t.webp";
+const NEWSLETTER_JOIN_URL = "https://tobymusic.club/members";
 
 export function toLightBody(body: string): string {
   const map: [RegExp, string][] = [
@@ -53,6 +54,7 @@ export function wrapTobyEmail(subject: string, body: string, opts: WrapOpts = {}
 <p style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:12px;color:${footerText};margin:0 0 6px;line-height:1.7;">קלידנית · חלילנית · מנהלת תזמורת · הוראת פסנתר וחליל צד</p>
 <p style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:12px;color:${footerText};margin:0 0 8px;">050-412-4161</p>
 <p style="font-family:Georgia,'Times New Roman',serif;font-size:13px;font-style:italic;color:${footerSlogan};margin:0 0 12px;">"אומנות ואמינות, זו יצירה"</p>
+<p style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:12px;color:${footerText};margin:0 0 12px;line-height:1.7;">רוצה לשתף חברה? מוזמנת בשמחה לשלוח לה הזמנה להצטרף לתפוצה<br><a href="${NEWSLETTER_JOIN_URL}" title="קישור הרשמה לתפוצה של טובי" style="color:${footerSlogan};font-weight:700;text-decoration:underline;">קישור הרשמה לתפוצה של טובי</a></p>
 <p style="font-family:Arial,sans-serif;font-size:11px;color:${footerFine};margin:0;line-height:1.6;">תפוצת התלמידות של TOBY music</p>
 </td></tr></table></td></tr></table></body></html>`;
 }
