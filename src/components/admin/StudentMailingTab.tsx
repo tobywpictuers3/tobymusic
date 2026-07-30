@@ -192,7 +192,7 @@ export default function StudentMailingTab() {
           return;
         }
         if (data.action === 'test') {
-          setState('טסט נשלח ל-tobyw.tobymusic@gmail.com ✅');
+          setState('טסט נשלח ל-t0504124161@gmail.com ✅');
         } else if (data.action === 'prepare') {
           setDraftId(data.draftId || '');
           setState('הקמפיין הוכן ב-Brevo ולא נשלח ✅');
