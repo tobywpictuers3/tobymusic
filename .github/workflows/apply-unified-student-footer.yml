@@ -1,0 +1,47 @@
+name: Apply unified student mailing footer
+
+on:
+  push:
+    branches: [unified-student-mail-footer-20260802]
+    paths:
+      - .github/workflows/apply-unified-student-footer.yml
+      - scripts/apply_unified_student_footer.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: unified-student-mail-footer-20260802
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply deterministic patch
+        run: python3 scripts/apply_unified_student_footer.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Commit verified changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/tobyMailingTemplate.ts
+          if git diff --cached --quiet; then
+            echo "No generated changes"
+          else
+            git commit -m "feat: add archive and invite actions to student mail footer"
+            git push origin HEAD:unified-student-mail-footer-20260802
+          fi
