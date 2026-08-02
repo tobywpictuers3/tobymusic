@@ -4,7 +4,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getStudents } from '@/lib/storage';
 import { TOBY_EMAIL_BLOCKS, TOBY_EMOJIS, wrapTobyEmail } from '@/lib/tobyMailingTemplate';
 import { ExternalLink, MailCheck, RefreshCw, Send, TestTube2 } from 'lucide-react';
 
@@ -46,9 +45,13 @@ ${f.psLine.trim() ? `<p style="font-family:Georgia,'Times New Roman',serif;font-
 
 type BridgeMessage = Record<string, unknown> & { type: string };
 
-type ListStatus = {
-  account1?: { id: number; count: number };
-  account2?: { id: number; count: number };
+type MailingStatus = {
+  list?: { id: number; count: number } | null;
+  sourceCount?: number;
+  skippedWithoutEmail?: number;
+  desired?: number;
+  lastSuccessAt?: string | null;
+  lastError?: string | null;
 };
 
 export default function StudentMailingTab() {
@@ -61,14 +64,13 @@ export default function StudentMailingTab() {
   const [state, setState] = useState('');
   const [bridgeReady, setBridgeReady] = useState(false);
   const [draftId, setDraftId] = useState('');
-  const [lists, setLists] = useState<ListStatus | null>(null);
+  const [mailing, setMailing] = useState<MailingStatus | null>(null);
   const [syncResult, setSyncResult] = useState('');
   const [busy, setBusy] = useState(false);
 
   const bridgeRef = useRef<Window | null>(null);
   const queuedRef = useRef<BridgeMessage | null>(null);
   const afterSyncRef = useRef<BridgeMessage | null>(null);
-  const syncedAfterConnectRef = useRef(false);
   const htmlRef = useRef<HTMLTextAreaElement>(null);
 
   const currentBody = mode === 'template' ? renderTemplateHtml(tpl) : rawHtml;
@@ -76,24 +78,6 @@ export default function StudentMailingTab() {
     () => wrapTobyEmail(subject || 'תצוגה מקדימה', currentBody, { theme: light ? 'light' : 'dark' }),
     [subject, currentBody, light]
   );
-
-  const studentsPayload = () => {
-    const students = getStudents().filter((s) => s.isActive !== false);
-    const rows: { email: string; name: string }[] = [];
-    const seen = new Set<string>();
-    for (const student of students) {
-      const name = `${student.firstName || ''} ${student.lastName || ''}`.trim();
-      const emails = [student.email, ...(student.additionalEmails || [])]
-        .map((e) => String(e || '').trim().toLowerCase())
-        .filter((e) => e.includes('@'));
-      for (const email of emails) {
-        if (seen.has(email)) continue;
-        seen.add(email);
-        rows.push({ email, name });
-      }
-    }
-    return rows;
-  };
 
   const postToBridge = (message: BridgeMessage) => {
     if (bridgeReady && bridgeRef.current && !bridgeRef.current.closed) {
@@ -108,16 +92,15 @@ export default function StudentMailingTab() {
       return false;
     }
     bridgeRef.current = popup;
-    setState('נפתח חלון חיבור מאובטח לאתר. אם תתבקשי — הזיני שם את קוד המנהלת.');
+    setState('נפתח חיבור מאובטח לאתר. אם תתבקשי, הזיני שם את קוד המנהלת.');
     return true;
   };
 
   const sendSync = (after?: BridgeMessage) => {
     if (after) afterSyncRef.current = after;
-    const rows = studentsPayload();
     setBusy(true);
-    setSyncResult(`מסנכרנת ${rows.length} כתובות תלמידות…`);
-    postToBridge({ type: 'TOBY_STUDENTS_SYNC', students: rows });
+    setSyncResult('קוראת את התלמידות הפעילות מ-Airtable ומסנכרנת ל-Brevo 2…');
+    postToBridge({ type: 'TOBY_STUDENTS_SYNC' });
   };
 
   const requestStatus = () => {
@@ -138,8 +121,8 @@ export default function StudentMailingTab() {
         queuedRef.current = null;
         if (queued && bridgeRef.current) {
           bridgeRef.current.postMessage(queued, SITE_ORIGIN);
-        } else if (!syncedAfterConnectRef.current) {
-          setTimeout(() => sendSync(), 50);
+        } else if (bridgeRef.current) {
+          bridgeRef.current.postMessage({ type: 'TOBY_STUDENTS_STATUS', draftId: draftId || null }, SITE_ORIGIN);
         }
         return;
       }
@@ -147,24 +130,27 @@ export default function StudentMailingTab() {
       if (data.type === 'TOBY_STUDENTS_SYNC_RESULT') {
         setBusy(false);
         if (data.ok) {
-          syncedAfterConnectRef.current = true;
-          setSyncResult(`סונכרן ✅ · חשבון 1: ${data.account1?.desired ?? 0} · חשבון 2: ${data.account2?.desired ?? 0}`);
-          setLists({
-            account1: { id: data.account1?.listId, count: data.account1?.desired ?? 0 },
-            account2: { id: data.account2?.listId, count: data.account2?.desired ?? 0 },
+          const result = data.account2 || data;
+          setMailing({
+            list: { id: result.listId, count: result.final ?? result.desired ?? 0 },
+            sourceCount: result.sourceCount ?? 0,
+            skippedWithoutEmail: result.skippedWithoutEmail ?? 0,
+            desired: result.desired ?? 0,
+            lastSuccessAt: result.syncedAt || null,
+            lastError: null,
           });
+          setSyncResult(`סונכרן ✅ · ${result.desired ?? 0} כתובות תקינות${result.removed ? ` · הוסרו ${result.removed} ישנות` : ''}`);
           const after = afterSyncRef.current;
           afterSyncRef.current = null;
           if (after && bridgeRef.current && !bridgeRef.current.closed) {
             setBusy(true);
-            if (after.action === 'prepare') setState('הרשימה מעודכנת. מכינה עכשיו את הקמפיין ב-Brevo…');
-            if (after.action === 'send') setState('הרשימה מעודכנת. שולחת עכשיו לתלמידות…');
+            setState(after.action === 'prepare' ? 'הרשימה מעודכנת. מכינה קמפיין ב-Brevo 2…' : 'הרשימה מעודכנת. שולחת לתלמידות…');
             bridgeRef.current.postMessage(after, SITE_ORIGIN);
           }
         } else {
           afterSyncRef.current = null;
           setSyncResult(`הסנכרון נכשל: ${data.error || 'שגיאה לא ידועה'}`);
-          setState('הפעולה נעצרה כדי שלא תישלח תפוצה לרשימת תלמידות לא מעודכנת.');
+          setState('הפעולה נעצרה כדי שלא תישלח תפוצה לרשימה לא מעודכנת.');
         }
         return;
       }
@@ -172,13 +158,16 @@ export default function StudentMailingTab() {
       if (data.type === 'TOBY_STUDENTS_STATUS_RESULT') {
         setBusy(false);
         if (data.ok) {
-          setLists(data.lists || null);
+          setMailing({
+            list: data.list || data.lists?.account2 || null,
+            sourceCount: data.sourceCount ?? 0,
+            skippedWithoutEmail: data.skippedWithoutEmail ?? 0,
+            desired: data.desired ?? 0,
+            lastSuccessAt: data.lastSuccessAt || null,
+            lastError: data.lastError || null,
+          });
           const found = data.campaigns?.found || [];
-          if (found.length) {
-            setState(found.map((c: any) => `${c.account === 'acc1' ? 'חשבון 1' : 'חשבון 2'}: ${c.ok ? `${c.status || 'נמצא'} #${c.id}` : 'חסר'}`).join(' · '));
-          } else {
-            setState('מצב רשימות Brevo נטען ✅');
-          }
+          setState(found.length ? `הקמפיין ב-Brevo 2: ${found[0].status || 'נמצא'} (#${found[0].id})` : 'מצב רשימת התלמידות ב-Brevo 2 נטען ✅');
         } else {
           setState(`בדיקת Brevo נכשלה: ${data.error || 'שגיאה'}`);
         }
@@ -188,16 +177,27 @@ export default function StudentMailingTab() {
       if (data.type === 'TOBY_STUDENTS_MAIL_RESULT') {
         setBusy(false);
         if (!data.ok) {
-          setState(`הפעולה נכשלה: ${data.error || 'שגיאה לא ידועה'}`);
+          setState(`הפעולה נכשלה: ${data.detail || data.error || 'שגיאה לא ידועה'}`);
           return;
         }
         if (data.action === 'test') {
-          setState('טסט נשלח ל-t0504124161@gmail.com ✅');
+          setState('מייל הטסט נשלח ✅');
         } else if (data.action === 'prepare') {
           setDraftId(data.draftId || '');
-          setState('הקמפיין הוכן ב-Brevo ולא נשלח ✅');
+          const sync = data.sync;
+          if (sync) {
+            setMailing({
+              list: { id: sync.listId, count: sync.final ?? sync.desired ?? 0 },
+              sourceCount: sync.sourceCount ?? 0,
+              skippedWithoutEmail: sync.skippedWithoutEmail ?? 0,
+              desired: sync.desired ?? 0,
+              lastSuccessAt: sync.syncedAt || null,
+              lastError: null,
+            });
+          }
+          setState(`הקמפיין הוכן ב-Brevo 2 ולא נשלח ✅ (#${data.campaign || data.campaigns?.acc2})`);
         } else if (data.action === 'send') {
-          setState(data.ok ? 'השליחה הסופית לתלמידות יצאה ✅' : 'השליחה הושלמה חלקית — בדקי ב-Brevo');
+          setState('השליחה הסופית לתלמידות יצאה דרך Brevo 2 ✅');
         }
         return;
       }
@@ -212,7 +212,6 @@ export default function StudentMailingTab() {
 
     window.addEventListener('message', listener);
     return () => window.removeEventListener('message', listener);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridgeReady, draftId]);
 
   const validate = () => {
@@ -230,17 +229,16 @@ export default function StudentMailingTab() {
       postToBridge(message);
       return;
     }
-    setState('מסנכרנת קודם את רשימת התלמידות העדכנית…');
+    setState('מסנכרנת קודם את Airtable לרשימת התלמידות ב-Brevo 2…');
     sendSync(message);
   };
 
   const sendFinal = () => {
-    if (!draftId) { setState('קודם לחצי “הכן ב-Brevo”'); return; }
-    const c1 = lists?.account1?.count ?? 0;
-    const c2 = lists?.account2?.count ?? 0;
-    if (!window.confirm(`שליחה סופית לתלמידות בלבד.\nחשבון 1: ${c1}\nחשבון 2: ${c2}\n\nלשלוח עכשיו?`)) return;
-    setState('מסנכרנת שוב את רשימת התלמידות לפני השליחה הסופית…');
-    sendSync({ type: 'TOBY_STUDENTS_MAIL', action: 'send', draftId, confirmSend: true, subject, bodyHtml: currentBody });
+    if (!draftId) { setState('קודם לחצי “הכן ב-Brevo 2”'); return; }
+    const count = mailing?.list?.count ?? mailing?.desired ?? 0;
+    if (!window.confirm(`שליחה סופית לתלמידות בלבד (${count} כתובות ב-Brevo 2).\nהרשימה תסונכרן שוב מ-Airtable לפני השליחה.\n\nלשלוח עכשיו?`)) return;
+    setState('מסנכרנת שוב את Airtable לפני השליחה הסופית…');
+    sendSync({ type: 'TOBY_STUDENTS_MAIL', action: 'send', draftId, confirmSend: true });
   };
 
   const insertBlock = (html: string) => {
@@ -259,7 +257,7 @@ export default function StudentMailingTab() {
 
   const insertEmoji = (emoji: string) => {
     if (mode === 'template') {
-      setTpl((cur) => ({ ...cur, bodyText: cur.bodyText + emoji }));
+      setTpl((current) => ({ ...current, bodyText: current.bodyText + emoji }));
     } else {
       const el = htmlRef.current;
       const at = el?.selectionStart ?? rawHtml.length;
@@ -275,23 +273,27 @@ export default function StudentMailingTab() {
           <CardTitle className="flex flex-wrap items-center justify-between gap-2">
             <span>שליחה לתפוצת תלמידות</span>
             <div className="flex flex-wrap gap-2 text-sm font-normal">
-              <Button type="button" variant="outline" size="sm" onClick={() => postToBridge({ type: 'TOBY_STUDENTS_STATUS', draftId: draftId || null })}>
+              <Button type="button" variant="outline" size="sm" onClick={requestStatus} disabled={busy}>
                 <ExternalLink className="h-4 w-4 ml-1" /> {bridgeReady ? 'מחובר לאתר' : 'חיבור מאובטח לאתר'}
               </Button>
               <Button type="button" variant="outline" size="sm" onClick={() => sendSync()} disabled={busy}>
-                <RefreshCw className={`h-4 w-4 ml-1 ${busy ? 'animate-spin' : ''}`} /> סנכרון תלמידות
+                <RefreshCw className={`h-4 w-4 ml-1 ${busy ? 'animate-spin' : ''}`} /> סנכרון Airtable
               </Button>
             </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            המיילים נשלחים דרך Brevo של האתר, בלי שמפתחות Brevo נחשפים בפלטפורמה. הרשימה כוללת את כל התלמידות הפעילות ואת כתובות המייל הנוספות שלהן.
+            Airtable הוא מקור האמת. האתר קורא את התלמידות הפעילות ומסנכרן אותן לרשימת “תלמידות” בחשבון Brevo 2 בלבד. מפתחות Airtable ו-Brevo נשארים בשרת ואינם נחשפים בפלטפורמה.
           </p>
-          <div className="rounded-md border p-3 text-sm">
-            רשימת “תלמידות” — חשבון 1: <b>{lists?.account1?.count ?? '—'}</b> · חשבון 2: <b>{lists?.account2?.count ?? '—'}</b>
-            {syncResult && <div className="mt-1 text-muted-foreground">{syncResult}</div>}
+          <div className="grid gap-2 sm:grid-cols-4 text-sm">
+            <div className="rounded-md border p-3 text-center"><b>{mailing?.sourceCount ?? '—'}</b><br />פעילות ב-Airtable</div>
+            <div className="rounded-md border p-3 text-center"><b>{mailing?.desired ?? '—'}</b><br />כתובות תקינות</div>
+            <div className="rounded-md border p-3 text-center"><b>{mailing?.list?.count ?? '—'}</b><br />ב-Brevo 2</div>
+            <div className="rounded-md border p-3 text-center"><b>{mailing?.skippedWithoutEmail ?? '—'}</b><br />ללא מייל תקין</div>
           </div>
+          {syncResult && <div className="rounded-md border p-3 text-sm text-muted-foreground">{syncResult}</div>}
+          {mailing?.lastError && <div className="rounded-md border border-destructive/40 p-3 text-sm">שגיאה אחרונה: {mailing.lastError}</div>}
         </CardContent>
       </Card>
 
@@ -324,22 +326,22 @@ export default function StudentMailingTab() {
                 {TOBY_EMAIL_BLOCKS.map((block) => (
                   <Button key={block.id} type="button" variant="outline" size="sm" onClick={() => insertBlock(block.html)}>+ {block.label}</Button>
                 ))}
-                <Button type="button" variant="outline" size="sm" onClick={() => setShowEmoji((v) => !v)}>😊 אימוג'ים</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowEmoji((value) => !value)}>😊 אימוג'ים</Button>
               </div>
-              {showEmoji && <div className="flex flex-wrap gap-1 rounded-md border p-2">{TOBY_EMOJIS.map((e) => <button type="button" key={e} className="text-xl p-1" onClick={() => insertEmoji(e)}>{e}</button>)}</div>}
+              {showEmoji && <div className="flex flex-wrap gap-1 rounded-md border p-2">{TOBY_EMOJIS.map((emoji) => <button type="button" key={emoji} className="text-xl p-1" onClick={() => insertEmoji(emoji)}>{emoji}</button>)}</div>}
               <div className="space-y-2"><Label>קוד HTML — גוף המייל</Label><Textarea ref={htmlRef} dir="ltr" rows={18} className="font-mono text-xs" value={rawHtml} onChange={(e) => { setRawHtml(e.target.value); setDraftId(''); }} /></div>
             </>
           )}
 
           {mode === 'template' && (
             <div className="flex flex-wrap gap-1 rounded-md border p-2">
-              {TOBY_EMOJIS.slice(0, 20).map((e) => <button type="button" key={e} className="text-lg p-1" onClick={() => insertEmoji(e)}>{e}</button>)}
+              {TOBY_EMOJIS.slice(0, 20).map((emoji) => <button type="button" key={emoji} className="text-lg p-1" onClick={() => insertEmoji(emoji)}>{emoji}</button>)}
             </div>
           )}
 
           <div className="flex items-center justify-between gap-2">
             <Label>תצוגה מקדימה — אותו טמפלייט של האתר</Label>
-            <Button type="button" variant="outline" size="sm" onClick={() => setLight((v) => !v)}>{light ? '🌙 גרסה כהה' : '🌞 גרסה בהירה'}</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setLight((value) => !value)}>{light ? '🌙 גרסה כהה' : '🌞 גרסה בהירה'}</Button>
           </div>
           <iframe title="תצוגה מקדימה של התפוצה" sandbox="" srcDoc={preview} className="w-full min-h-[520px] rounded-lg border" style={{ background: light ? '#E9DFC9' : '#0F0F12' }} />
 
@@ -348,10 +350,10 @@ export default function StudentMailingTab() {
               <TestTube2 className="h-4 w-4 ml-2" /> טסט אליי
             </Button>
             <Button type="button" variant="outline" onClick={() => runMailAction('prepare')} disabled={busy}>
-              <MailCheck className="h-4 w-4 ml-2" /> הכן ב-Brevo
+              <MailCheck className="h-4 w-4 ml-2" /> הכן ב-Brevo 2
             </Button>
             <Button type="button" variant="outline" onClick={requestStatus} disabled={busy}>
-              <RefreshCw className="h-4 w-4 ml-2" /> בדוק ב-Brevo
+              <RefreshCw className="h-4 w-4 ml-2" /> בדוק ב-Brevo 2
             </Button>
             <Button type="button" onClick={sendFinal} disabled={busy || !draftId}>
               <Send className="h-4 w-4 ml-2" /> שליחה סופית לתלמידות
