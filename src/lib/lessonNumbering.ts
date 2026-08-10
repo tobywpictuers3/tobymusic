@@ -1,6 +1,11 @@
-
 import { getLessons, getStudents, updateLesson, addLesson, updateStudentBankTime } from './storage';
-import { Lesson, Student } from './types';
+import { Lesson } from './types';
+import {
+  getSchoolYearBounds,
+  getSchoolYearForDate,
+  getStudentSchoolYearRecord,
+  isPriorYearDebtMakeupLesson,
+} from './schoolYear';
 
 export interface LessonNumberingResult {
   lessonNumber: number;
@@ -9,102 +14,106 @@ export interface LessonNumberingResult {
   bankTimeChange?: number;
 }
 
-// Calculate lesson number with future lesson support and bank time conversions
-export const calculateEnhancedLessonNumber = (
-  studentId: string, 
-  lessonDate: string, 
-  lessonId?: string
+const isSkippedForNumbering = (lesson: Lesson): boolean =>
+  Boolean(lesson.notes?.includes('דילוג מיספור')) || isPriorYearDebtMakeupLesson(lesson);
+
+/**
+ * Single source of truth for lesson numbering.
+ * Numbering restarts per school year (Sep 1-Aug 31), but can start above #1
+ * when a closed year carried extra lessons forward. Billing is deliberately
+ * separate from numbering; see schoolYear.ts.
+ */
+export const calculateSchoolYearLessonNumber = (
+  studentId: string,
+  lessonDate: string,
+  lessonId?: string,
 ): LessonNumberingResult => {
-  const student = getStudents().find(s => s.id === studentId);
+  const student = getStudents().find(item => item.id === studentId);
   if (!student) return { lessonNumber: 0, isBankTimeLesson: false, isSkippedLesson: false };
 
-  const startDate = new Date(student.startDate);
-  const checkDate = new Date(lessonDate);
-  
-  if (checkDate < startDate) {
-    return { lessonNumber: 0, isBankTimeLesson: false, isSkippedLesson: false };
-  }
-
-  const allLessons = getLessons()
-    .filter(lesson => lesson.studentId === studentId)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-  // Check if student has received any lessons (not just scheduled)
-  const completedLessons = allLessons.filter(l => l.status === 'completed');
-  const hasReceivedLessons = completedLessons.length > 0;
-
-  if (!hasReceivedLessons) {
-    return { lessonNumber: 0, isBankTimeLesson: false, isSkippedLesson: false };
-  }
-
-  // For existing lessons, use their locked number or calculate position
-  if (lessonId) {
-    const lesson = allLessons.find(l => l.id === lessonId);
-    if (lesson?.lockedNumber) {
-      return { 
-        lessonNumber: lesson.lockedNumber, 
-        isBankTimeLesson: lesson.notes?.includes('תוספת בנק זמן') || false,
-        isSkippedLesson: lesson.notes?.includes('דילוג מיספור') || false
-      };
-    }
-  }
-
-  // Calculate lesson position including future lessons
-  const lessonPosition = allLessons.findIndex(l => 
-    lessonId ? l.id === lessonId : l.date === lessonDate
+  const schoolYear = getSchoolYearForDate(lessonDate);
+  const bounds = getSchoolYearBounds(schoolYear);
+  const yearRecord = getStudentSchoolYearRecord(studentId, schoolYear);
+  const studentStartSchoolYear = getSchoolYearForDate(student.startDate);
+  const startingLessonNumber = Math.max(
+    1,
+    yearRecord?.startingLessonNumber ??
+      (studentStartSchoolYear === schoolYear ? (student.startingLessonNumber || 1) : 1),
   );
-  
-  if (lessonPosition === -1) {
-    // For new lessons, add to the end
-    return { 
-      lessonNumber: allLessons.length + (student.startingLessonNumber || 1),
-      isBankTimeLesson: false,
-      isSkippedLesson: false
+
+  const targetLesson = lessonId ? getLessons().find(lesson => lesson.id === lessonId) : undefined;
+  if (targetLesson?.lockedNumber) {
+    return {
+      lessonNumber: targetLesson.lockedNumber,
+      isBankTimeLesson: Boolean(targetLesson.notes?.includes('בנק זמן')),
+      isSkippedLesson: isSkippedForNumbering(targetLesson),
     };
   }
 
-  // Count lessons up to this position, excluding skipped ones
-  let lessonNumber = student.startingLessonNumber || 1;
-  for (let i = 0; i <= lessonPosition; i++) {
-    const currentLesson = allLessons[i];
-    if (!currentLesson.notes?.includes('דילוג מיספור')) {
-      if (i === lessonPosition) {
-        return { 
-          lessonNumber,
-          isBankTimeLesson: currentLesson.notes?.includes('תוספת בנק זמן') || false,
-          isSkippedLesson: false
-        };
-      }
-      lessonNumber++;
-    } else if (i === lessonPosition) {
-      return { 
-        lessonNumber: 0, // Skipped lessons don't get a number
-        isBankTimeLesson: false,
-        isSkippedLesson: true
-      };
-    }
+  if (targetLesson && isSkippedForNumbering(targetLesson)) {
+    return {
+      lessonNumber: 0,
+      isBankTimeLesson: Boolean(targetLesson.notes?.includes('בנק זמן')),
+      isSkippedLesson: true,
+    };
   }
 
-  return { lessonNumber, isBankTimeLesson: false, isSkippedLesson: false };
+  const completedLessons = getLessons()
+    .filter(lesson =>
+      lesson.studentId === studentId &&
+      lesson.status === 'completed' &&
+      lesson.date >= bounds.start &&
+      lesson.date <= bounds.end &&
+      lesson.date <= lessonDate &&
+      !isSkippedForNumbering(lesson),
+    )
+    .sort((a, b) =>
+      a.date.localeCompare(b.date) ||
+      a.startTime.localeCompare(b.startTime) ||
+      a.id.localeCompare(b.id),
+    );
+
+  if (lessonId) {
+    const index = completedLessons.findIndex(lesson => lesson.id === lessonId);
+    if (index < 0) {
+      return {
+        lessonNumber: 0,
+        isBankTimeLesson: Boolean(targetLesson?.notes?.includes('בנק זמן')),
+        isSkippedLesson: false,
+      };
+    }
+    return {
+      lessonNumber: startingLessonNumber + index,
+      isBankTimeLesson: Boolean(targetLesson?.notes?.includes('בנק זמן')),
+      isSkippedLesson: false,
+    };
+  }
+
+  return {
+    lessonNumber: startingLessonNumber + completedLessons.length,
+    isBankTimeLesson: false,
+    isSkippedLesson: false,
+  };
 };
 
-// Handle bank time to lesson conversion (when bank time >= 30 minutes)
+// Backward-compatible public name used by existing student views.
+export const calculateEnhancedLessonNumber = calculateSchoolYearLessonNumber;
+
+// Handle bank time to lesson conversion (legacy compatibility).
 export const convertBankTimeToLesson = (studentId: string): boolean => {
   const student = getStudents().find(s => s.id === studentId);
-  if (!student) return false; // Bank time feature removed
+  if (!student) return false;
 
   const lessons = getLessons()
     .filter(l => l.studentId === studentId)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  // Find the last lesson where bank time was added
   const lastBankTimeAddition = lessons
     .reverse()
     .find(l => l.notes?.includes('עדכון בנק זמן: +'));
 
   if (!lastBankTimeAddition) return false;
 
-  // Create duplicate lesson for bank time conversion
   const duplicateLesson: Omit<Lesson, 'id'> = {
     studentId,
     date: lastBankTimeAddition.date,
@@ -115,42 +124,27 @@ export const convertBankTimeToLesson = (studentId: string): boolean => {
     status: 'completed'
   };
 
-  const newLesson = addLesson(duplicateLesson);
-  
-  // Update student bank time (subtract 30 minutes)
+  addLesson(duplicateLesson);
   updateStudentBankTime(studentId, -30);
-
   return true;
 };
 
-// Handle lesson skipping for negative bank time
+// Handle lesson skipping for negative bank time (legacy compatibility).
 export const handleNegativeBankTime = (studentId: string, lessonId: string): boolean => {
   const student = getStudents().find(s => s.id === studentId);
-  if (!student) return false; // Bank time feature removed
+  if (!student) return false;
 
-  const lessons = getLessons().filter(l => l.studentId === studentId);
-  const targetLesson = lessons.find(l => l.id === lessonId);
-  
+  const targetLesson = getLessons().find(l => l.studentId === studentId && l.id === lessonId);
   if (!targetLesson) return false;
 
-  // Mark lesson as skipped (bank time feature removed)
-  const remainingMinutes = 0;
-  
   updateLesson(lessonId, {
     notes: `${targetLesson.notes || ''} (דילוג מיספור - החסרה בבנק זמן - ${new Date().toLocaleDateString('he-IL')})`,
     status: 'cancelled'
   });
 
-  // Add remaining minutes to bank time
-  if (remainingMinutes > 0) {
-    updateStudentBankTime(studentId, remainingMinutes);
-  }
-
   return true;
 };
 
-// Auto-manage bank time conversions (feature removed)
-export const autoManageBankTime = (studentId: string): void => {
-  // Bank time feature has been removed
-  return;
+export const autoManageBankTime = (_studentId: string): void => {
+  // Kept for API compatibility. Year-end bank conversion is calculated in schoolYear.ts.
 };
