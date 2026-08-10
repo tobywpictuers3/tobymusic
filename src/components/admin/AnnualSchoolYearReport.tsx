@@ -8,11 +8,13 @@ import {
   ensureSchoolYearRollover,
   formatLessonSixths,
   getSchoolYearForDate,
+  getStudentSchoolYearRecord,
   getStudentSchoolYearRecords,
   isYearEndReportAvailable,
+  type StudentYearSnapshot,
 } from '@/lib/schoolYear';
 
-const money = (value: number) => `₪${value.toLocaleString('he-IL', { maximumFractionDigits: 2 })}`;
+const money = (value: number) => `₪${Number(value || 0).toLocaleString('he-IL', { maximumFractionDigits: 2 })}`;
 
 export default function AnnualSchoolYearReport() {
   const [revision, setRevision] = useState(0);
@@ -54,10 +56,13 @@ export default function AnnualSchoolYearReport() {
   }
 
   const students = getStudents().filter(student => student.paymentType !== 'per_lesson');
-  const rows = students.map(student => ({
-    student,
-    snapshot: calculateStudentYearSnapshot(student, selectedYear),
-  }));
+  const rows = students.map(student => {
+    const stored = getStudentSchoolYearRecord(student.id, selectedYear);
+    const snapshot = stored?.status === 'closed' && stored.completedLessons !== undefined
+      ? stored as StudentYearSnapshot
+      : calculateStudentYearSnapshot(student, selectedYear);
+    return { student, snapshot };
+  });
 
   return (
     <Card className="mt-6">
@@ -91,35 +96,46 @@ export default function AnnualSchoolYearReport() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map(({ student, snapshot }) => (
-                <TableRow key={student.id}>
-                  <TableCell className="font-semibold">{student.firstName} {student.lastName}</TableCell>
-                  <TableCell>{snapshot.expectedLessons}</TableCell>
-                  <TableCell>{snapshot.completedLessons}</TableCell>
-                  <TableCell>{snapshot.bankMinutesThisYear > 0 ? '+' : ''}{snapshot.bankMinutesThisYear} דק׳</TableCell>
-                  <TableCell>{formatLessonSixths(snapshot.effectiveSixths)}</TableCell>
-                  <TableCell>{money(snapshot.baseTarget)}</TableCell>
-                  <TableCell className={snapshot.yearEndAdjustment < 0 ? 'text-destructive' : ''}>
-                    {snapshot.yearEndAdjustment < 0 ? `-${money(Math.abs(snapshot.yearEndAdjustment))}` : '—'}
-                  </TableCell>
-                  <TableCell>{money(snapshot.finalTarget)}</TableCell>
-                  <TableCell>{money(snapshot.paidTotal)}</TableCell>
-                  <TableCell className={snapshot.closingFinancialBalance > 0 ? 'text-green-700 dark:text-green-400' : snapshot.closingFinancialBalance < 0 ? 'text-destructive' : ''}>
-                    {snapshot.closingFinancialBalance > 0
-                      ? `זכות ${money(snapshot.closingFinancialBalance)}`
-                      : snapshot.closingFinancialBalance < 0
-                        ? `לתשלום ${money(Math.abs(snapshot.closingFinancialBalance))}`
-                        : 'מאוזן'}
-                  </TableCell>
-                  <TableCell>
-                    {snapshot.excessSixths > 0
-                      ? `${snapshot.carryoverWholeLessons} שיעורים${snapshot.carryoverBankMinutes ? ` + ${snapshot.carryoverBankMinutes} דק׳` : ''}`
-                      : snapshot.shortfallSixths > 0
-                        ? `חסר ${formatLessonSixths(snapshot.shortfallSixths)} · קוזז כספית`
-                        : '—'}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rows.map(({ student, snapshot }) => {
+                const completedLessons = Number(snapshot.completedLessons || 0);
+                const bankMinutes = Number(snapshot.bankMinutesThisYear || 0);
+                const effectiveSixths = Number(snapshot.effectiveSixths || 0);
+                const adjustment = Number(snapshot.yearEndAdjustment || 0);
+                const finalTarget = Number(snapshot.finalTarget || 0);
+                const paidTotal = Number(snapshot.paidTotal || 0);
+                const financialBalance = Number(snapshot.closingFinancialBalance || 0);
+                const excessSixths = Number(snapshot.excessSixths || 0);
+                const shortfallSixths = Number(snapshot.shortfallSixths || 0);
+                return (
+                  <TableRow key={student.id}>
+                    <TableCell className="font-semibold">{student.firstName} {student.lastName}</TableCell>
+                    <TableCell>{snapshot.expectedLessons}</TableCell>
+                    <TableCell>{completedLessons}</TableCell>
+                    <TableCell>{bankMinutes > 0 ? '+' : ''}{bankMinutes} דק׳</TableCell>
+                    <TableCell>{formatLessonSixths(effectiveSixths)}</TableCell>
+                    <TableCell>{money(snapshot.baseTarget)}</TableCell>
+                    <TableCell className={adjustment < 0 ? 'text-destructive' : ''}>
+                      {adjustment < 0 ? `-${money(Math.abs(adjustment))}` : '—'}
+                    </TableCell>
+                    <TableCell>{money(finalTarget)}</TableCell>
+                    <TableCell>{money(paidTotal)}</TableCell>
+                    <TableCell className={financialBalance > 0 ? 'text-green-700 dark:text-green-400' : financialBalance < 0 ? 'text-destructive' : ''}>
+                      {financialBalance > 0
+                        ? `זכות ${money(financialBalance)}`
+                        : financialBalance < 0
+                          ? `לתשלום ${money(Math.abs(financialBalance))}`
+                          : 'מאוזן'}
+                    </TableCell>
+                    <TableCell>
+                      {excessSixths > 0
+                        ? `${snapshot.carryoverWholeLessons || 0} שיעורים${snapshot.carryoverBankMinutes ? ` + ${snapshot.carryoverBankMinutes} דק׳` : ''}`
+                        : shortfallSixths > 0
+                          ? `חסר ${formatLessonSixths(shortfallSixths)} · קוזז כספית`
+                          : '—'}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
