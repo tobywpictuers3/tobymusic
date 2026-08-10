@@ -22,6 +22,8 @@ const balanceLabel = (balance: number) => {
 
 const YearDetails = ({ record }: { record: StudentYearSnapshot | StudentSchoolYearRecord }) => {
   const snapshot = record as StudentYearSnapshot;
+  const shortfallSixths = snapshot.shortfallSixths || 0;
+  const excessSixths = snapshot.excessSixths || 0;
   const balance = balanceLabel(snapshot.closingFinancialBalance || 0);
   return (
     <div className="space-y-2 text-xs">
@@ -54,14 +56,14 @@ const YearDetails = ({ record }: { record: StudentYearSnapshot | StudentSchoolYe
         </div>
       )}
 
-      {snapshot.shortfallSixths > 0 && (
+      {shortfallSixths > 0 && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2">
-          חוב שיעורים: <b>{formatLessonSixths(snapshot.shortfallSixths)} שיעורים</b> · שווי <b>{money(snapshot.lessonDebtValue)}</b>.
+          חוב שיעורים: <b>{formatLessonSixths(shortfallSixths)} שיעורים</b> · שווי <b>{money(snapshot.lessonDebtValue)}</b>.
           הסכום הופחת אוטומטית מיעד השנה.
         </div>
       )}
 
-      {snapshot.excessSixths > 0 && (
+      {excessSixths > 0 && (
         <div className="rounded-md border border-green-600/30 bg-green-50/60 p-2 dark:bg-green-950/20">
           זכות שיעורים לשנה הבאה: <b>{snapshot.carryoverWholeLessons || 0} שיעורים</b>
           {(snapshot.carryoverBankMinutes || 0) !== 0 ? ` + ${snapshot.carryoverBankMinutes} דקות` : ''}.
