@@ -11,7 +11,6 @@ import {
   clearPracticeAndMedalData, setDevMode
 } from '@/lib/storage';
 import { toast } from '@/hooks/use-toast';
-import { hybridSync } from '@/lib/hybridSync';
 import { PrintPDFButton } from '@/components/ui/print-pdf-button';
 import { SaveButton } from '@/components/ui/save-button';
 import { UnreadMessagesBadge } from '@/components/ui/unread-messages-badge';
@@ -19,11 +18,12 @@ import SyncStatusBadge from '@/components/ui/SyncStatusBadge';
 import { clearClientCaches } from '@/lib/cacheManager';
 import { ThemeToggle } from '@/brand/ThemeToggle';
 import { DateModeProvider, useDateMode } from '@/contexts/DateModeContext';
+import { ensureSchoolYearRollover } from '@/lib/schoolYear';
 
 import StudentsManagement from '@/components/admin/StudentsManagement';
 import LessonJournal from '@/components/admin/LessonJournal';
 import Metronome from './Metronome';
-import PaymentManagement from '@/components/admin/PaymentManagement';
+import PaymentManagementShell from '@/components/admin/PaymentManagementShell';
 import PerformancesManagement from '@/components/admin/PerformancesManagement';
 import BackupImport from '@/components/admin/BackupImport';
 import BackupHistory from '@/components/admin/BackupHistory';
@@ -103,6 +103,22 @@ const AdminDashboard = () => {
     }
   }, [isStorybook]);
 
+  useEffect(() => {
+    if (user?.type !== 'admin') return;
+    // Idempotent and date-gated. Before Sep 1 this is read-only; after Sep 1
+    // it closes the prior year once and opens the new annual cards.
+    void ensureSchoolYearRollover().then(result => {
+      if (result.changed) {
+        toast({
+          title: `✅ שנת ${result.closedYear} נסגרה`,
+          description: `נפתחו כרטסות שנת ${result.openedYear}; יתרות שיעורים, בנק זמן ותשלום הועברו אוטומטית.`
+        });
+      }
+    }).catch(() => {
+      // The normal sync status UI will surface persistence errors; do not block the dashboard.
+    });
+  }, [user]);
+
   const getTabName = (tab: string) => {
     const tabNames: Record<string, string> = {
       journal: 'יומן שיעורים',
@@ -165,7 +181,6 @@ const AdminDashboard = () => {
   return (
     <DateModeProvider>
       <div className="relative z-10 min-h-screen musical-gradient overflow-hidden page-enter">
-        {/* Sticky Header */}
         <div className="sticky top-0 z-50 bg-gradient-to-b from-background via-background to-background/95 backdrop-blur-sm border-b border-primary/20 shadow-lg">
           <div className="container mx-auto p-2 sm:p-4">
             <div className="card-gradient card-shadow rounded-xl p-3 sm:p-4">
@@ -289,7 +304,7 @@ const AdminDashboard = () => {
 
               <TabsContent value="payments" className="fade-slide-in">
                 <BrandSection index={3}>
-                  <PaymentManagement />
+                  <PaymentManagementShell />
                 </BrandSection>
               </TabsContent>
 
