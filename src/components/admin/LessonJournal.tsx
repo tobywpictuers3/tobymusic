@@ -7,13 +7,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { ChevronRight, ChevronLeft, Check, X, Plus, Edit, Trash2, Undo2, Clock, Download, AlertTriangle } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Plus, Trash2, Undo2, Clock, Download, AlertTriangle } from 'lucide-react';
 import { NumberStepper } from '@/components/ui/number-stepper';
 import { getStudents, getLessons, addLesson, updateLesson, deleteLesson, getActiveScheduleTemplate, getPerformances, getHolidays, addHoliday, deleteHoliday, isHoliday } from '@/lib/storage';
 import { Student, Lesson, Performance } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
-import { syncManager } from '@/lib/syncManager';
 import { useDateMode } from '@/contexts/DateModeContext';
+import { calculateSchoolYearLessonNumber } from '@/lib/lessonNumbering';
+import { extractBankMinutesFromNotes, getSchoolYearBounds, getSchoolYearForDate } from '@/lib/schoolYear';
 
 type ViewMode = 'week' | 'day' | 'year' | 'student';
 
@@ -34,16 +35,13 @@ const LessonJournal = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const fmtDate = (d: Date, opts?: Intl.DateTimeFormatOptions) => {
     if (dateMode !== 'hebrew') return d.toLocaleDateString('he-IL', opts);
-    // השתמש ב-formatDate עם string לקבלת אותיות עבריות נקיות
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const full = formatDate(iso);
-    // לתצוגת יום/חודש בלבד — הסר את השנה
     if (opts && opts.year === undefined) {
       return full.replace(/\s+[א-ת]{3,}$/, '').trim();
     }
     return full;
   };
-
 
   const [selectedStudent, setSelectedStudent] = useState<string>('');
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -56,7 +54,6 @@ const LessonJournal = () => {
   const [bankTimeChange, setBankTimeChange] = useState<number>(0);
   const [markAsNoShow, setMarkAsNoShow] = useState(false);
 
-  // Form states for adding lesson
   const [newLessonStudent, setNewLessonStudent] = useState('');
   const [newLessonDate, setNewLessonDate] = useState('');
   const [newLessonTime, setNewLessonTime] = useState('');
@@ -105,72 +102,63 @@ const LessonJournal = () => {
     setCurrentWeek(nextWeek);
   };
 
+  const calculateEndTime = (startTime: string, duration: number): string => {
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const totalMinutes = hours * 60 + minutes + duration;
+    const newHours = Math.floor(totalMinutes / 60);
+    const newMinutes = totalMinutes % 60;
+    return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
+  };
+
+  const calculateLessonNumber = (student: Student, lessonDate: string, lessonId?: string): number =>
+    calculateSchoolYearLessonNumber(student.id, lessonDate, lessonId).lessonNumber;
+
   const getLessonsForDate = (date: Date): LessonWithStudent[] => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
-    
-    // אם זה יום חופשה - אל תראה שיעורים
+
     if (isHoliday(dateStr)) {
       return [];
     }
-    
-    // Get template lessons
+
     const activeTemplate = getActiveScheduleTemplate();
     const templateLessons: LessonWithStudent[] = [];
-    
+
     if (activeTemplate) {
       const dayOfWeek = date.getDay();
       const dayKey = dayOfWeek.toString();
       const daySchedule = activeTemplate.schedule[dayKey] || {};
-      
+
       Object.entries(daySchedule).forEach(([time, data]) => {
         const student = students.find(s => s.id === data.studentId);
         if (!student) return;
-        
-        // Check if lesson date is within student's active period
+
         const lessonDate = new Date(dateStr);
         const studentStartDate = new Date(student.startDate);
-        
-        // Don't show lessons before student's start date
-        if (lessonDate < studentStartDate) {
-          return;
-        }
-        
-        // Calculate end date: use student's endDate or end of school year
+        if (lessonDate < studentStartDate) return;
+
         const getEndOfSchoolYear = (startDate: string): Date => {
           const start = new Date(startDate);
           const year = start.getFullYear();
-          const month = start.getMonth(); // 0-11
-          
-          // If start is September or later (month >= 8), end is August 31 of next year
-          // Otherwise, end is August 31 of same year
+          const month = start.getMonth();
           const endYear = month >= 8 ? year + 1 : year;
           return new Date(`${endYear}-08-31`);
         };
-        
-        const effectiveEndDate = student.endDate 
+
+        const effectiveEndDate = student.endDate
           ? new Date(student.endDate)
           : getEndOfSchoolYear(student.startDate);
-        
-        // Don't show lessons after the effective end date
-        if (lessonDate > effectiveEndDate) {
-          return;
-        }
-        
+        if (lessonDate > effectiveEndDate) return;
+
         const existingLesson = lessons.find(
           l => l.date === dateStr && l.startTime === time && l.studentId === data.studentId
         );
-        
-        // Don't show template lesson if it was cancelled
-        if (existingLesson && existingLesson.status === 'cancelled') {
-          return;
-        }
-        
+        if (existingLesson && existingLesson.status === 'cancelled') return;
+
         if (!existingLesson) {
           const endTime = calculateEndTime(time, 30);
-          
           templateLessons.push({
             id: `template-${dateStr}-${time}-${data.studentId}`,
             studentId: data.studentId,
@@ -184,18 +172,15 @@ const LessonJournal = () => {
         }
       });
     }
-    
-    // Get actual lessons (hide cancelled ones completely)
+
     const actualLessons: LessonWithStudent[] = lessons
       .filter(l => l.date === dateStr && l.status !== 'cancelled')
       .map(l => ({
         ...l,
         student: students.find(s => s.id === l.studentId)
       }));
-    
-    // Combine and calculate lesson numbers
+
     const allLessons = [...templateLessons, ...actualLessons];
-    
     return allLessons.map(lesson => {
       if (lesson.status === 'completed' && lesson.student) {
         const lessonNumber = calculateLessonNumber(lesson.student, lesson.date, lesson.id);
@@ -216,68 +201,30 @@ const LessonJournal = () => {
   const checkTimeCollision = (date: Date) => {
     const dayLessons = getLessonsForDate(date);
     const dayPerformances = getPerformancesForDate(date);
-    
     if (dayPerformances.length === 0) return false;
-    
+
     for (const perf of dayPerformances) {
       if (!perf.timeEstimate || perf.timeEstimate.includes(':') === false) continue;
-      
       for (const lesson of dayLessons) {
-        const lessonStart = lesson.startTime;
-        const perfTime = perf.timeEstimate;
-        
-        if (lessonStart === perfTime) return true;
+        if (lesson.startTime === perf.timeEstimate) return true;
       }
     }
-    
     return false;
   };
 
   const checkLessonCollision = (lesson: LessonWithStudent, date: Date): boolean => {
     const dayPerformances = getPerformancesForDate(date);
-    
     if (dayPerformances.length === 0) return false;
-    
+
     for (const perf of dayPerformances) {
       if (!perf.timeEstimate || perf.timeEstimate.includes(':') === false) continue;
-      
-      if (lesson.startTime === perf.timeEstimate) {
-        return true;
-      }
+      if (lesson.startTime === perf.timeEstimate) return true;
     }
-    
     return false;
-  };
-
-  const calculateEndTime = (startTime: string, duration: number): string => {
-    const [hours, minutes] = startTime.split(':').map(Number);
-    const totalMinutes = hours * 60 + minutes + duration;
-    const newHours = Math.floor(totalMinutes / 60);
-    const newMinutes = totalMinutes % 60;
-    return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
-  };
-
-  const calculateLessonNumber = (student: Student, lessonDate: string, lessonId?: string): number => {
-    const startDate = new Date(student.startDate);
-    const checkDate = new Date(lessonDate);
-    
-    if (checkDate < startDate) return 0;
-
-    const completedLessons = lessons
-      .filter(l => l.studentId === student.id && l.status === 'completed' && new Date(l.date) <= checkDate)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    if (lessonId) {
-      const index = completedLessons.findIndex(l => l.id === lessonId);
-      return index >= 0 ? index + (student.startingLessonNumber || 1) : 0;
-    }
-
-    return completedLessons.length + (student.startingLessonNumber || 1);
   };
 
   const handleMarkCompleted = (lesson: LessonWithStudent) => {
     if (lesson.isFromTemplate) {
-      // Create actual lesson from template
       const endTime = calculateEndTime(lesson.startTime, 30);
       addLesson({
         studentId: lesson.studentId,
@@ -290,19 +237,16 @@ const LessonJournal = () => {
     } else {
       updateLesson(lesson.id, { status: 'completed' });
     }
-    
+
     loadData();
     toast({ description: 'השיעור סומן כהתקיים' });
   };
 
   const handleDeleteLesson = async (lesson: LessonWithStudent, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    
-    const studentName = lesson.student ? `${lesson.student.firstName} ${lesson.student.lastName}` : 'לא ידוע';
-    
+
     if (lesson.isFromTemplate) {
-      // Create a deleted marker for template lessons
-      const deletedLesson = {
+      addLesson({
         studentId: lesson.studentId,
         date: lesson.date,
         startTime: lesson.startTime,
@@ -310,22 +254,19 @@ const LessonJournal = () => {
         status: 'cancelled' as const,
         isOneOff: false,
         notes: 'שיעור מהמערכת שנמחק'
-      };
-      addLesson(deletedLesson);
+      });
       loadData();
       toast({ description: 'השיעור נמחק לצמיתות' });
     } else {
       const lessonData = lessons.find(l => l.id === lesson.id);
       setUndoStack([...undoStack, { action: 'delete', data: lessonData }]);
-      
-      // Use deleteLesson which now uses onDestructiveChange internally
       const deleted = await deleteLesson(lesson.id);
-      
+
       if (deleted) {
         loadData();
         toast({ description: 'השיעור נמחק ונשמר בדרופבוקס' });
       } else {
-        toast({ 
+        toast({
           title: 'שגיאה',
           description: 'לא הצלחנו למחוק את השיעור',
           variant: 'destructive'
@@ -336,15 +277,14 @@ const LessonJournal = () => {
 
   const handleUndo = () => {
     if (undoStack.length === 0) return;
-    
     const lastAction = undoStack[undoStack.length - 1];
-    
+
     if (lastAction.action === 'delete') {
       addLesson(lastAction.data);
     } else if (lastAction.action === 'update') {
       updateLesson(lastAction.data.id, lastAction.data);
     }
-    
+
     setUndoStack(undoStack.slice(0, -1));
     loadData();
     toast({ description: 'הפעולה בוטלה' });
@@ -357,7 +297,7 @@ const LessonJournal = () => {
       exportDate: new Date().toISOString(),
       exportType: 'lesson-journal'
     };
-    
+
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -384,7 +324,6 @@ const LessonJournal = () => {
     const newDateStr = `${year}-${month}-${day}`;
 
     if (draggedLesson.isFromTemplate) {
-      // STEP 1 – Cancel original template
       addLesson({
         studentId: draggedLesson.studentId,
         date: draggedLesson.date,
@@ -395,7 +334,6 @@ const LessonJournal = () => {
         notes: 'שיעור מהמערכת שבוטל עקב גרירה'
       });
 
-      // STEP 2 – Create scheduled lesson in the new date
       const endTime = calculateEndTime(draggedLesson.startTime, 30);
       addLesson({
         studentId: draggedLesson.studentId,
@@ -406,9 +344,8 @@ const LessonJournal = () => {
         isOneOff: true,
         notes: `שיעור הועבר מ־${draggedLesson.date}`
       });
-
     } else {
-      updateLesson(draggedLesson.id, { 
+      updateLesson(draggedLesson.id, {
         date: newDateStr,
         notes: `שיעור הועבר מ-${draggedLesson.date}`
       });
@@ -433,7 +370,6 @@ const LessonJournal = () => {
     if (lesson.status === 'completed') {
       handleOpenBankTime(lesson, e);
     } else if (!lesson.isFromTemplate) {
-      // Edit time for non-completed, non-template lessons
       setEditingLesson(lesson as Lesson);
       setEditedTime(lesson.startTime);
       setShowEditTimeDialog(true);
@@ -444,59 +380,43 @@ const LessonJournal = () => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
-    setNewLessonDate(dateStr);
+    setNewLessonDate(`${year}-${month}-${day}`);
     setShowAddDialog(true);
   };
 
   const handleSaveBankTime = async () => {
     if (!editingLesson) return;
-    
     const lesson = lessons.find(l => l.id === editingLesson.id);
-    
-    // אם סימנו "תלמידה נעדרה"
+
     if (markAsNoShow) {
       setUndoStack([...undoStack, { action: 'update', data: lesson }]);
       const currentNotes = editingLesson.notes || '';
       updateLesson(editingLesson.id, {
         notes: currentNotes ? `${currentNotes}\n⚠️ תלמידה נעדרה` : '⚠️ תלמידה נעדרה'
       });
-      
       toast({ description: 'השיעור נשאר כהתקיים + סומנה נעדרות' });
-    }
-    // אם מפחיתים בדיוק 30 דקות - מוחקים את השיעור לגמרי
-    else if (bankTimeChange === -30) {
+    } else if (bankTimeChange === -30) {
       setUndoStack([...undoStack, { action: 'delete', data: lesson }]);
-      deleteLesson(editingLesson.id);
-      
+      await deleteLesson(editingLesson.id);
       toast({ description: 'השיעור נמחק לצמיתות (כולל המיספור)' });
-    } 
-    // עדכון בנק זמן רגיל
-    else {
+    } else {
       setUndoStack([...undoStack, { action: 'update', data: lesson }]);
       const currentNotes = editingLesson.notes || '';
       const newNote = `בנק זמן: ${bankTimeChange > 0 ? '+' : ''}${bankTimeChange} דקות`;
-      
       updateLesson(editingLesson.id, {
         notes: currentNotes ? `${currentNotes}\n${newNote}` : newNote
       });
-      
       toast({ description: 'בנק הזמן עודכן' });
     }
-    
+
     setShowBankTimeDialog(false);
     setMarkAsNoShow(false);
     loadData();
   };
 
-
   const handleSaveEditedTime = async () => {
     if (!editingLesson || !editedTime) return;
-
     const lesson = lessons.find(l => l.id === editingLesson.id);
-    const student = students.find(s => s.id === editingLesson.studentId);
-    const studentName = student ? `${student.firstName} ${student.lastName}` : 'לא ידוע';
-    
     setUndoStack([...undoStack, { action: 'update', data: lesson }]);
 
     const endTime = calculateEndTime(editedTime, 30);
@@ -511,7 +431,6 @@ const LessonJournal = () => {
   };
 
   const handleAddLesson = () => {
-    // Check if either student or custom name is provided
     if ((!newLessonStudent && !customStudentName) || !newLessonDate || !newLessonTime) {
       toast({
         title: 'שגיאה',
@@ -522,8 +441,6 @@ const LessonJournal = () => {
     }
 
     const endTime = calculateEndTime(newLessonTime, 30);
-    
-    // If using custom name, add it to notes
     const lessonData: any = {
       studentId: newLessonStudent || 'one-time-student',
       date: newLessonDate,
@@ -532,13 +449,12 @@ const LessonJournal = () => {
       status: 'scheduled',
       isOneOff: true
     };
-    
+
     if (customStudentName) {
       lessonData.notes = `תלמידה חד פעמית: ${customStudentName}`;
     }
-    
-    addLesson(lessonData);
 
+    addLesson(lessonData);
     setShowAddDialog(false);
     setNewLessonStudent('');
     setNewLessonDate('');
@@ -548,23 +464,14 @@ const LessonJournal = () => {
     toast({ description: 'השיעור נוסף' });
   };
 
-  const getBankTimeFromNotes = (notes?: string): number => {
-    if (!notes) return 0;
-    const matches = notes.match(/בנק זמן: ([+-]?\d+)/g);
-    if (!matches) return 0;
-    
-    return matches.reduce((sum, match) => {
-      const value = parseInt(match.match(/([+-]?\d+)/)?.[1] || '0');
-      return sum + value;
-    }, 0);
-  };
+  const getBankTimeFromNotes = (notes?: string): number => extractBankMinutesFromNotes(notes);
 
   const handleToggleHoliday = (date: Date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
-    
+
     if (isHoliday(dateStr)) {
       deleteHoliday(dateStr);
       toast({ description: 'היום חזר לפעילות' });
@@ -580,16 +487,9 @@ const LessonJournal = () => {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
-    
-    // Check if there's an active template
     const activeTemplate = getActiveScheduleTemplate();
     if (!activeTemplate) return false;
-    
-    const dayOfWeek = date.getDay();
-    const dayKey = dayOfWeek.toString();
-    const daySchedule = activeTemplate.schedule[dayKey] || {};
-    
-    // If there are any scheduled lessons for this day
+    const daySchedule = activeTemplate.schedule[date.getDay().toString()] || {};
     return Object.keys(daySchedule).length > 0;
   };
 
@@ -602,12 +502,10 @@ const LessonJournal = () => {
         <CardHeader>
           <div className="flex justify-between items-center flex-wrap gap-4">
             <CardTitle className="text-2xl">יומן שיעורים</CardTitle>
-            
+
             <div className="flex gap-2 flex-wrap">
               <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="week">תצוגה שבועית</SelectItem>
                   <SelectItem value="day">תצוגה יומית</SelectItem>
@@ -618,34 +516,21 @@ const LessonJournal = () => {
 
               {viewMode === 'student' && (
                 <Select value={selectedStudent} onValueChange={setSelectedStudent}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="בחרי תלמידה" />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-40"><SelectValue placeholder="בחרי תלמידה" /></SelectTrigger>
                   <SelectContent>
                     {students.map(student => (
-                      <SelectItem key={student.id} value={student.id}>
-                        {student.firstName} {student.lastName}
-                      </SelectItem>
+                      <SelectItem key={student.id} value={student.id}>{student.firstName} {student.lastName}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleUndo}
-                disabled={undoStack.length === 0}
-              >
+              <Button variant="outline" size="sm" onClick={handleUndo} disabled={undoStack.length === 0}>
                 <Undo2 className="h-4 w-4 mr-2" />
                 ביטול פעולה
               </Button>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportJSON}
-              >
+              <Button variant="outline" size="sm" onClick={handleExportJSON}>
                 <Download className="h-4 w-4 mr-2" />
                 שמירה
               </Button>
@@ -661,44 +546,35 @@ const LessonJournal = () => {
         <CardContent>
           {viewMode === 'week' && (
             <>
-              {/* Week Navigation */}
               <div className="flex justify-between items-center mb-6">
                 <Button onClick={handlePrevWeek} variant="outline" size="sm">
                   <ChevronRight className="h-4 w-4 ml-2" />
                   שבוע קודם
                 </Button>
-                <h3 className="text-lg font-semibold">
-                  {fmtDate(weekDates[0])} - {fmtDate(weekDates[5])}
-                </h3>
+                <h3 className="text-lg font-semibold">{fmtDate(weekDates[0])} - {fmtDate(weekDates[5])}</h3>
                 <Button onClick={handleNextWeek} variant="outline" size="sm">
                   שבוע הבא
                   <ChevronLeft className="h-4 w-4 mr-2" />
                 </Button>
               </div>
 
-              {/* Weekly Grid */}
               <div className={`grid grid-cols-6 gap-3 ${isCurrentWeekPast ? 'bg-yellow-50/50 p-4 rounded-lg' : ''}`}>
                 {weekDates.map((date, index) => {
                   const dayLessons = getLessonsForDate(date);
                   const dayPerformances = getPerformancesForDate(date);
                   const hasCollision = checkTimeCollision(date);
                   const today = new Date();
-                  const isToday = date.getDate() === today.getDate() && 
-                                  date.getMonth() === today.getMonth() && 
-                                  date.getFullYear() === today.getFullYear();
-                  
+                  const isToday = date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
                   const year = date.getFullYear();
                   const month = String(date.getMonth() + 1).padStart(2, '0');
                   const day = String(date.getDate()).padStart(2, '0');
                   const dateStr = `${year}-${month}-${day}`;
                   const isDayHoliday = isHoliday(dateStr);
-                  
+
                   return (
                     <div
                       key={index}
-                      className={`border rounded-lg p-3 min-h-[200px] ${
-                        isToday ? 'border-primary border-2' : 'border-border'
-                      } ${isDayHoliday ? 'bg-gray-100' : ''}`}
+                      className={`border rounded-lg p-3 min-h-[200px] ${isToday ? 'border-primary border-2' : 'border-border'} ${isDayHoliday ? 'bg-gray-100' : ''}`}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={() => handleDrop(date)}
                       onDoubleClick={() => handleDayDoubleClick(date)}
@@ -708,123 +584,77 @@ const LessonJournal = () => {
                           {dayNames[index]}
                           {hasCollision && <AlertTriangle className="h-3 w-3 text-destructive" />}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {fmtDate(date, { day: 'numeric', month: 'numeric' })}
-                        </div>
-                        {isDayHoliday && (
-                          <Badge variant="outline" className="text-[10px] mt-1 bg-red-100 text-red-700">
-                            חופשה
-                          </Badge>
-                        )}
+                        <div className="text-xs text-muted-foreground">{fmtDate(date, { day: 'numeric', month: 'numeric' })}</div>
+                        {isDayHoliday && <Badge variant="outline" className="text-[10px] mt-1 bg-red-100 text-red-700">חופשה</Badge>}
                       </div>
 
                       {isDayHoliday ? (
-                        <div className="text-center text-muted-foreground text-sm py-4">
-                          🏖️ יום חופשה
-                        </div>
+                        <div className="text-center text-muted-foreground text-sm py-4">🏖️ יום חופשה</div>
                       ) : (
                         <div className="space-y-2">
-                        {dayPerformances.map((perf) => (
-                          <div
-                            key={perf.id}
-                            className="p-2 rounded text-xs bg-purple-100 border border-purple-300"
-                          >
-                            <div className="flex justify-between items-start mb-1">
-                              <div className="font-medium text-purple-900">
-                                {perf.timeEstimate || 'ללא שעה'}
-                              </div>
-                            </div>
-                            <div className="font-medium text-purple-900 mb-1">
-                              🎵 {perf.name}
-                            </div>
-                            <Badge variant="outline" className="text-[10px] bg-purple-200 text-purple-900">
-                              {perf.status === 'open' ? 'פתוחה' : 'סגורה'}
-                            </Badge>
-                          </div>
-                        ))}
-                        {dayLessons
-                          .filter(lesson => lesson.status !== 'cancelled')
-                          .map((lesson) => {
-                          const bankTime = getBankTimeFromNotes(lesson.notes);
-                          const hasCollision = checkLessonCollision(lesson, date);
-                          
-                          return (
-                            <div
-                              key={lesson.id}
-                              draggable={lesson.status !== 'completed'}
-                              onDragStart={() => handleDragStart(lesson)}
-                              onDoubleClick={(e) => handleLessonDoubleClick(lesson, e)}
-                              className={`p-2 rounded text-xs ${
-                                lesson.status === 'completed'
-                                  ? 'bg-[#8B2942]/10 border border-[#8B2942]/30 cursor-pointer'
-                                  : lesson.isFromTemplate
-                                  ? 'bg-blue-50 border border-blue-200 cursor-move text-black'
-                                  : 'bg-secondary/30 border border-border cursor-pointer text-black'
-                              } ${hasCollision ? 'ring-2 ring-destructive' : ''}`}
-                            >
+                          {dayPerformances.map((perf) => (
+                            <div key={perf.id} className="p-2 rounded text-xs bg-purple-100 border border-purple-300">
                               <div className="flex justify-between items-start mb-1">
-                                <div className="font-medium flex items-center gap-1">
-                                  {lesson.startTime}
-                                  {hasCollision && <AlertTriangle className="h-3 w-3 text-destructive" />}
+                                <div className="font-medium text-purple-900">{perf.timeEstimate || 'ללא שעה'}</div>
+                              </div>
+                              <div className="font-medium text-purple-900 mb-1">🎵 {perf.name}</div>
+                              <Badge variant="outline" className="text-[10px] bg-purple-200 text-purple-900">{perf.status === 'open' ? 'פתוחה' : 'סגורה'}</Badge>
+                            </div>
+                          ))}
+                          {dayLessons.filter(lesson => lesson.status !== 'cancelled').map((lesson) => {
+                            const bankTime = getBankTimeFromNotes(lesson.notes);
+                            const lessonCollision = checkLessonCollision(lesson, date);
+
+                            return (
+                              <div
+                                key={lesson.id}
+                                draggable={lesson.status !== 'completed'}
+                                onDragStart={() => handleDragStart(lesson)}
+                                onDoubleClick={(e) => handleLessonDoubleClick(lesson, e)}
+                                className={`p-2 rounded text-xs ${
+                                  lesson.status === 'completed'
+                                    ? 'bg-[#8B2942]/10 border border-[#8B2942]/30 cursor-pointer'
+                                    : lesson.isFromTemplate
+                                      ? 'bg-blue-50 border border-blue-200 cursor-move text-black'
+                                      : 'bg-secondary/30 border border-border cursor-pointer text-black'
+                                } ${lessonCollision ? 'ring-2 ring-destructive' : ''}`}
+                              >
+                                <div className="flex justify-between items-start mb-1">
+                                  <div className="font-medium flex items-center gap-1">
+                                    {lesson.startTime}
+                                    {lessonCollision && <AlertTriangle className="h-3 w-3 text-destructive" />}
+                                  </div>
+                                  {lesson.status !== 'completed' && (
+                                    <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={(e) => handleDeleteLesson(lesson, e)}>
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  )}
                                 </div>
+
+                                <div className="font-medium mb-1">
+                                  {lesson.student ? `${lesson.student.firstName} ${lesson.student.lastName}` : 'לא ידוע'}
+                                </div>
+
+                                {lessonCollision && <div className="text-[10px] text-destructive font-medium mb-1">⚠️ התנגשות עם הופעה</div>}
+                                {lesson.lessonNumber && <Badge variant="outline" className="text-[10px] mb-1">שיעור #{lesson.lessonNumber}</Badge>}
+                                {lesson.isSwapped && <Badge className="bg-red-600 text-white text-[10px] mb-1">הוחלף</Badge>}
+                                {bankTime !== 0 && (
+                                  <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {bankTime > 0 ? '+' : ''}{bankTime} דק'
+                                  </div>
+                                )}
+
                                 {lesson.status !== 'completed' && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-4 w-4 p-0"
-                                    onClick={(e) => handleDeleteLesson(lesson, e)}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
+                                  <Button size="sm" variant="outline" className="w-full mt-2 h-6 text-xs" onClick={() => handleMarkCompleted(lesson)}>
+                                    <Check className="h-3 w-3 mr-1" />
+                                    סמן כהתקיים
                                   </Button>
                                 )}
                               </div>
-                              
-                              <div className="font-medium mb-1">
-                                {lesson.student
-                                  ? `${lesson.student.firstName} ${lesson.student.lastName}`
-                                  : 'לא ידוע'}
-                              </div>
-
-                              {hasCollision && (
-                                <div className="text-[10px] text-destructive font-medium mb-1">
-                                  ⚠️ התנגשות עם הופעה
-                                </div>
-                              )}
-
-                              {lesson.lessonNumber && (
-                                <Badge variant="outline" className="text-[10px] mb-1">
-                                  שיעור #{lesson.lessonNumber}
-                                </Badge>
-                              )}
-
-                              {lesson.isSwapped && (
-                                <Badge className="bg-red-600 text-white text-[10px] mb-1">
-                                  הוחלף
-                                </Badge>
-                              )}
-
-                              {bankTime !== 0 && (
-                                <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {bankTime > 0 ? '+' : ''}{bankTime} דק'
-                                </div>
-                              )}
-
-                              {lesson.status !== 'completed' && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="w-full mt-2 h-6 text-xs"
-                                  onClick={() => handleMarkCompleted(lesson)}
-                                >
-                                  <Check className="h-3 w-3 mr-1" />
-                                  סמן כהתקיים
-                                </Button>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   );
@@ -871,101 +701,49 @@ const LessonJournal = () => {
         </CardContent>
       </Card>
 
-      {/* Add Lesson Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>הוספת שיעור חד פעמי</DialogTitle>
-          </DialogHeader>
-          
+          <DialogHeader><DialogTitle>הוספת שיעור חד פעמי</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>תלמידה רשומה</Label>
-              <Select 
-                value={newLessonStudent} 
-                onValueChange={(value) => {
-                  setNewLessonStudent(value);
-                  setCustomStudentName(''); // Clear custom name when selecting from list
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="בחרי תלמידה מהרשימה" />
-                </SelectTrigger>
+              <Select value={newLessonStudent} onValueChange={(value) => { setNewLessonStudent(value); setCustomStudentName(''); }}>
+                <SelectTrigger><SelectValue placeholder="בחרי תלמידה מהרשימה" /></SelectTrigger>
                 <SelectContent>
-                  {students.map(student => (
-                    <SelectItem key={student.id} value={student.id}>
-                      {student.firstName} {student.lastName}
-                    </SelectItem>
-                  ))}
+                  {students.map(student => <SelectItem key={student.id} value={student.id}>{student.firstName} {student.lastName}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="text-center text-sm text-muted-foreground">או</div>
-
             <div>
               <Label>תלמידה חד פעמית (הזנה ידנית)</Label>
-              <Input
-                type="text"
-                value={customStudentName}
-                onChange={(e) => {
-                  setCustomStudentName(e.target.value);
-                  setNewLessonStudent(''); // Clear selected student when typing custom name
-                }}
-                placeholder="שם התלמידה"
-              />
+              <Input type="text" value={customStudentName} onChange={(e) => { setCustomStudentName(e.target.value); setNewLessonStudent(''); }} placeholder="שם התלמידה" />
             </div>
-
             <div>
               <Label>תאריך *</Label>
-              <Input
-                type="date"
-                value={newLessonDate}
-                onChange={(e) => setNewLessonDate(e.target.value)}
-              />
+              <Input type="date" value={newLessonDate} onChange={(e) => setNewLessonDate(e.target.value)} />
             </div>
-
             <div>
               <Label>שעה *</Label>
-              <Input
-                type="time"
-                value={newLessonTime}
-                onChange={(e) => setNewLessonTime(e.target.value)}
-              />
+              <Input type="time" value={newLessonTime} onChange={(e) => setNewLessonTime(e.target.value)} />
             </div>
-
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                ביטול
-              </Button>
-              <Button onClick={handleAddLesson} className="hero-gradient">
-                הוסף
-              </Button>
+              <Button variant="outline" onClick={() => setShowAddDialog(false)}>ביטול</Button>
+              <Button onClick={handleAddLesson} className="hero-gradient">הוסף</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Bank Time Dialog */}
       <Dialog open={showBankTimeDialog} onOpenChange={setShowBankTimeDialog}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>עריכת בנק זמן</DialogTitle>
-          </DialogHeader>
-          
+          <DialogHeader><DialogTitle>עריכת בנק זמן</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            {/* Checkbox לסימון נעדרות */}
             <div className="flex items-center space-x-2 space-x-reverse">
-              <Checkbox
-                id="noShow"
-                checked={markAsNoShow}
-                onCheckedChange={(checked) => setMarkAsNoShow(checked === true)}
-              />
-              <Label htmlFor="noShow" className="cursor-pointer">
-                התלמידה לא הגיעה לשיעור
-              </Label>
+              <Checkbox id="noShow" checked={markAsNoShow} onCheckedChange={(checked) => setMarkAsNoShow(checked === true)} />
+              <Label htmlFor="noShow" className="cursor-pointer">התלמידה לא הגיעה לשיעור</Label>
             </div>
-            
             <div>
               <Label>שינוי בדקות (+ הוספה / − הפחתה)</Label>
               <NumberStepper
@@ -978,43 +756,25 @@ const LessonJournal = () => {
                 unit="דק׳"
               />
             </div>
-
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowBankTimeDialog(false)}>
-                ביטול
-              </Button>
-              <Button onClick={handleSaveBankTime} className="hero-gradient">
-                שמור
-              </Button>
+              <Button variant="outline" onClick={() => setShowBankTimeDialog(false)}>ביטול</Button>
+              <Button onClick={handleSaveBankTime} className="hero-gradient">שמור</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Edit Time Dialog */}
       <Dialog open={showEditTimeDialog} onOpenChange={setShowEditTimeDialog}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>עריכת שעת שיעור</DialogTitle>
-          </DialogHeader>
-          
+          <DialogHeader><DialogTitle>עריכת שעת שיעור</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>שעת התחלה</Label>
-              <Input
-                type="time"
-                value={editedTime}
-                onChange={(e) => setEditedTime(e.target.value)}
-              />
+              <Input type="time" value={editedTime} onChange={(e) => setEditedTime(e.target.value)} />
             </div>
-
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowEditTimeDialog(false)}>
-                ביטול
-              </Button>
-              <Button onClick={handleSaveEditedTime} className="hero-gradient">
-                שמור
-              </Button>
+              <Button variant="outline" onClick={() => setShowEditTimeDialog(false)}>ביטול</Button>
+              <Button onClick={handleSaveEditedTime} className="hero-gradient">שמור</Button>
             </div>
           </div>
         </DialogContent>
@@ -1023,7 +783,6 @@ const LessonJournal = () => {
   );
 };
 
-// Component for student view
 const StudentLessonView = ({
   studentId,
   students,
@@ -1043,15 +802,13 @@ const StudentLessonView = ({
   const student = students.find(s => s.id === studentId);
   if (!student) return null;
 
-  const today = new Date().toISOString().split('T')[0];
   const now = new Date();
-  const yearEnd = now.getMonth() >= 8
-    ? `${now.getFullYear() + 1}-08-31`
-    : `${now.getFullYear()}-08-31`;
+  const activeSchoolYear = getSchoolYearForDate(now);
+  const yearBounds = getSchoolYearBounds(activeSchoolYear);
+  const yearEnd = yearBounds.end;
 
-  // שיעורים שבוצעו
   const completedLessons = lessons
-    .filter(l => l.studentId === studentId && l.status === 'completed')
+    .filter(l => l.studentId === studentId && l.status === 'completed' && l.date >= yearBounds.start && l.date <= yearBounds.end)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .map(l => ({
       ...l,
@@ -1060,12 +817,10 @@ const StudentLessonView = ({
       isFuture: false as const
     }));
 
-  // שיעורים עתידיים — בדיוק כמו התצוגה השבועית, כולל תבנית מערכת
-  // עובר יום-יום מהיום עד 31.8 וקורא ל-getLessonsForDate (אותה פונקציה כמו תצוגת שבוע)
   const remainingLessons: LessonWithStudent[] = [];
   const cursor = new Date(now);
   cursor.setDate(cursor.getDate() + 1);
-  const endDate = new Date(yearEnd);
+  const endDate = new Date(`${yearEnd}T12:00:00`);
   while (cursor <= endDate) {
     getLessonsForDate(new Date(cursor))
       .filter(l => l.studentId === studentId && l.status !== 'completed')
@@ -1079,14 +834,10 @@ const StudentLessonView = ({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">
-          {student.firstName} {student.lastName}
-        </h3>
+        <h3 className="text-lg font-semibold">{student.firstName} {student.lastName}</h3>
         <div className="flex gap-3 text-sm">
-          <span className="text-[#8B2942] font-medium">✓ {completedLessons.length} שיעורים בוצעו</span>
-          {remainingLessons.length > 0 && (
-            <span className="text-muted-foreground">• {remainingLessons.length} נותרו עד סוף שנה</span>
-          )}
+          <span className="text-[#8B2942] font-medium">✓ {completedLessons.length} שיעורים בוצעו בשנת {activeSchoolYear}</span>
+          {remainingLessons.length > 0 && <span className="text-muted-foreground">• {remainingLessons.length} נותרו עד סוף שנה</span>}
         </div>
       </div>
 
@@ -1096,14 +847,8 @@ const StudentLessonView = ({
             <div className="flex justify-between items-center">
               <div>
                 <div className="font-medium">{formatDate(lesson.date)} — {lesson.startTime}</div>
-                {lesson.lessonNumber > 0 && (
-                  <div className="text-sm text-muted-foreground">שיעור #{lesson.lessonNumber}</div>
-                )}
-                {lesson.bankTime !== 0 && (
-                  <div className="text-sm text-muted-foreground">
-                    בנק זמן: {lesson.bankTime > 0 ? '+' : ''}{lesson.bankTime} דק'
-                  </div>
-                )}
+                {lesson.lessonNumber > 0 && <div className="text-sm text-muted-foreground">שיעור #{lesson.lessonNumber}</div>}
+                {lesson.bankTime !== 0 && <div className="text-sm text-muted-foreground">בנק זמן: {lesson.bankTime > 0 ? '+' : ''}{lesson.bankTime} דק'</div>}
               </div>
               <Badge variant="outline" className="bg-[#8B2942]/10 text-xs">הושלם</Badge>
             </div>
@@ -1112,14 +857,10 @@ const StudentLessonView = ({
 
         {remainingLessons.length > 0 && (
           <>
-            <div className="text-xs text-muted-foreground pt-2 pb-1 font-medium border-t">
-              שיעורים מתוזמנים שנותרו ({remainingLessons.length})
-            </div>
+            <div className="text-xs text-muted-foreground pt-2 pb-1 font-medium border-t">שיעורים מתוזמנים שנותרו ({remainingLessons.length})</div>
             {remainingLessons.map(lesson => (
               <div key={lesson.id} className="p-3 rounded border bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700 opacity-60">
-                <div className="text-gray-500 dark:text-gray-400 text-sm">
-                  {formatDate(lesson.date)} — {lesson.startTime}
-                </div>
+                <div className="text-gray-500 dark:text-gray-400 text-sm">{formatDate(lesson.date)} — {lesson.startTime}</div>
               </div>
             ))}
           </>
@@ -1136,7 +877,6 @@ const StudentLessonView = ({
   );
 };
 
-// Component for Day View
 const DayView = ({
   selectedDay,
   setSelectedDay,
@@ -1150,7 +890,7 @@ const DayView = ({
   checkLessonCollision
 }: any) => {
   const [currentDate, setCurrentDate] = useState(selectedDay || new Date());
-  
+
   const dayLessons = getLessonsForDate(currentDate);
   const dayPerformances = getPerformancesForDate(currentDate);
   const year = currentDate.getFullYear();
@@ -1175,7 +915,6 @@ const DayView = ({
 
   return (
     <div className="space-y-6">
-      {/* Day Navigation */}
       <div className="flex justify-between items-center">
         <Button onClick={handlePrevDay} variant="outline" size="sm">
           <ChevronRight className="h-4 w-4 ml-2" />
@@ -1203,22 +942,13 @@ const DayView = ({
             <div>
               <h4 className="font-semibold mb-2">הופעות</h4>
               <div className="space-y-2">
-                {dayPerformances.map((perf) => (
-                  <div
-                    key={perf.id}
-                    className="p-4 rounded-lg bg-purple-100 border border-purple-300"
-                  >
+                {dayPerformances.map((perf: Performance) => (
+                  <div key={perf.id} className="p-4 rounded-lg bg-purple-100 border border-purple-300">
                     <div className="flex justify-between items-start mb-2">
-                      <div className="font-medium text-purple-900 text-lg">
-                        🎵 {perf.name}
-                      </div>
-                      <Badge variant="outline" className="bg-purple-200 text-purple-900">
-                        {perf.status === 'open' ? 'פתוחה' : 'סגורה'}
-                      </Badge>
+                      <div className="font-medium text-purple-900 text-lg">🎵 {perf.name}</div>
+                      <Badge variant="outline" className="bg-purple-200 text-purple-900">{perf.status === 'open' ? 'פתוחה' : 'סגורה'}</Badge>
                     </div>
-                    <div className="text-sm text-purple-800">
-                      שעה: {perf.timeEstimate || 'ללא שעה'}
-                    </div>
+                    <div className="text-sm text-purple-800">שעה: {perf.timeEstimate || 'ללא שעה'}</div>
                   </div>
                 ))}
               </div>
@@ -1229,10 +959,10 @@ const DayView = ({
             <div>
               <h4 className="font-semibold mb-2">שיעורים</h4>
               <div className="space-y-2">
-                {dayLessons.map((lesson) => {
+                {dayLessons.map((lesson: LessonWithStudent) => {
                   const bankTime = getBankTimeFromNotes(lesson.notes);
                   const hasCollision = checkLessonCollision(lesson, currentDate);
-                  
+
                   return (
                     <div
                       key={lesson.id}
@@ -1241,8 +971,8 @@ const DayView = ({
                         lesson.status === 'completed'
                           ? 'bg-[#8B2942]/10 border-[#8B2942]/30 cursor-pointer'
                           : lesson.isFromTemplate
-                          ? 'bg-blue-50 border border-blue-200 text-black'
-                          : 'bg-secondary/30 border border-border cursor-pointer text-black'
+                            ? 'bg-blue-50 border border-blue-200 text-black'
+                            : 'bg-secondary/30 border border-border cursor-pointer text-black'
                       } ${hasCollision ? 'ring-2 ring-destructive' : ''}`}
                     >
                       <div className="flex justify-between items-start mb-2">
@@ -1251,35 +981,17 @@ const DayView = ({
                             {lesson.startTime}
                             {hasCollision && <AlertTriangle className="h-4 w-4 text-destructive" />}
                           </div>
-                          <div className="font-medium">
-                            {lesson.student
-                              ? `${lesson.student.firstName} ${lesson.student.lastName}`
-                              : 'לא ידוע'}
-                          </div>
+                          <div className="font-medium">{lesson.student ? `${lesson.student.firstName} ${lesson.student.lastName}` : 'לא ידוע'}</div>
                         </div>
                         {lesson.status !== 'completed' && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => handleDeleteLesson(lesson, e)}
-                          >
+                          <Button size="sm" variant="ghost" onClick={(e) => handleDeleteLesson(lesson, e)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
                       </div>
 
-                      {hasCollision && (
-                        <div className="text-sm text-destructive font-medium mb-2">
-                          ⚠️ התנגשות עם הופעה
-                        </div>
-                      )}
-
-                      {lesson.lessonNumber && (
-                        <Badge variant="outline" className="mb-2">
-                          שיעור #{lesson.lessonNumber}
-                        </Badge>
-                      )}
-
+                      {hasCollision && <div className="text-sm text-destructive font-medium mb-2">⚠️ התנגשות עם הופעה</div>}
+                      {lesson.lessonNumber && <Badge variant="outline" className="mb-2">שיעור #{lesson.lessonNumber}</Badge>}
                       {bankTime !== 0 && (
                         <div className="text-sm text-muted-foreground flex items-center gap-1 mb-2">
                           <Clock className="h-4 w-4" />
@@ -1288,12 +1000,7 @@ const DayView = ({
                       )}
 
                       {lesson.status !== 'completed' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full mt-2"
-                          onClick={() => handleMarkCompleted(lesson)}
-                        >
+                        <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => handleMarkCompleted(lesson)}>
                           <Check className="h-4 w-4 mr-2" />
                           סמן כהתקיים
                         </Button>
@@ -1306,9 +1013,7 @@ const DayView = ({
           )}
 
           {dayLessons.length === 0 && dayPerformances.length === 0 && (
-            <div className="text-center text-muted-foreground py-8">
-              אין שיעורים או הופעות ביום זה
-            </div>
+            <div className="text-center text-muted-foreground py-8">אין שיעורים או הופעות ביום זה</div>
           )}
         </div>
       )}
@@ -1316,7 +1021,6 @@ const DayView = ({
   );
 };
 
-// Component for Year View
 const YearView = ({
   year,
   onYearChange,
@@ -1335,17 +1039,11 @@ const YearView = ({
     'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
   ];
 
-  const getDaysInMonth = (month: number, year: number) => {
-    return new Date(year, month + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (month: number, year: number) => {
-    return new Date(year, month, 1).getDay();
-  };
+  const getDaysInMonth = (month: number, year: number) => new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (month: number, year: number) => new Date(year, month, 1).getDay();
 
   return (
     <div className="space-y-6">
-      {/* Year Navigation */}
       <div className="flex justify-between items-center mb-6">
         <Button onClick={() => onYearChange(year - 1)} variant="outline" size="sm">
           <ChevronRight className="h-4 w-4 ml-2" />
@@ -1358,52 +1056,39 @@ const YearView = ({
         </Button>
       </div>
 
-      {/* 12 Months Grid */}
       <div className="grid grid-cols-4 gap-4">
         {Array.from({ length: 12 }).map((_, monthIndex) => {
           const daysInMonth = getDaysInMonth(monthIndex, year);
           const firstDay = getFirstDayOfMonth(monthIndex, year);
-          
+
           return (
             <div key={monthIndex} className="border rounded-lg p-3">
               <h4 className="text-center font-semibold mb-2 text-sm">{monthNames[monthIndex]}</h4>
               <div className="grid grid-cols-7 gap-1 text-xs">
-                {/* Day headers */}
                 {['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'].map((day, i) => (
-                  <div key={i} className="text-center font-semibold text-muted-foreground p-1">
-                    {day}
-                  </div>
+                  <div key={i} className="text-center font-semibold text-muted-foreground p-1">{day}</div>
                 ))}
-                
-                {/* Empty cells for days before month starts */}
-                {Array.from({ length: firstDay }).map((_, i) => (
-                  <div key={`empty-${i}`} className="p-1"></div>
-                ))}
-                
-                {/* Days of the month */}
+                {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} className="p-1"></div>)}
                 {Array.from({ length: daysInMonth }).map((_, dayIndex) => {
                   const day = dayIndex + 1;
                   const date = new Date(year, monthIndex, day);
                   const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  const isHoliday = holidays.includes(dateStr);
+                  const dayIsHoliday = holidays.includes(dateStr);
                   const hasLessons = hasLessonsOnDate(date);
-                  const isToday = 
-                    new Date().getDate() === day &&
-                    new Date().getMonth() === monthIndex &&
-                    new Date().getFullYear() === year;
-                  
+                  const isToday = new Date().getDate() === day && new Date().getMonth() === monthIndex && new Date().getFullYear() === year;
+
                   return (
                     <div
                       key={day}
                       onClick={() => onToggleHoliday(date)}
                       className={`p-1 text-center rounded cursor-pointer transition-colors ${
-                        isHoliday
+                        dayIsHoliday
                           ? 'bg-red-200 text-red-800 font-bold'
                           : hasLessons
-                          ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                          : 'hover:bg-gray-100'
+                            ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                            : 'hover:bg-gray-100'
                       } ${isToday ? 'ring-2 ring-primary' : ''}`}
-                      title={isHoliday ? 'חופשה - לחץ להסרה' : hasLessons ? 'יש שיעורים - לחץ לסימון חופשה' : 'לחץ לסימון חופשה'}
+                      title={dayIsHoliday ? 'חופשה - לחץ להסרה' : hasLessons ? 'יש שיעורים - לחץ לסימון חופשה' : 'לחץ לסימון חופשה'}
                     >
                       {day}
                     </div>
@@ -1416,14 +1101,8 @@ const YearView = ({
       </div>
 
       <div className="flex gap-4 justify-center text-sm">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded"></div>
-          <span>יש שיעורים</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-red-200 border border-red-300 rounded"></div>
-          <span>חופשה</span>
-        </div>
+        <div className="flex items-center gap-2"><div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded"></div><span>יש שיעורים</span></div>
+        <div className="flex items-center gap-2"><div className="w-4 h-4 bg-red-200 border border-red-300 rounded"></div><span>חופשה</span></div>
       </div>
     </div>
   );
