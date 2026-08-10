@@ -6,7 +6,8 @@ import { Button } from '@/components/safe-ui/button';
 import { ChevronLeft, ChevronRight, History } from 'lucide-react';
 import { getLessons } from '@/lib/storage';
 import { Student, Lesson } from '@/lib/types';
-import { calculateEnhancedLessonNumber } from '@/lib/lessonNumbering';
+import { calculateSchoolYearLessonNumber } from '@/lib/lessonNumbering';
+import { getSchoolYearForDate } from '@/lib/schoolYear';
 
 interface LessonHistoryProps {
   student: Student;
@@ -16,6 +17,7 @@ interface LessonWithNumber extends Lesson {
   lessonNumber?: number;
   isSkippedLesson?: boolean;
   isBankTimeLesson?: boolean;
+  schoolYear?: number;
 }
 
 const LessonHistory = ({ student }: LessonHistoryProps) => {
@@ -24,21 +26,22 @@ const LessonHistory = ({ student }: LessonHistoryProps) => {
   const itemsPerPage = 10;
 
   useEffect(() => {
-    const allStudentLessons = getLessons()
-      .filter(lesson => lesson.studentId === student.id)
-      .filter(lesson => lesson.status === 'completed')
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const lessonsWithNumbers = getLessons()
+      .filter(lesson => lesson.studentId === student.id && lesson.status === 'completed')
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map(lesson => {
+        const numbering = calculateSchoolYearLessonNumber(student.id, lesson.date, lesson.id);
+        return {
+          ...lesson,
+          lessonNumber: numbering.lessonNumber,
+          isSkippedLesson: numbering.isSkippedLesson,
+          isBankTimeLesson: numbering.isBankTimeLesson,
+          schoolYear: getSchoolYearForDate(lesson.date),
+        };
+      })
+      .reverse();
 
-    const lessonsWithNumbers = allStudentLessons.map((lesson, index) => {
-      return {
-        ...lesson,
-        lessonNumber: index + (student.startingLessonNumber || 1),
-        isSkippedLesson: false,
-        isBankTimeLesson: lesson.notes?.includes('בנק זמן') || false
-      };
-    });
-
-    setAllLessons(lessonsWithNumbers.reverse());
+    setAllLessons(lessonsWithNumbers);
     setCurrentPage(1);
   }, [student]);
 
@@ -78,12 +81,13 @@ const LessonHistory = ({ student }: LessonHistoryProps) => {
         ) : (
           <>
             <div className="mb-4 text-sm text-muted-foreground">
-              סך הכל {allLessons.length} שיעורים מתאריך ההתחלה
+              סך הכל {allLessons.length} שיעורים מתאריך ההתחלה · המיספור מוצג מחדש לכל שנת לימודים
             </div>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>מספר שיעור</TableHead>
+                  <TableHead>שנה״ל</TableHead>
                   <TableHead>תאריך</TableHead>
                   <TableHead>שעה</TableHead>
                   <TableHead>ציון ש"ב</TableHead>
@@ -96,7 +100,7 @@ const LessonHistory = ({ student }: LessonHistoryProps) => {
                   const currentDate = new Date().toISOString().split('T')[0];
                   const isFuture = lesson.date > currentDate;
                   const isCompleted = lesson.status === 'completed';
-                  
+
                   return (
                     <TableRow key={lesson.id} className={isCompleted ? 'bg-blue-50 dark:bg-blue-950/20' : ''}>
                       <TableCell className={`font-medium ${isFuture ? 'text-muted-foreground' : isCompleted ? 'text-blue-800 dark:text-blue-300' : ''}`}>
@@ -113,6 +117,7 @@ const LessonHistory = ({ student }: LessonHistoryProps) => {
                           '-'
                         )}
                       </TableCell>
+                      <TableCell>{lesson.schoolYear}</TableCell>
                       <TableCell className={isFuture ? 'text-muted-foreground' : isCompleted ? 'text-blue-800 dark:text-blue-300' : ''}>
                         {new Date(lesson.date).toLocaleDateString('he-IL')}
                       </TableCell>
@@ -131,9 +136,7 @@ const LessonHistory = ({ student }: LessonHistoryProps) => {
                           </div>
                         ) : '-'}
                       </TableCell>
-                      <TableCell>
-                        {getStatusBadge(lesson.status)}
-                      </TableCell>
+                      <TableCell>{getStatusBadge(lesson.status)}</TableCell>
                       <TableCell className={isFuture ? 'text-muted-foreground' : isCompleted ? 'text-blue-800 dark:text-blue-300' : ''}>
                         {lesson.notes || '-'}
                       </TableCell>
@@ -154,11 +157,7 @@ const LessonHistory = ({ student }: LessonHistoryProps) => {
                   <ChevronRight className="h-4 w-4 mr-1" />
                   הקודם
                 </Button>
-                
-                <span className="text-sm text-muted-foreground">
-                  עמוד {currentPage} מתוך {totalPages}
-                </span>
-                
+                <span className="text-sm text-muted-foreground">עמוד {currentPage} מתוך {totalPages}</span>
                 <Button
                   variant="outline"
                   size="sm"
