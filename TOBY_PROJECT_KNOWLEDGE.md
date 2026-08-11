@@ -34,9 +34,23 @@
 - Importing a backup is a replacement transaction for application data, not an overlay on top of the currently loaded buckets.
 - Authentication/session state is outside the application-data replacement and must not be copied from or removed by a backup import.
 - In `/dev-admin`, a local JSON import is written directly into isolated `devData`. It must never call the Worker/Dropbox and must never reload the browser page, because a reload would destroy the in-memory rehearsal data. A PII-free browser event remounts the admin dashboard so all tabs re-read the imported dev data.
-- In normal admin mode, an explicit restore waits for any active sync to become idle, temporarily quiesces the heavy download+merge path for the short critical restore window, replaces the active application buckets, uploads the exact snapshot immediately, then reads the latest Worker/Dropbox snapshot back and verifies it before reporting durable success.
-- Normal mode may reload after an import only when that read-back verification succeeds. A failed or unverified upload must remain visibly failed/unverified and must not be reported as a successful durable restore.
+- In normal admin mode, loading a local JSON enters a staged local-draft session. Before replacing memory, the app pauses future automatic Dropbox uploads/full download+merge syncs and waits for any already-running sync to finish.
+- Loading the JSON itself never writes it to Dropbox. The imported data may be inspected and edited across admin tabs while the global sync remains paused.
+- While a staged JSON is active, the global save button changes to `שמור JSON ל-Dropbox`; ordinary automatic save/sync calls remain local-only, and manual Dropbox download is disabled so the staged data cannot be silently replaced.
+- Pressing the global save button uploads the current complete snapshot, reads the latest Worker/Dropbox snapshot back, and verifies equality. If data changed while the save was running, the app repeats with the newest snapshot before resuming normal sync.
+- Automatic Dropbox sync resumes only after read-back verification succeeds. If upload or verification fails, the staged data remains in memory, sync remains paused, and the UI must show a warning rather than claim durable success.
+- Leaving/reloading a page with an unsaved staged JSON triggers a browser warning. Reloading discards the in-memory draft and normal startup then returns to Dropbox as the production source of truth.
 - Older JSON backups remain supported; missing optional buckets receive safe empty defaults rather than causing the restore to fail.
+
+### Financial durability
+
+- Ordinary money-related work must remain fast in the UI; do not add confirmation dialogs or blocking waits to every payment action.
+- `src/lib/financialDurability.ts` captures the loaded financial baseline and detects changes to recurring payments, one-time payments, per-lesson payments/ledger, performance financial data, school-year financial records, and student billing fields.
+- The existing fast save path runs normally. After a detected financial mutation, the app verifies the financial projection against the latest Worker/Dropbox snapshot in the background.
+- If the remote financial projection does not match, the app performs one exact full-snapshot repair upload and verifies again. This is serialized/coalesced so rapid edits do not create a user-facing confirmation flow.
+- When offline, financial verification remains pending and retries after connectivity returns. A warning is shown only if persistence cannot be verified/repaired; the UI must not silently claim verified cloud durability in that case.
+- A staged local JSON session takes precedence over financial background verification: no financial verifier may write to Dropbox while local JSON sync is intentionally paused.
+- Tithe/maaser uses the stronger append-only event mechanism below in addition to general financial protection.
 
 ### Tithe / maaser durability
 
