@@ -6,12 +6,23 @@ import { toast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { hybridSync } from '@/lib/hybridSync';
 import { logger } from '@/lib/logger';
+import { isDevMode } from '@/lib/storage';
+import { importBackupSafely } from '@/lib/safeBackupRestore';
 
 const BackupImport = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const devMode = isDevMode();
 
   const handleDownloadFromWorker = async () => {
+    if (devMode) {
+      toast({
+        title: '🧪 מצב בדיקה',
+        description: 'במצב בדיקה אין הורדה אוטומטית מ-Dropbox. טעני JSON מקומי כדי לשמור על בידוד מלא.',
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       await hybridSync.loadDataOnInit();
@@ -57,7 +68,7 @@ const BackupImport = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.json')) {
+    if (!file.name.toLowerCase().endsWith('.json')) {
       toast({
         title: 'שגיאה',
         description: 'ניתן לטעון רק קבצי JSON',
@@ -68,18 +79,25 @@ const BackupImport = () => {
 
     setIsLoading(true);
     try {
-      const result = await hybridSync.importBackup(file);
+      const result = await importBackupSafely(file);
       
       toast({
-        title: result.success ? '✅ הגיבוי יובא' : '❌ שגיאה ביבוא',
+        title: result.success
+          ? result.synced
+            ? '✅ הגיבוי יובא ואומת'
+            : '✅ הגיבוי נטען במצב בדיקה'
+          : '❌ הייבוא לא אומת',
         description: result.message,
         variant: result.success ? 'default' : 'destructive',
       });
 
-      if (result.success) {
+      // Normal production mode reloads only after the uploaded snapshot was
+      // read back and verified. Dev mode never reloads, because devData lives
+      // only in memory and must survive the import.
+      if (result.success && result.reloadRequired) {
         setTimeout(() => {
           window.location.reload();
-        }, 1500);
+        }, 900);
       }
     } catch (error) {
       logger.error('Import error:', error);
@@ -106,7 +124,9 @@ const BackupImport = () => {
           <CardTitle className="flex items-center gap-2">
             <Cloud className="h-5 w-5" />
             הורדה מדרופבוקס
-            {syncState.isOnline ? (
+            {devMode ? (
+              <Badge variant="secondary">🧪 מבודד</Badge>
+            ) : syncState.isOnline ? (
               <Badge variant="default">🟢 מקוון</Badge>
             ) : (
               <Badge variant="destructive">🔴 לא מקוון</Badge>
@@ -115,30 +135,38 @@ const BackupImport = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-            <p className="text-sm text-muted-foreground">
-              <strong>🔒 מקור האמת:</strong> כל הנתונים נשמרים ב-Worker החיצוני שלך בלבד
-            </p>
-            <p className="text-sm text-muted-foreground">
-              <strong>💾 מטמון מקומי:</strong> הדפדפן שומר עותק זמני לעבודה מהירה
-            </p>
-            <p className="text-sm text-muted-foreground">
-              <strong>📥 הורדה:</strong> לחצי כאן כדי להוריד את הנתונים האחרונים מהדרופבוקס
-            </p>
-            <p className="text-sm text-muted-foreground">
-              <strong>💾 שמירה:</strong> השתמשי בכפתור השמירה בראש המסך כדי להעלות שינויים לדרופבוקס
-            </p>
-            {syncState.lastSyncTime && (
+            {devMode ? (
               <p className="text-sm text-muted-foreground">
-                <strong>🕐 סנכרון אחרון:</strong>{' '}
-                {new Date(syncState.lastSyncTime).toLocaleString('he-IL')}
+                <strong>🧪 מצב בדיקה:</strong> נתונים נטענים מזיכרון מקומי בלבד. אין קריאה או כתיבה ל-Dropbox.
               </p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  <strong>🔒 מקור האמת:</strong> כל הנתונים נשמרים ב-Worker החיצוני שלך בלבד
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>💾 מטמון מקומי:</strong> הדפדפן שומר עותק זמני לעבודה מהירה
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>📥 הורדה:</strong> לחצי כאן כדי להוריד את הנתונים האחרונים מהדרופבוקס
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>💾 שמירה:</strong> השתמשי בכפתור השמירה בראש המסך כדי להעלות שינויים לדרופבוקס
+                </p>
+                {syncState.lastSyncTime && (
+                  <p className="text-sm text-muted-foreground">
+                    <strong>🕐 סנכרון אחרון:</strong>{' '}
+                    {new Date(syncState.lastSyncTime).toLocaleString('he-IL')}
+                  </p>
+                )}
+              </>
             )}
           </div>
 
           <div className="flex gap-2">
             <Button 
               onClick={handleDownloadFromWorker} 
-              disabled={isLoading || !syncState.isOnline}
+              disabled={isLoading || devMode || !syncState.isOnline}
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin ml-2" />
@@ -149,7 +177,7 @@ const BackupImport = () => {
             </Button>
           </div>
 
-          {!syncState.isOnline && (
+          {!devMode && !syncState.isOnline && (
             <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
                 <strong>📡 אין חיבור לאינטרנט</strong>
@@ -188,7 +216,7 @@ const BackupImport = () => {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".json"
+                  accept=".json,application/json"
                   onChange={handleFileImport}
                   className="hidden"
                   id="file-upload"
@@ -198,7 +226,7 @@ const BackupImport = () => {
                   disabled={isLoading}
                   variant="outline"
                 >
-                  <Upload className="h-4 w-4 ml-2" />
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Upload className="h-4 w-4 ml-2" />}
                   טען גיבוי מקובץ
                 </Button>
               </div>
@@ -209,7 +237,9 @@ const BackupImport = () => {
                 ℹ️ הערה חשובה
               </p>
               <p className="text-sm text-muted-foreground">
-                יבוא קובץ גיבוי יחליף את כל הנתונים הנוכחיים ויסנכרן אוטומטית ל-Worker.
+                {devMode
+                  ? 'במצב בדיקה הייבוא מחליף את נתוני הבדיקה בזיכרון בלבד ואינו נשמר ל-Dropbox.'
+                  : 'במצב רגיל הייבוא מחליף את נתוני המערכת, מעלה אותם ל-Dropbox ומרענן רק לאחר אימות שהעותק בענן זהה לטעינה.'}
               </p>
             </div>
           </div>
