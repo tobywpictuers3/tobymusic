@@ -17,6 +17,16 @@
 - Any year rollover must be safe to run repeatedly and must not create duplicate archives or duplicate transfers.
 - Existing versioned Dropbox backup/history remains the recovery path.
 
+## Developer sandbox and fake clock
+
+- `/dev-admin` is an isolated developer environment. It activates `devMode`, which uses the in-memory `devData` store and does not sync changes to the Worker/Dropbox.
+- A real downloaded JSON may be loaded into the developer environment for rehearsal without writing it back to production.
+- `src/lib/devFakeClock.ts` provides a developer-only fake clock. It is installed only while `/dev-admin` is mounted and restores the native browser clock when leaving that route.
+- In fake-clock mode, zero-argument `new Date()` and `Date.now()` use the selected simulated day; explicit date parsing keeps native behaviour.
+- The fake date is stored only in `sessionStorage` and must never become a production configuration or be persisted into Dropbox data.
+- Changing the fake date remounts the admin dashboard but deliberately keeps the isolated `devData` in memory, so a loaded JSON can be tested across 30.8, 31.8, 1.9 and 2.9 without re-importing it.
+- The primary rollover rehearsal is: load JSON -> 30.8 no rollover -> 31.8 annual report available -> 1.9 rollover -> run 1.9 again and verify idempotency -> 2.9 verify stable post-rollover state.
+
 ## School-year model (introduced August 2026)
 
 ### Year boundaries
