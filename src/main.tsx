@@ -14,6 +14,7 @@ import {
   hydrateTithePaidFromHistory,
   installTitheHistoryMergeGuard,
 } from "./lib/titheDurability";
+import { installFinancialDurabilityGuard } from "./lib/financialDurability";
 
 // Root element
 const root = document.getElementById("root")!;
@@ -176,6 +177,11 @@ async function initializeApp() {
 
     await hybridSync.loadDataOnInit();
     hydrateTithePaidFromHistory();
+
+    // Capture the loaded financial baseline, then transparently verify future
+    // money-related mutations in the background. This keeps ordinary payment
+    // work fast while detecting/repairing failed Dropbox persistence.
+    installFinancialDurabilityGuard();
     logger.info("Data loaded successfully");
 
     // ✅ Render app with ThemeProvider only (no BrandProvider -> no duplicates)
