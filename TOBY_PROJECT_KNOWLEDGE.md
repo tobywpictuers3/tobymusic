@@ -27,6 +27,27 @@
 - Changing the fake date remounts the admin dashboard but deliberately keeps the isolated `devData` in memory, so a loaded JSON can be tested across 30.8, 31.8, 1.9 and 2.9 without re-importing it.
 - The primary rollover rehearsal is: load JSON -> 30.8 no rollover -> 31.8 annual report available -> 1.9 rollover -> run 1.9 again and verify idempotency -> 2.9 verify stable post-rollover state.
 
+## Critical persistence guards (August 2026)
+
+### Explicit local JSON restore
+
+- Importing a backup is a replacement transaction for application data, not an overlay on top of the currently loaded buckets.
+- Authentication/session state is outside the application-data replacement and must not be copied from or removed by a backup import.
+- In `/dev-admin`, a local JSON import is written directly into isolated `devData`. It must never call the Worker/Dropbox and must never reload the browser page, because a reload would destroy the in-memory rehearsal data. A PII-free browser event remounts the admin dashboard so all tabs re-read the imported dev data.
+- In normal admin mode, an explicit restore waits for any active sync to become idle, temporarily quiesces the heavy download+merge path for the short critical restore window, replaces the active application buckets, uploads the exact snapshot immediately, then reads the latest Worker/Dropbox snapshot back and verifies it before reporting durable success.
+- Normal mode may reload after an import only when that read-back verification succeeds. A failed or unverified upload must remain visibly failed/unverified and must not be reported as a successful durable restore.
+- Older JSON backups remain supported; missing optional buckets receive safe empty defaults rather than causing the restore to fail.
+
+### Tithe / maaser durability
+
+- `musicSystem_tithePaid` remains the backward-compatible baseline used by historical JSON backups.
+- New tithe changes also append an immutable event to `musicSystem_titheHistory`. Each event contains only `id`, `monthKey`, `paid`, and `updatedAt`; it contains no student PII.
+- Current tithe state is derived by starting from legacy `tithePaid` and applying `titheHistory` in deterministic timestamp/id order. Therefore a backup with no history still behaves exactly as before.
+- `titheHistory` is merged as an append-only union by event id. The merge guard is installed before the first Worker load so an older whole-map snapshot cannot erase a newer tithe event.
+- In `/dev-admin`, tithe changes are local to `devData` only.
+- In normal mode, a tithe change is not considered durably saved merely because it was queued. The application performs an immediate cloud write and reads the latest Worker/Dropbox snapshot back; the UI may say the change is verified only when the newly created history event is present in that read-back.
+- If the cloud write or verification fails, the UI must show an explicit warning and must not claim the tithe state is safely persisted.
+
 ## School-year model (introduced August 2026)
 
 ### Year boundaries
