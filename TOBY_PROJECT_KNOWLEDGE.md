@@ -10,6 +10,15 @@
 - The browser keeps application state in memory; existing storage export/import dynamically persists `musicSystem_*` buckets.
 - Lovable is a development interface, not the authoritative copy after GitHub connection.
 
+## Production deployment
+
+- The live student domain is `students.tobymusic.club` and the Cloudflare Worker/assets deployment name is `tobymusic-students-site`.
+- The production deploy job lives in `tobywpictuers3/tobymusic-club-repo` on `main1`, in `.github/workflows/deploy.yml`, and checks out this repository's default `main` before building.
+- `students.tobymusic.club` already has an externally managed DNS record. Do not delete, replace, or recreate that DNS record automatically.
+- The Worker is attached over the existing DNS with a Cloudflare Worker Route: `students.tobymusic.club/*` in zone `tobymusic.club`. Do not use `custom_domain: true` for this hostname unless the DNS architecture is intentionally migrated first; that mode attempts to create/manage DNS and previously failed with Cloudflare code `100117`.
+- A students deployment is successful only when the live-domain verification confirms that the HTML served by `students.tobymusic.club` references the exact main Vite asset produced by the current build and that asset is fetchable. A successful Worker upload alone is not sufficient proof of production deployment.
+- The routing change was live-verified on 2026-08-11: the Worker Route deployed successfully and `students.tobymusic.club` served `/assets/index-EFa00CsQ.js`, the exact asset built from student-platform `main` at validation commit `afb853b1244532da55e6ac15f43df9dcc5ba4f55`.
+
 ## Data safety
 
 - Do not delete historical lessons/payments during migrations.
