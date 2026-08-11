@@ -9,8 +9,7 @@ import { useVersionCheck } from "@/hooks/useVersionCheck";
 import PageBackground from "@/components/ui/PageBackground";
 
 import Homepage from "./pages/Homepage";
-import AdminDashboard from "./pages/AdminDashboard";
-import DevAdminDashboard from "./pages/DevAdminDashboard";
+import { DevAdminRoute, NormalAdminRoute } from "./pages/AdminModeRoutes";
 import StudentDashboard from "./pages/StudentDashboard";
 import StudentsSystem from "./pages/StudentsSystem";
 import StudentsViewSystem from "./pages/StudentsViewSystem";
@@ -31,8 +30,8 @@ const AppContent = () => {
         <PageBackground />
         <Routes>
           <Route path="/" element={<Homepage />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/dev-admin" element={<DevAdminDashboard />} />
+          <Route path="/admin" element={<NormalAdminRoute />} />
+          <Route path="/dev-admin" element={<DevAdminRoute />} />
           <Route path="/student/:studentId" element={<StudentDashboard />} />
           <Route path="/students-system" element={<StudentsSystem />} />
           <Route path="/students-view" element={<StudentsViewSystem />} />
