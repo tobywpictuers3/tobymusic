@@ -18,6 +18,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 let state: LocalJsonDraftState = { active: false, saving: false };
 let originals: Record<string, any> | null = null;
+let pendingChangesBeforePause = 0;
 
 const emitState = () => {
   if (typeof window === 'undefined') return;
@@ -73,16 +74,43 @@ const patchSync = () => {
     restoreData: manager.restoreData,
     scheduleCloudUpload: manager.scheduleCloudUpload,
   };
+
+  // The legacy beforeunload handler can bypass normal methods with sendBeacon
+  // whenever it sees pendingChanges or a debounce timer. Clear both while the
+  // local JSON draft is active so no DB snapshot can leak to Dropbox before
+  // the explicit Save action.
+  pendingChangesBeforePause = Number(manager.syncState?.pendingChanges || 0);
+  if (manager.debounceTimer) {
+    clearTimeout(manager.debounceTimer);
+    manager.debounceTimer = null;
+  }
+  if (Array.isArray(manager.debounceResolvers) && manager.debounceResolvers.length > 0) {
+    const resolvers = [...manager.debounceResolvers];
+    manager.debounceResolvers = [];
+    const result = pausedSaveResult();
+    resolvers.forEach((resolve: (value: LocalJsonDraftResult) => void) => resolve(result));
+  }
+  if (manager.syncState) {
+    manager.syncState.pendingChanges = 0;
+    if (typeof manager.emit === 'function') manager.emit();
+  }
+
   applyPausedMethods();
 };
 
-const restoreSync = () => {
+const restoreSync = (restorePreviousPending = false) => {
   if (!originals) return;
   const manager = hybridSync as any;
   Object.entries(originals).forEach(([key, value]) => {
     manager[key] = value;
   });
   originals = null;
+
+  if (restorePreviousPending && manager.syncState) {
+    manager.syncState.pendingChanges = pendingChangesBeforePause;
+    if (typeof manager.emit === 'function') manager.emit();
+  }
+  pendingChangesBeforePause = 0;
 };
 
 const waitUntilSyncIdle = async (timeoutMs = 15_000): Promise<boolean> => {
@@ -139,7 +167,7 @@ export const beginLocalJsonDraftSession = async (): Promise<LocalJsonDraftResult
 
   const idle = await waitUntilSyncIdle();
   if (!idle) {
-    restoreSync();
+    restoreSync(true);
     state = { active: false, saving: false };
     emitState();
     return {
@@ -215,7 +243,7 @@ export const commitLocalJsonDraftSession = async (): Promise<LocalJsonDraftResul
 
       const latestLocal = exportAllData(true);
       if (snapshotsMatch(snapshot, latestLocal)) {
-        restoreSync();
+        restoreSync(false);
         state = { active: false, saving: false };
         emitState();
         return {
