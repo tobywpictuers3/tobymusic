@@ -10,6 +10,10 @@ import { ensureBrandStylesheets } from "./brand/BrandProvider";
 import { hybridSync } from "./lib/hybridSync";
 import { logger } from "./lib/logger";
 import { setDevMode } from "./lib/storage";
+import {
+  hydrateTithePaidFromHistory,
+  installTitheHistoryMergeGuard,
+} from "./lib/titheDurability";
 
 // Root element
 const root = document.getElementById("root")!;
@@ -166,7 +170,12 @@ async function initializeApp() {
       logger.info("🔧 Dev mode active - NO data will be loaded from Worker");
     }
 
+    // Install the append-only tithe merge rule before the first Worker load,
+    // so an older cloud snapshot cannot erase newer tithe history events.
+    installTitheHistoryMergeGuard();
+
     await hybridSync.loadDataOnInit();
+    hydrateTithePaidFromHistory();
     logger.info("Data loaded successfully");
 
     // ✅ Render app with ThemeProvider only (no BrandProvider -> no duplicates)
