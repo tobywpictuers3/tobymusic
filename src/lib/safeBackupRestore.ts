@@ -1,6 +1,5 @@
-import { hybridSync } from './hybridSync';
-import { exportAllData, getDevStore, isDevMode } from './storage';
-import { workerApi } from './workerApi';
+import { getDevStore, isDevMode } from './storage';
+import { beginLocalJsonDraftSession } from './localJsonDraft';
 
 export type SafeBackupImportResult = {
   success: boolean;
@@ -8,8 +7,6 @@ export type SafeBackupImportResult = {
   reloadRequired: boolean;
   message: string;
 };
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const isSystemDataKey = (key: string): boolean => key.startsWith('musicSystem_') || key === 'oneTimePayments';
 
@@ -56,8 +53,8 @@ const validateBackup = (data: any): string | null => {
 const replaceActiveStore = (data: Record<string, any>): void => {
   const store = getActiveStore();
 
-  // Explicit restore is a replacement operation. Auth/session values are not
-  // stored in this application-data object and therefore are not touched.
+  // Explicit local restore is a replacement operation. Auth/session values are
+  // outside this application-data object and therefore are never touched.
   Object.keys(store).forEach(key => {
     delete store[key];
   });
@@ -73,48 +70,6 @@ const replaceActiveStore = (data: Record<string, any>): void => {
   if (!store.tithePaid || typeof store.tithePaid !== 'object' || Array.isArray(store.tithePaid)) store.tithePaid = {};
   if (!Array.isArray(store.titheHistory)) store.titheHistory = [];
   if (!store.studentStats || typeof store.studentStats !== 'object' || Array.isArray(store.studentStats)) store.studentStats = {};
-};
-
-const waitUntilSyncIdle = async (timeoutMs = 15_000): Promise<boolean> => {
-  const startedAt = Date.now();
-  while (hybridSync.getSyncState().isSyncing) {
-    if (Date.now() - startedAt > timeoutMs) return false;
-    await delay(120);
-  }
-  return true;
-};
-
-const canonicalize = (value: any): any => {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!value || typeof value !== 'object') return value;
-
-  return Object.keys(value)
-    .sort()
-    .reduce<Record<string, any>>((out, key) => {
-      out[key] = canonicalize(value[key]);
-      return out;
-    }, {});
-};
-
-const appDataMatches = (expected: Record<string, any>, actual: Record<string, any>): boolean => {
-  const expectedKeys = Object.keys(expected)
-    .filter(key => key !== 'timestamp' && isSystemDataKey(key))
-    .sort();
-
-  return expectedKeys.every(key => {
-    return JSON.stringify(canonicalize(expected[key])) === JSON.stringify(canonicalize(actual?.[key]));
-  });
-};
-
-const verifyLatestSnapshot = async (expected: Record<string, any>): Promise<boolean> => {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const response: any = await workerApi.downloadLatest();
-    if (response?.success && response.data && appDataMatches(expected, response.data)) {
-      return true;
-    }
-    await delay(500 * (attempt + 1));
-  }
-  return false;
 };
 
 export const importBackupSafely = async (file: File): Promise<SafeBackupImportResult> => {
@@ -134,65 +89,38 @@ export const importBackupSafely = async (file: File): Promise<SafeBackupImportRe
         success: true,
         synced: false,
         reloadRequired: false,
-        message: 'הגיבוי נטען למצב הבדיקה בלבד. לא בוצעה כתיבה ל-Dropbox.',
+        message: 'הגיבוי נטען למצב הבדיקה בלבד. אין קריאה או כתיבה ל-Dropbox.',
       };
     }
 
-    const idle = await waitUntilSyncIdle();
-    if (!idle) {
+    const draftResult = await beginLocalJsonDraftSession();
+    if (!draftResult.success) {
       return {
         success: false,
         synced: false,
         reloadRequired: false,
-        message: 'לא ניתן לייבא כרגע כי סנכרון קודם עדיין פעיל. נסי שוב בעוד כמה שניות.',
+        message: draftResult.message,
       };
     }
 
-    // Quiesce only the heavy download+merge path during this explicit restore.
-    // Direct uploads remain available so the imported snapshot can be saved.
-    const manager = hybridSync as any;
-    const originalFullSync = manager.syncToWorker;
-    manager.syncToWorker = async () => true;
+    // From this point all automatic Dropbox writes and full merges are paused.
+    // The imported data may be inspected/edited freely until the global Save
+    // button explicitly commits and verifies the current full snapshot.
+    replaceActiveStore(data);
+    window.dispatchEvent(new CustomEvent('toby:storage-imported'));
 
-    try {
-      replaceActiveStore(data);
-      const exactSnapshot = exportAllData(true);
-      const restoreResult = await hybridSync.restoreData(exactSnapshot, { uploadImmediately: true });
-
-      if (!restoreResult.success) {
-        return {
-          success: false,
-          synced: false,
-          reloadRequired: false,
-          message: 'הגיבוי נטען לזיכרון אך העלאתו ל-Dropbox נכשלה. לא בוצע רענון.',
-        };
-      }
-
-      const verified = await verifyLatestSnapshot(exactSnapshot);
-      if (!verified) {
-        return {
-          success: false,
-          synced: false,
-          reloadRequired: false,
-          message: 'הגיבוי נטען מקומית אך לא הצלחנו לאמת שהעותק המלא נשמר ב-Dropbox. לא בוצע רענון.',
-        };
-      }
-
-      return {
-        success: true,
-        synced: true,
-        reloadRequired: true,
-        message: 'הגיבוי יובא, נשמר ואומת מול העותק האחרון ב-Dropbox.',
-      };
-    } finally {
-      manager.syncToWorker = originalFullSync;
-    }
+    return {
+      success: true,
+      synced: false,
+      reloadRequired: false,
+      message: 'ה-JSON נטען מקומית. הסנכרון ל-Dropbox מושהה עד לחיצה על שמור שינויים.',
+    };
   } catch {
     return {
       success: false,
       synced: false,
       reloadRequired: false,
-      message: 'שגיאה בקריאת קובץ הגיבוי. לא בוצע שינוי מאומת.',
+      message: 'שגיאה בקריאת קובץ הגיבוי. לא בוצע שינוי.',
     };
   }
 };
