@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AccessModeProvider } from "@/contexts/AccessModeContext";
 import { useVersionCheck } from "@/hooks/useVersionCheck";
 import PageBackground from "@/components/ui/PageBackground";
+import FinancialDurabilityNotifier from "@/components/ui/FinancialDurabilityNotifier";
 
 import Homepage from "./pages/Homepage";
 import { DevAdminRoute, NormalAdminRoute } from "./pages/AdminModeRoutes";
@@ -25,6 +26,7 @@ const AppContent = () => {
     <div className="min-h-screen bg-background text-foreground">
       <Toaster />
       <Sonner />
+      <FinancialDurabilityNotifier />
 
       <BrowserRouter>
         <PageBackground />
