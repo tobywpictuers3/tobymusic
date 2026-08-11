@@ -48,6 +48,17 @@ const DevAdminDashboard = () => {
     return () => restoreNativeClock();
   }, [navigate]);
 
+  useLayoutEffect(() => {
+    const handleStorageImported = () => {
+      // The imported JSON already lives in isolated devData. Remounting the
+      // dashboard makes every tab re-read it without destroying module memory.
+      setClockRevision(revision => revision + 1);
+    };
+
+    window.addEventListener('toby:storage-imported', handleStorageImported);
+    return () => window.removeEventListener('toby:storage-imported', handleStorageImported);
+  }, []);
+
   const applyFakeDate = (value: string) => {
     setDevFakeDate(value);
     setClockInput(value);
