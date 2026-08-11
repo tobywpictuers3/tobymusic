@@ -46,6 +46,7 @@
 - `titheHistory` is merged as an append-only union by event id. The merge guard is installed before the first Worker load so an older whole-map snapshot cannot erase a newer tithe event.
 - In `/dev-admin`, tithe changes are local to `devData` only.
 - In normal mode, a tithe change is not considered durably saved merely because it was queued. The application performs an immediate cloud write and reads the latest Worker/Dropbox snapshot back; the UI may say the change is verified only when the newly created history event is present in that read-back.
+- Critical tithe writes are serialized. Before creating a new history event, the app waits for an already-running sync to become idle and temporarily quiesces new full download+merge syncs until the exact event has been read back from Dropbox. This prevents a full sync that captured an older snapshot from applying it after a newly verified tithe write.
 - If the cloud write or verification fails, the UI must show an explicit warning and must not claim the tithe state is safely persisted.
 
 ## School-year model (introduced August 2026)
