@@ -1,15 +1,78 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import PaymentManagement from '@/components/admin/PaymentManagement';
 import AnnualSchoolYearReport from '@/components/admin/AnnualSchoolYearReport';
+import { getTithePaid, isDevMode } from '@/lib/storage';
+import { hydrateTithePaidFromHistory, persistTitheMonthDurably } from '@/lib/titheDurability';
+import { toast } from '@/hooks/use-toast';
 
 /**
- * Keeps the existing payment calculations untouched and fixes only the annual
- * table viewport. Both annual payment tables already contain September-August;
- * this shell makes every month reachable on narrow screens and lets wide
- * screens use the available width instead of clipping the last columns.
+ * Keeps the existing payment calculations untouched, fixes the annual table
+ * viewport, and adds a durability boundary around the existing tithe buttons.
+ * PaymentManagement keeps its legacy tithePaid map for old JSON compatibility;
+ * the shell records each explicit change in append-only titheHistory and waits
+ * for Dropbox verification in normal mode.
  */
 export default function PaymentManagementShell() {
+  const [ready, setReady] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const clickSnapshotRef = useRef<Record<string, boolean> | null>(null);
+
+  useLayoutEffect(() => {
+    hydrateTithePaidFromHistory();
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    const handleImport = () => {
+      hydrateTithePaidFromHistory();
+      setRevision(value => value + 1);
+    };
+
+    window.addEventListener('toby:storage-imported', handleImport);
+    return () => window.removeEventListener('toby:storage-imported', handleImport);
+  }, []);
+
+  const handlePaymentClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    const button = target?.closest('button');
+    const label = button?.textContent?.trim();
+
+    if (label !== 'הופרש' && label !== 'לא הופרש') return;
+
+    clickSnapshotRef.current = { ...getTithePaid() };
+
+    // Let PaymentManagement's existing handler update the legacy map first,
+    // then detect the exact month that changed and persist the durable event.
+    window.setTimeout(async () => {
+      const before = clickSnapshotRef.current || {};
+      const after = { ...getTithePaid() };
+      clickSnapshotRef.current = null;
+
+      const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+      const changedMonthKeys = Array.from(allKeys).filter(key => before[key] !== after[key]);
+
+      for (const monthKey of changedMonthKeys) {
+        const result = await persistTitheMonthDurably(monthKey, after[monthKey] === true);
+
+        if (result.synced) {
+          toast({ description: '✅ סימון המעשר נשמר ואומת בדרופבוקס' });
+        } else if (result.success && isDevMode()) {
+          toast({ description: '🧪 סימון המעשר נשמר במצב הבדיקה בלבד' });
+        } else {
+          toast({
+            title: '⚠️ שמירת המעשר לא אומתה',
+            description: result.message,
+            variant: 'destructive',
+          });
+        }
+      }
+    }, 0);
+  };
+
+  if (!ready) return null;
+
   return (
-    <div data-toby-payments-shell>
+    <div data-toby-payments-shell onClickCapture={handlePaymentClickCapture}>
       <style>{`
         /* PaymentManagement's annual views still use overflow-x-hidden.
            Override that only inside the payments shell. */
@@ -70,8 +133,8 @@ export default function PaymentManagementShell() {
           }
         }
       `}</style>
-      <PaymentManagement />
-      <AnnualSchoolYearReport />
+      <PaymentManagement key={`payments-${revision}`} />
+      <AnnualSchoolYearReport key={`annual-report-${revision}`} />
     </div>
   );
 }
