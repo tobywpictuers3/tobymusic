@@ -1,0 +1,1 @@
+UI layer verification note only. The branch raises the isolated test controls above the fixed page background. No production data or persistence logic changes.
