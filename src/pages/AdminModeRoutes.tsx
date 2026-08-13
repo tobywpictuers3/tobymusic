@@ -1,6 +1,6 @@
 import { useLayoutEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FlaskConical, RotateCcw } from 'lucide-react';
+import { FlaskConical, RotateCcw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getCurrentUser, setDevMode } from '@/lib/storage';
 import { clearDevFakeDate, restoreNativeClock } from '@/lib/devFakeClock';
@@ -29,27 +29,37 @@ export const NormalAdminRoute = () => {
   const isAdmin = getCurrentUser()?.type === 'admin';
 
   return (
-    <>
-      <AdminDashboard />
+    <div className="relative z-[120]">
       {isAdmin && (
-        <Button
-          type="button"
-          onClick={() => navigate('/dev-admin')}
-          className="fixed bottom-4 left-4 z-[100] shadow-xl border border-red-400 bg-red-700 text-white hover:bg-red-800"
-          title="פתיחת סביבת בדיקה מבודדת ללא שמירה ל-Dropbox"
-        >
-          <FlaskConical className="ml-2 h-4 w-4" />
-          מצב בדיקה
-        </Button>
+        <div className="relative z-[140] border-b border-red-300/70 bg-red-50/95 px-3 py-2 shadow-sm dark:bg-red-950/60">
+          <div className="container mx-auto flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-red-800 dark:text-red-200">
+              <FlaskConical className="h-4 w-4" />
+              בדיקת מעבר שנה וטעינת JSON מבודדת
+            </div>
+            <Button
+              type="button"
+              onClick={() => navigate('/dev-admin')}
+              className="border border-red-400 bg-red-700 text-white hover:bg-red-800"
+              size="sm"
+              title="פתיחת סביבת בדיקה מבודדת ללא שמירה ל-Dropbox"
+            >
+              <FlaskConical className="ml-2 h-4 w-4" />
+              פתחי מצב בדיקה
+            </Button>
+          </div>
+        </div>
       )}
-    </>
+      <AdminDashboard />
+    </div>
   );
 };
 
 /**
- * Adds an explicit, safe exit from the isolated developer route.
- * DevAdminDashboard itself installs devMode/fake clock before mounting the
- * real dashboard; this wrapper guarantees they are cleared before returning.
+ * Explicit route-level boundary for the isolated developer environment.
+ * The entire route is raised above PageBackground so developer controls cannot
+ * disappear behind decorative layers. The status bar lives in normal document
+ * flow rather than relying on a fixed corner button.
  */
 export const DevAdminRoute = () => {
   const navigate = useNavigate();
@@ -64,20 +74,29 @@ export const DevAdminRoute = () => {
   };
 
   return (
-    <>
-      <DevAdminDashboard />
+    <div className="relative z-[130]">
       {isAdmin && (
-        <Button
-          type="button"
-          onClick={returnToNormalMode}
-          className="fixed bottom-4 left-4 z-[110] shadow-xl"
-          variant="outline"
-          title="ניקוי מצב הבדיקה וחזרה לנתוני הייצור"
-        >
-          <RotateCcw className="ml-2 h-4 w-4" />
-          חזרה למצב רגיל
-        </Button>
+        <div className="sticky top-0 z-[160] border-b-2 border-red-500 bg-red-100/95 px-3 py-2 shadow-md backdrop-blur-sm dark:bg-red-950/90">
+          <div className="container mx-auto flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-bold text-red-900 dark:text-red-100">
+              <ShieldCheck className="h-4 w-4" />
+              מצב בדיקה פעיל — נתונים מקומיים בלבד, ללא Dropbox
+            </div>
+            <Button
+              type="button"
+              onClick={returnToNormalMode}
+              variant="outline"
+              size="sm"
+              className="border-red-400"
+              title="ניקוי מצב הבדיקה וחזרה לנתוני הייצור"
+            >
+              <RotateCcw className="ml-2 h-4 w-4" />
+              חזרה למצב רגיל
+            </Button>
+          </div>
+        </div>
       )}
-    </>
+      <DevAdminDashboard />
+    </div>
   );
 };
