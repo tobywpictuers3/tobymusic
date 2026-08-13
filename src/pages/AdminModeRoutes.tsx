@@ -7,12 +7,6 @@ import { clearDevFakeDate, restoreNativeClock } from '@/lib/devFakeClock';
 import AdminDashboard from './AdminDashboard';
 import DevAdminDashboard from './DevAdminDashboard';
 
-/**
- * Hard boundary for the normal admin route.
- * The production dashboard is not mounted until any leftover developer state
- * from this browser tab has been cleared, so devData/fake time cannot leak
- * back into /admin after a rehearsal.
- */
 export const NormalAdminRoute = () => {
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
@@ -29,9 +23,9 @@ export const NormalAdminRoute = () => {
   const isAdmin = getCurrentUser()?.type === 'admin';
 
   return (
-    <div className="relative z-[120]">
+    <div className="relative">
       {isAdmin && (
-        <div className="relative z-[140] border-b border-red-300/70 bg-red-50/95 px-3 py-2 shadow-sm dark:bg-red-950/60">
+        <div className="relative z-40 border-b border-red-300/70 bg-red-50/95 px-3 py-2 shadow-sm dark:bg-red-950/60">
           <div className="container mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-sm font-medium text-red-800 dark:text-red-200">
               <FlaskConical className="h-4 w-4" />
@@ -55,12 +49,6 @@ export const NormalAdminRoute = () => {
   );
 };
 
-/**
- * Explicit route-level boundary for the isolated developer environment.
- * The entire route is raised above PageBackground so developer controls cannot
- * disappear behind decorative layers. The status bar lives in normal document
- * flow rather than relying on a fixed corner button.
- */
 export const DevAdminRoute = () => {
   const navigate = useNavigate();
   const isAdmin = getCurrentUser()?.type === 'admin';
@@ -74,9 +62,9 @@ export const DevAdminRoute = () => {
   };
 
   return (
-    <div className="relative z-[130]">
+    <div className="relative">
       {isAdmin && (
-        <div className="sticky top-0 z-[160] border-b-2 border-red-500 bg-red-100/95 px-3 py-2 shadow-md backdrop-blur-sm dark:bg-red-950/90">
+        <div className="sticky top-0 z-40 border-b-2 border-red-500 bg-red-100/95 px-3 py-2 shadow-md backdrop-blur-sm dark:bg-red-950/90">
           <div className="container mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-sm font-bold text-red-900 dark:text-red-100">
               <ShieldCheck className="h-4 w-4" />
