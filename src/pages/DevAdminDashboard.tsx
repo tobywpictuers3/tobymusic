@@ -45,9 +45,8 @@ const DevAdminDashboard = () => {
     setActiveFakeDate(getDevFakeDate());
     setClockReady(true);
 
-    // React Router preserves the previous document scroll position. That made
-    // the year-rollover controls appear to be missing when entering /dev-admin
-    // from a lower admin tab. Always reveal the developer controls on entry.
+    // Start a rehearsal at the developer controls even if the browser restored
+    // an old scroll position from the normal admin route.
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 
     // The fake Date must never leak from /dev-admin into a normal route in the same tab.
@@ -92,7 +91,11 @@ const DevAdminDashboard = () => {
   if (!clockReady) return null;
 
   return (
-    <div className="space-y-6">
+    // PageBackground is a fixed z-0 layer. The normal AdminDashboard already
+    // uses z-10, but these developer-only cards are siblings above it. Without
+    // an explicit stacking level they render behind the stage background and
+    // appear to be missing even though /dev-admin is active.
+    <div className="relative z-20 space-y-6">
       <div ref={yearControlsRef} id="dev-year-rollover-controls" className="scroll-mt-4">
         <Card className="border-2 border-red-500/70 bg-red-50/95 dark:bg-red-950/30">
           <CardHeader className="pb-3">
