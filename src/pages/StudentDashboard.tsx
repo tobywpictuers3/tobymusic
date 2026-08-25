@@ -231,33 +231,43 @@ const StudentDashboard = () => {
         </TabsContent>
 
         <TabsContent value="schedule" className="fade-slide-in space-y-6">
-          <BrandSection index={0}>
-            <GeneralWeeklySchedule
-              studentId={student.id}
-              lessons={lessons}
-              onLessonDoubleClick={handleLessonDoubleClick}
-              isSelectionActive={isSwapSelectionActive}
-              currentSwapStep={currentSwapStep}
-            />
-          </BrandSection>
+          <Tabs defaultValue="weekly" className="space-y-6">
+            <TabsList className="grid grid-cols-2 gap-2 h-auto w-full sm:w-auto sm:inline-grid">
+              <TabsTrigger value="weekly">מערכת שבועית</TabsTrigger>
+              <TabsTrigger value="fixed">מערכת קבועה</TabsTrigger>
+            </TabsList>
 
-          <BrandSection index={1}>
-            <StudentSwapPanel
-              student={student}
-              lessons={lessons}
-              students={allStudents}
-              onMount={(ref) => setSwapPanelRef(ref)}
-              onStepChange={(step) => setCurrentSwapStep(step)}
-              onSwapCompleted={() => refreshLessons()}
-            />
-          </BrandSection>
+            <TabsContent value="weekly" className="fade-slide-in space-y-6">
+              <BrandSection index={0}>
+                <GeneralWeeklySchedule
+                  studentId={student.id}
+                  lessons={lessons}
+                  onLessonDoubleClick={handleLessonDoubleClick}
+                  isSelectionActive={isSwapSelectionActive}
+                  currentSwapStep={currentSwapStep}
+                />
+              </BrandSection>
+
+              <BrandSection index={1}>
+                <StudentSwapPanel
+                  student={student}
+                  lessons={lessons}
+                  students={allStudents}
+                  onMount={(ref) => setSwapPanelRef(ref)}
+                  onStepChange={(step) => setCurrentSwapStep(step)}
+                  onSwapCompleted={() => refreshLessons()}
+                />
+              </BrandSection>
+            </TabsContent>
+
+            <TabsContent value="fixed" className="fade-slide-in space-y-6">
+              <BrandSection index={0}>
+                <StudentFixedSchedule studentId={student.id} />
+              </BrandSection>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
-        <TabsContent value="fixed" className="fade-slide-in space-y-6">
-          <BrandSection index={0}>
-            <StudentFixedSchedule studentId={student.id} />
-          </BrandSection>
-        </TabsContent>
 
         <TabsContent value="aids" className="fade-slide-in space-y-6">
           <Metronome />
