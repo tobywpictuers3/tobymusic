@@ -1099,12 +1099,14 @@ function ComposeForm({
                     type="button"
                     size="sm"
                     variant={selected ? 'default' : 'outline'}
-                    onClick={() => setComposeRecipients((current) => {
-                      const withoutAll = current.filter(id => id !== 'all');
-                      return selected
-                        ? withoutAll.filter(id => id !== student.id)
-                        : [...withoutAll, student.id];
-                    })}
+                    onClick={() => {
+                      const withoutAll = composeRecipients.filter((id) => id !== 'all');
+                      setComposeRecipients(
+                        selected
+                          ? withoutAll.filter((id) => id !== student.id)
+                          : [...withoutAll, student.id]
+                      );
+                    }}
                   >
                     {student.firstName} {student.lastName}
                   </Button>
