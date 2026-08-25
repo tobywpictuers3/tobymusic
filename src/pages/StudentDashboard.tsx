@@ -13,6 +13,7 @@ import { SiteLink } from "@/brand/SiteLink";
 
 import EditableStudentDetails from "@/components/student/EditableStudentDetails";
 import GeneralWeeklySchedule from "@/components/student/GeneralWeeklySchedule";
+import StudentFixedSchedule from "@/components/student/StudentFixedSchedule";
 import ContactsList from "@/components/student/ContactsList";
 import YemotInstructions from "@/components/student/YemotInstructions";
 import StudentFiles from "@/components/student/StudentFiles";
@@ -193,11 +194,15 @@ const StudentDashboard = () => {
       <PaymentAlert studentId={student.id} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-11 gap-2 h-auto">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-12 gap-2 h-auto">
           <TabsTrigger value="practice">מעקב אימונים</TabsTrigger>
           <TabsTrigger value="schedule" className="gap-2">
             <Calendar className="w-4 h-4" />
             מערכת שבועית
+          </TabsTrigger>
+          <TabsTrigger value="fixed" className="gap-2">
+            <Calendar className="w-4 h-4" />
+            מערכת
           </TabsTrigger>
           <TabsTrigger value="aids">עזרים</TabsTrigger>
           <TabsTrigger value="medals">המדליות שלי</TabsTrigger>
@@ -248,6 +253,12 @@ const StudentDashboard = () => {
               onStepChange={(step) => setCurrentSwapStep(step)}
               onSwapCompleted={() => refreshLessons()}
             />
+          </BrandSection>
+        </TabsContent>
+
+        <TabsContent value="fixed" className="fade-slide-in space-y-6">
+          <BrandSection index={0}>
+            <StudentFixedSchedule studentId={student.id} />
           </BrandSection>
         </TabsContent>
 
