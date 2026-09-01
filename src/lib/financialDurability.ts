@@ -28,12 +28,17 @@ const studentFinancialProjection = (students: any): any[] => {
   return students.map(student => ({
     id: student?.id,
     annualAmount: student?.annualAmount,
+    annualDiscountEnabled: student?.annualDiscountEnabled,
+    annualDiscountPercent: student?.annualDiscountPercent,
+    annualRateManuallyOverridden: student?.annualRateManuallyOverridden,
+    lessonRateManuallyOverridden: student?.lessonRateManuallyOverridden,
     calculatedAmount: student?.calculatedAmount,
     monthlyAmount: student?.monthlyAmount,
     paymentMonths: student?.paymentMonths,
     paymentType: student?.paymentType,
     paymentStatus: student?.paymentStatus,
     paymentMethod: student?.paymentMethod,
+    lessonPrice: student?.lessonPrice,
     startingLessonNumber: student?.startingLessonNumber,
     startDate: student?.startDate,
     endDate: student?.endDate,
@@ -42,6 +47,7 @@ const studentFinancialProjection = (students: any): any[] => {
 
 const financialProjection = (data: Record<string, any>): Record<string, any> => ({
   students: studentFinancialProjection(data?.musicSystem_students),
+  tuitionSettings: data?.musicSystem_tuitionSettings || null,
   payments: data?.musicSystem_payments || [],
   oneTimePayments: data?.oneTimePayments || [],
   perLessonPayments: data?.musicSystem_perLessonPayments || [],
