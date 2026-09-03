@@ -61,6 +61,8 @@ const fingerprintProjection = (data: Record<string, any>): string =>
 
 const currentSnapshot = (): Record<string, any> => exportAllData(true);
 const currentFingerprint = (): string => fingerprintProjection(currentSnapshot());
+const hasNonEmptyStudentSet = (snapshot: Record<string, any>): boolean =>
+  Array.isArray(snapshot?.musicSystem_students) && snapshot.musicSystem_students.length > 0;
 
 const emitWarning = (message: string) => {
   if (typeof window === 'undefined') return;
@@ -120,6 +122,14 @@ const runVerificationLoop = async () => {
 
       if (await remoteMatchesFinancialProjection(snapshot)) continue;
       if (isLocalJsonDraftActive()) return;
+
+      // Never allow a background safety net to turn a transient empty/failed
+      // hydration state into a destructive full-database repair upload.
+      if (!hasNonEmptyStudentSet(snapshot)) {
+        pendingFingerprint = snapshotFingerprint;
+        emitWarning('האימות הכספי נעצר כי מצב התלמידות המקומי אינו תקין. לא בוצעה העלאת תיקון ל-Dropbox.');
+        return;
+      }
 
       // Legacy repair remains a full-snapshot upload for now. The new write
       // gateway cutover must replace this bypass before production cutover.
