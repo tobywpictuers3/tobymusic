@@ -4,11 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/patch-current-year-billing-and-student-mailing.mjs",
+    "predev": "node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/patch-current-year-billing-and-student-mailing.mjs",
+    "prebuild": "node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs",
     "build": "vite build",
-    "prebuild:dev": "node scripts/patch-current-year-billing-and-student-mailing.mjs",
+    "prebuild:dev": "node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview"
