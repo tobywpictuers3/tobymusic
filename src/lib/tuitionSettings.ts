@@ -44,7 +44,10 @@ export const saveTuitionSettings = async (next: Pick<TuitionSettings, 'annualRat
   };
   store.tuitionSettings = normalized;
   markStorageKeyDirty('tuitionSettings');
-  if (!isDevMode()) await hybridSync.onDataChange();
+  if (!isDevMode()) {
+    const result = await hybridSync.onDataChange();
+    if (!result.success) throw new Error(result.message || 'TUITION_LOCAL_SAVE_FAILED');
+  }
   return normalized;
 };
 
