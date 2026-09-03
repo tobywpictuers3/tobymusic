@@ -4,8 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/patch-current-year-billing-and-student-mailing.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/patch-current-year-billing-and-student-mailing.mjs",
     "build": "vite build",
+    "prebuild:dev": "node scripts/patch-current-year-billing-and-student-mailing.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview"
