@@ -1,6 +1,6 @@
 import { hybridSync } from './hybridSync';
 import { exportAllData, isDevMode } from './storage';
-import { workerApi } from './workerApi';
+import { downloadCanonicalDropboxLatest } from './canonicalDropboxRead';
 import { isLocalJsonDraftActive } from './localJsonDraft';
 
 const WARNING_EVENT = 'toby:financial-durability-warning';
@@ -71,8 +71,10 @@ const remoteMatchesFinancialProjection = async (expectedSnapshot: Record<string,
   const expected = fingerprintProjection(expectedSnapshot);
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (isLocalJsonDraftActive()) return false;
-    const response: any = await workerApi.downloadLatest();
-    if (response?.success && response.data && fingerprintProjection(response.data) === expected) {
+    // Critical financial verification must never accept a historical fallback
+    // as if it were the current canonical Dropbox latest object.
+    const response = await downloadCanonicalDropboxLatest();
+    if (response.success && response.data && fingerprintProjection(response.data) === expected) {
       return true;
     }
     await delay(450 * (attempt + 1));
@@ -119,9 +121,10 @@ const runVerificationLoop = async () => {
       if (await remoteMatchesFinancialProjection(snapshot)) continue;
       if (isLocalJsonDraftActive()) return;
 
-      // Repair with one exact full-snapshot upload, then verify again. This is
-      // intentionally a background safety net and does not add confirmation
-      // dialogs or extra clicks to ordinary payment work.
+      // Legacy repair remains a full-snapshot upload for now. The new write
+      // gateway cutover must replace this bypass before production cutover.
+      // Until then, canonical-only read-back prevents a historical fallback
+      // from ever being treated as a successful verification result.
       const repairResult = await hybridSync.restoreData(snapshot, { uploadImmediately: true });
       if (!repairResult.success || !repairResult.synced) {
         pendingFingerprint = snapshotFingerprint;
