@@ -26,12 +26,12 @@ const TuitionSettingsCard = ({ onSaved }: TuitionSettingsCardProps) => {
       onSaved?.(saved);
       toast({
         title: 'התעריפים נשמרו',
-        description: 'התעריפים החדשים ישמשו כברירת מחדל לתלמידות חדשות. מחירים קיימים לא משתנים אוטומטית.',
+        description: 'השינוי נשמר מקומית ומסתנכרן ל-Dropbox ברקע. התעריפים ישמשו כברירת מחדל לתלמידות חדשות; מחירים קיימים לא משתנים אוטומטית.',
       });
     } catch {
       toast({
         title: 'שמירת התעריפים נכשלה',
-        description: 'השינוי לא סומן כשמור בענן. נסי שוב לאחר בדיקת החיבור.',
+        description: 'השינוי לא סומן כשמור. נסי שוב לאחר בדיקת החיבור.',
         variant: 'destructive',
       });
     } finally {
