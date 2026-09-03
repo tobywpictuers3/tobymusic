@@ -73,11 +73,24 @@ export interface StudentYearSnapshot extends StudentSchoolYearRecord {
 
 const roundMoney = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
 
+const jerusalemDateParts = (date: Date): { year: number; month: number; day: number } => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+  };
+};
+
 const dateToIso = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const { year, month, day } = jerusalemDateParts(date);
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
 const getMutableStore = (): Record<string, any> => {
@@ -87,8 +100,17 @@ const getMutableStore = (): Record<string, any> => {
 };
 
 export const getSchoolYearForDate = (value: Date | string = new Date()): number => {
-  const date = typeof value === 'string' ? new Date(`${value.slice(0, 10)}T12:00:00`) : value;
-  return date.getMonth() >= 8 ? date.getFullYear() + 1 : date.getFullYear();
+  if (typeof value === 'string') {
+    const match = value.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      return month >= 9 ? year + 1 : year;
+    }
+  }
+  const date = typeof value === 'string' ? new Date(value) : value;
+  const { year, month } = jerusalemDateParts(date);
+  return month >= 9 ? year + 1 : year;
 };
 
 export const getSchoolYearBounds = (schoolYear: number) => ({
@@ -168,6 +190,14 @@ export const upsertStudentSchoolYearTerms = (
   const now = new Date().toISOString();
   const index = records.findIndex(record => record.studentId === studentId && record.schoolYear === schoolYear);
   const previous = index >= 0 ? records[index] : undefined;
+
+  // Closed annual reports are historical snapshots. Changing their terms while
+  // retaining old closing calculations creates an internally inconsistent year.
+  // A future audited correction flow must reopen/recompute explicitly instead.
+  if (previous?.status === 'closed') {
+    throw new Error('closed_school_year_requires_correction');
+  }
+
   const startingLessonNumber = Math.max(1, Math.round(terms.startingLessonNumber || 1));
   const expectedLessons = getBillingLessonCount(startingLessonNumber, terms.startReason);
   const baseTarget = calculateBaseAnnualTarget(terms.annualAmountFull, startingLessonNumber, terms.startReason);
@@ -419,7 +449,7 @@ export const ensureSchoolYearRollover = async (now = new Date()): Promise<{
     const startingLessonNumber = 1 + carryoverLessons;
     const startReason: SchoolYearStartReason =
       carryoverLessons > 0 || carryoverBankMinutes > 0 ? 'carryover_credit' : 'regular';
-    const annualAmountFull = roundMoney(student.annualAmount || previousRecord.annualAmountFull || 0);
+    const annualAmountFull = roundMoney(student.annualAmount ?? previousRecord.annualAmountFull ?? 0);
     const expectedLessons = FULL_YEAR_LESSONS;
     const baseTarget = annualAmountFull;
     const currentRecord: StudentSchoolYearRecord = {
@@ -441,14 +471,12 @@ export const ensureSchoolYearRollover = async (now = new Date()): Promise<{
     };
     records.push(currentRecord);
 
-    // startingLessonNumber is display/numbering only. Billing stays 38 for carryover_credit.
-    // Financial overpayment/underpayment is represented separately as an opening balance,
-    // while calculatedAmount keeps legacy payment screens aligned with the net amount due.
+    // Student lifecycle dates belong to the student profile and must not be
+    // rewritten by an annual accounting rollover. Only school-year display and
+    // financial compatibility fields are refreshed here.
     const netTarget = roundMoney(Math.max(0, baseTarget - openingFinancialBalance));
     students[index] = {
       ...student,
-      startDate: `${currentSchoolYear - 1}-09-01`,
-      endDate: undefined,
       startingLessonNumber,
       calculatedAmount: Math.abs(netTarget - annualAmountFull) > 0.009 ? netTarget : undefined,
       monthlyAmount: student.paymentMonths > 0 ? roundMoney(netTarget / student.paymentMonths) : netTarget,
