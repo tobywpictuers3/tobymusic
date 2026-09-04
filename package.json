@@ -4,11 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs",
+    "predev": "node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs",
+    "prebuild": "node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs",
     "build": "vite build",
-    "prebuild:dev": "node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs",
+    "prebuild:dev": "node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview"
