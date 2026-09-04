@@ -55,11 +55,21 @@
 
 - Ordinary money-related work must remain fast in the UI; do not add confirmation dialogs or blocking waits to every payment action.
 - `src/lib/financialDurability.ts` captures the loaded financial baseline and detects changes to recurring payments, one-time payments, per-lesson payments/ledger, performance financial data, school-year financial records, and student billing fields.
-- The existing fast save path runs normally. After a detected financial mutation, the app verifies the financial projection against the latest Worker/Dropbox snapshot in the background.
-- If the remote financial projection does not match, the app performs one exact full-snapshot repair upload and verifies again. This is serialized/coalesced so rapid edits do not create a user-facing confirmation flow.
-- When offline, financial verification remains pending and retries after connectivity returns. A warning is shown only if persistence cannot be verified/repaired; the UI must not silently claim verified cloud durability in that case.
+- The existing fast save path runs normally. After a detected financial mutation, the app verifies the financial projection against the canonical latest Worker/Dropbox snapshot in the background.
+- Historical Dropbox fallback versions are recovery/read-only data and must never satisfy financial verification.
+- During the sync cutover, the financial durability layer is verifier-only. If canonical verification fails, it keeps the verification pending and shows a warning; it must not perform a second full-snapshot repair upload that bypasses the canonical sync path.
+- When offline, financial verification remains pending and retries after connectivity returns. The UI must not silently claim verified cloud durability when verification has not succeeded.
 - A staged local JSON session takes precedence over financial background verification: no financial verifier may write to Dropbox while local JSON sync is intentionally paused.
 - Tithe/maaser uses the stronger append-only event mechanism below in addition to general financial protection.
+
+### Sync cutover safety — September 2026
+
+- `beforeunload` may warn about pending cloud changes, but it must not issue a `sendBeacon` or any other best-effort full-snapshot upload. Local durable state is retained and the normal authenticated sync/retry path resumes later.
+- `workerApi.downloadLatest()` explicitly distinguishes canonical latest from a historical fallback. A historical fallback may be displayed for recovery, but it is read-only and must never become the base for an automatic merge-and-upload.
+- Background full merge sync must stop rather than upload when the remote read is a historical fallback.
+- Tombstones are not garbage-collected by a fixed client-side age such as 30 days. Client wall-clock age is not proof that all long-offline clients have observed a deletion. Tombstones remain until a server/revision/generation-aware GC protocol is implemented.
+- The generic manager credential must not be removed from legacy request formats until the live Dropbox Worker authentication behavior is verified. Once header-only support is live-verified for a path, prefer the header and remove the credential from the URL/query string for that path.
+- The feature-branch build runs `scripts/patch-sync-cutover-legacy-writers.mjs` in predev/prebuild and fails closed if the legacy unload writer, tombstone TTL, historical-fallback write path, or financial full-snapshot bypass survives.
 
 ### Tithe / maaser durability
 

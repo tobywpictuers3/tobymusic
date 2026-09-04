@@ -1,6 +1,6 @@
 import { hybridSync } from './hybridSync';
 import { exportAllData, isDevMode } from './storage';
-import { workerApi } from './workerApi';
+import { downloadCanonicalDropboxLatest } from './canonicalDropboxRead';
 import { isLocalJsonDraftActive } from './localJsonDraft';
 
 const WARNING_EVENT = 'toby:financial-durability-warning';
@@ -28,12 +28,17 @@ const studentFinancialProjection = (students: any): any[] => {
   return students.map(student => ({
     id: student?.id,
     annualAmount: student?.annualAmount,
+    annualDiscountEnabled: student?.annualDiscountEnabled,
+    annualDiscountPercent: student?.annualDiscountPercent,
+    annualRateManuallyOverridden: student?.annualRateManuallyOverridden,
+    lessonRateManuallyOverridden: student?.lessonRateManuallyOverridden,
     calculatedAmount: student?.calculatedAmount,
     monthlyAmount: student?.monthlyAmount,
     paymentMonths: student?.paymentMonths,
     paymentType: student?.paymentType,
     paymentStatus: student?.paymentStatus,
     paymentMethod: student?.paymentMethod,
+    lessonPrice: student?.lessonPrice,
     startingLessonNumber: student?.startingLessonNumber,
     startDate: student?.startDate,
     endDate: student?.endDate,
@@ -42,6 +47,7 @@ const studentFinancialProjection = (students: any): any[] => {
 
 const financialProjection = (data: Record<string, any>): Record<string, any> => ({
   students: studentFinancialProjection(data?.musicSystem_students),
+  tuitionSettings: data?.musicSystem_tuitionSettings || null,
   payments: data?.musicSystem_payments || [],
   oneTimePayments: data?.oneTimePayments || [],
   perLessonPayments: data?.musicSystem_perLessonPayments || [],
@@ -55,6 +61,8 @@ const fingerprintProjection = (data: Record<string, any>): string =>
 
 const currentSnapshot = (): Record<string, any> => exportAllData(true);
 const currentFingerprint = (): string => fingerprintProjection(currentSnapshot());
+const hasNonEmptyStudentSet = (snapshot: Record<string, any>): boolean =>
+  Array.isArray(snapshot?.musicSystem_students) && snapshot.musicSystem_students.length > 0;
 
 const emitWarning = (message: string) => {
   if (typeof window === 'undefined') return;
@@ -65,8 +73,10 @@ const remoteMatchesFinancialProjection = async (expectedSnapshot: Record<string,
   const expected = fingerprintProjection(expectedSnapshot);
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (isLocalJsonDraftActive()) return false;
-    const response: any = await workerApi.downloadLatest();
-    if (response?.success && response.data && fingerprintProjection(response.data) === expected) {
+    // Critical financial verification must never accept a historical fallback
+    // as if it were the current canonical Dropbox latest object.
+    const response = await downloadCanonicalDropboxLatest();
+    if (response.success && response.data && fingerprintProjection(response.data) === expected) {
       return true;
     }
     await delay(450 * (attempt + 1));
@@ -113,9 +123,18 @@ const runVerificationLoop = async () => {
       if (await remoteMatchesFinancialProjection(snapshot)) continue;
       if (isLocalJsonDraftActive()) return;
 
-      // Repair with one exact full-snapshot upload, then verify again. This is
-      // intentionally a background safety net and does not add confirmation
-      // dialogs or extra clicks to ordinary payment work.
+      // Never allow a background safety net to turn a transient empty/failed
+      // hydration state into a destructive full-database repair upload.
+      if (!hasNonEmptyStudentSet(snapshot)) {
+        pendingFingerprint = snapshotFingerprint;
+        emitWarning('האימות הכספי נעצר כי מצב התלמידות המקומי אינו תקין. לא בוצעה העלאת תיקון ל-Dropbox.');
+        return;
+      }
+
+      // Legacy repair remains a full-snapshot upload for now. The new write
+      // gateway cutover must replace this bypass before production cutover.
+      // Until then, canonical-only read-back prevents a historical fallback
+      // from ever being treated as a successful verification result.
       const repairResult = await hybridSync.restoreData(snapshot, { uploadImmediately: true });
       if (!repairResult.success || !repairResult.synced) {
         pendingFingerprint = snapshotFingerprint;
