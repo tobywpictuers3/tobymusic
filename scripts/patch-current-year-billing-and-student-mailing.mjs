@@ -30,6 +30,21 @@ replaceOrVerify(
   '<Label htmlFor="startDate">תאריך הצטרפות</Label>',
 );
 
+const paymentsPath = 'src/components/admin/PaymentManagement.tsx';
+replaceOrVerify(
+  paymentsPath,
+  `  useEffect(() => {\n    loadData();\n  }, []);`,
+  `  useEffect(() => {\n    loadData();\n    const handleStudentActiveStatusChanged = () => loadData();\n    window.addEventListener('student-active-status-changed', handleStudentActiveStatusChanged);\n    return () => window.removeEventListener('student-active-status-changed', handleStudentActiveStatusChanged);\n  }, []);`,
+  "window.addEventListener('student-active-status-changed', handleStudentActiveStatusChanged)",
+);
+
+replaceOrVerify(
+  paymentsPath,
+  `  // Filter annual students (paymentType is 'annual' or undefined)\n  const annualStudents = students.filter(s => !s.paymentType || s.paymentType === 'annual');\n  \n  // Filter per-lesson students\n  const perLessonStudents = students.filter(s => s.paymentType === 'per_lesson');`,
+  `  // The current school-year payment roster contains only students who are currently active.\n  // Historical years remain fully viewable and no historical payment rows are deleted.\n  const jerusalemYearMonth = new Intl.DateTimeFormat('en-CA', {\n    timeZone: 'Asia/Jerusalem',\n    year: 'numeric',\n    month: '2-digit',\n  }).formatToParts(new Date());\n  const jerusalemYear = Number(jerusalemYearMonth.find(part => part.type === 'year')?.value);\n  const jerusalemMonth = Number(jerusalemYearMonth.find(part => part.type === 'month')?.value);\n  const currentAcademicBaseYear = jerusalemMonth >= 9 ? jerusalemYear : jerusalemYear - 1;\n  const studentsVisibleInPayments = selectedYear === currentAcademicBaseYear\n    ? students.filter(student => student.isActive !== false)\n    : students;\n\n  // Filter annual students (paymentType is 'annual' or undefined)\n  const annualStudents = studentsVisibleInPayments.filter(s => !s.paymentType || s.paymentType === 'annual');\n  \n  // Filter per-lesson students\n  const perLessonStudents = studentsVisibleInPayments.filter(s => s.paymentType === 'per_lesson');`,
+  'const studentsVisibleInPayments = selectedYear === currentAcademicBaseYear',
+);
+
 const mailingPath = 'src/components/admin/StudentMailingTab.tsx';
 const copyReplacements = [
   ['קוראת את התלמידות הפעילות מ-Airtable ומסנכרנת ל-Brevo 2…', 'קוראת את התלמידות הפעילות ממקור נתוני התלמידות ומסנכרנת ל-Brevo 2…'],
