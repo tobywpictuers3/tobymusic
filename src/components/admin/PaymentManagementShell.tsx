@@ -1,28 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import PaymentManagement from '@/components/admin/PaymentManagement';
 import AnnualSchoolYearReport from '@/components/admin/AnnualSchoolYearReport';
+import PriorYearBalancesCard from '@/components/admin/PriorYearBalancesCard';
 import { getTithePaid, isDevMode } from '@/lib/storage';
 import { hydrateTithePaidFromHistory, persistTitheMonthDurably } from '@/lib/titheDurability';
-import { ensurePriorYearBalanceRows } from '@/lib/priorYearBalances';
+import { preparePriorYearSettlementRows } from '@/lib/priorYearSettlementFlow';
 import { ensureSchoolYearRollover, getSchoolYearForDate } from '@/lib/schoolYear';
 import { toast } from '@/hooks/use-toast';
 
 /**
  * Keeps the existing payment calculations untouched, fixes the annual table
  * viewport, and adds durability boundaries around financial operations.
- * PaymentManagement keeps its legacy tithePaid map for old JSON compatibility;
- * the shell records each explicit change in append-only titheHistory and waits
- * for Dropbox verification in normal mode.
- *
- * On entry to Payments we also complete the idempotent school-year rollover and
- * materialize one immutable prior-year settlement row per student. This makes
- * the closing balance a year-owned record before any current-year payment UI is
- * used, so old and new school years cannot bleed into each other.
+ * The normal admin route already performs the blocking year-close gate; this
+ * shell keeps an idempotent fallback before the payment UI is shown.
  */
 export default function PaymentManagementShell() {
   const [ready, setReady] = useState(false);
   const [revision, setRevision] = useState(0);
   const clickSnapshotRef = useRef<Record<string, boolean> | null>(null);
+  const currentSchoolYear = getSchoolYearForDate();
 
   useLayoutEffect(() => {
     hydrateTithePaidFromHistory();
@@ -31,7 +27,7 @@ export default function PaymentManagementShell() {
     void (async () => {
       try {
         await ensureSchoolYearRollover();
-        ensurePriorYearBalanceRows(getSchoolYearForDate());
+        preparePriorYearSettlementRows(getSchoolYearForDate());
       } finally {
         if (active) setReady(true);
       }
@@ -45,7 +41,6 @@ export default function PaymentManagementShell() {
   useEffect(() => {
     const handleImport = () => {
       hydrateTithePaidFromHistory();
-      ensurePriorYearBalanceRows(getSchoolYearForDate());
       setRevision(value => value + 1);
     };
 
@@ -62,8 +57,6 @@ export default function PaymentManagementShell() {
 
     clickSnapshotRef.current = { ...getTithePaid() };
 
-    // Let PaymentManagement's existing handler update the legacy map first,
-    // then detect the exact month that changed and persist the durable event.
     window.setTimeout(async () => {
       const before = clickSnapshotRef.current || {};
       const after = { ...getTithePaid() };
@@ -95,8 +88,6 @@ export default function PaymentManagementShell() {
   return (
     <div data-toby-payments-shell onClickCapture={handlePaymentClickCapture}>
       <style>{`
-        /* PaymentManagement's annual views still use overflow-x-hidden.
-           Override that only inside the payments shell. */
         [data-toby-payments-shell] div[class*="overflow-x-hidden"] {
           overflow-x: auto !important;
           overflow-y: auto !important;
@@ -106,54 +97,37 @@ export default function PaymentManagementShell() {
           touch-action: pan-x pan-y;
           scrollbar-gutter: stable;
         }
-
-        /* 1320px is enough for all 12 months + summary columns on a normal
-           desktop while still preserving readable cells. Smaller screens
-           simply scroll horizontally. */
         [data-toby-payments-shell] div[class*="overflow-x-hidden"] > table {
           width: 1320px !important;
           min-width: 1320px !important;
           max-width: none !important;
         }
-
-        /* Keep the first column useful while scrolling across months. */
         [data-toby-payments-shell] div[class*="overflow-x-hidden"] > table th:first-child,
         [data-toby-payments-shell] div[class*="overflow-x-hidden"] > table td:first-child {
           min-width: 145px !important;
         }
-
-        /* Make the horizontal scrollbar intentionally visible on browsers
-           that support WebKit scrollbar styling. Mobile touch scrolling still
-           works even when the OS uses overlay scrollbars. */
-        [data-toby-payments-shell] div[class*="overflow-x-hidden"]::-webkit-scrollbar {
-          height: 12px;
-        }
-        [data-toby-payments-shell] div[class*="overflow-x-hidden"]::-webkit-scrollbar-track {
-          background: hsl(var(--muted));
-        }
+        [data-toby-payments-shell] div[class*="overflow-x-hidden"]::-webkit-scrollbar { height: 12px; }
+        [data-toby-payments-shell] div[class*="overflow-x-hidden"]::-webkit-scrollbar-track { background: hsl(var(--muted)); }
         [data-toby-payments-shell] div[class*="overflow-x-hidden"]::-webkit-scrollbar-thumb {
           background: hsl(var(--primary) / 0.55);
           border-radius: 999px;
           border: 2px solid hsl(var(--muted));
         }
-
         @media (min-width: 1600px) {
           [data-toby-payments-shell] div[class*="overflow-x-hidden"] > table {
             width: 100% !important;
             min-width: 1320px !important;
           }
         }
-
         @media (max-width: 768px) {
-          [data-toby-payments-shell] div[class*="overflow-x-hidden"] {
-            overflow-x: scroll !important;
-          }
+          [data-toby-payments-shell] div[class*="overflow-x-hidden"] { overflow-x: scroll !important; }
           [data-toby-payments-shell] div[class*="overflow-x-hidden"] > table {
             width: 1320px !important;
             min-width: 1320px !important;
           }
         }
       `}</style>
+      <PriorYearBalancesCard key={`prior-year-${revision}`} selectedBaseYear={currentSchoolYear - 1} />
       <PaymentManagement key={`payments-${revision}`} />
       <AnnualSchoolYearReport key={`annual-report-${revision}`} />
     </div>

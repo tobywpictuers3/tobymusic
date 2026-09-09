@@ -4,6 +4,7 @@ import { FlaskConical, RotateCcw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getCurrentUser, setDevMode } from '@/lib/storage';
 import { clearDevFakeDate, restoreNativeClock } from '@/lib/devFakeClock';
+import FinancialYearGate from '@/components/admin/FinancialYearGate';
 import AdminDashboard from './AdminDashboard';
 import DevAdminDashboard from './DevAdminDashboard';
 
@@ -21,6 +22,8 @@ export const NormalAdminRoute = () => {
   if (!ready) return null;
 
   const isAdmin = getCurrentUser()?.type === 'admin';
+
+  const dashboard = <AdminDashboard />;
 
   return (
     <div className="relative">
@@ -44,7 +47,7 @@ export const NormalAdminRoute = () => {
           </div>
         </div>
       )}
-      <AdminDashboard />
+      {isAdmin ? <FinancialYearGate>{dashboard}</FinancialYearGate> : dashboard}
     </div>
   );
 };
