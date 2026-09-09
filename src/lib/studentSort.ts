@@ -44,6 +44,12 @@ export const sortStudentsByLastNameInPlace = <T extends Pick<Student, 'id' | 'fi
   students: T[],
 ): T[] => students.sort(compareStudentsByLastName);
 
+const normalizeDateKey = (value: unknown): string => {
+  const text = String(value ?? '').trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] || '';
+};
+
 const currentSchoolYearStartInJerusalem = (now: Date = new Date()): string => {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Jerusalem',
@@ -78,8 +84,10 @@ export const isStudentVisibleInCurrentSchoolYearLists = (
   if (student.isActive !== false) return true;
 
   const schoolYearStart = currentSchoolYearStartInJerusalem(now);
-  const joinedBySchoolYearStart = !student.startDate || student.startDate <= schoolYearStart;
-  const leftAfterSchoolYearStart = Boolean(student.leftDate && student.leftDate > schoolYearStart);
+  const startDate = normalizeDateKey(student.startDate);
+  const leftDate = normalizeDateKey(student.leftDate);
+  const joinedBySchoolYearStart = !startDate || startDate <= schoolYearStart;
+  const leftAfterSchoolYearStart = Boolean(leftDate && leftDate > schoolYearStart);
 
   return joinedBySchoolYearStart && leftAfterSchoolYearStart;
 };
