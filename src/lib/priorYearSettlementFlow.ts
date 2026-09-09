@@ -12,8 +12,10 @@ import type { Student } from './types';
 
 export interface ManagedPriorYearBalanceRecord extends PriorYearBalanceRecord {
   /** Present only after an explicit manager settlement action. */
-  settlementConfirmedAt?: string;
-  settlementConfirmedBy?: 'manager';
+  settlementConfirmedAt?: string | null;
+  settlementConfirmedBy?: 'manager' | null;
+  /** Conflict-resolution clock for settlement edits/reopens. */
+  lastModified?: string;
 }
 
 export type PriorYearSettlementAction = 'cash' | 'lessons' | 'reopen';
@@ -147,6 +149,7 @@ export const preparePriorYearSettlementRows = (
         settlementMethod: 'cash' as const,
         settled: false,
         settlementDate: undefined,
+        lastModified: now,
         updatedAt: now,
       };
     }
@@ -156,6 +159,7 @@ export const preparePriorYearSettlementRows = (
         ...row,
         settled: false,
         settlementDate: undefined,
+        lastModified: now,
         updatedAt: now,
       };
     }
@@ -194,6 +198,7 @@ const verifyRemoteRecord = (
   if (Boolean(actual.settled) !== Boolean(expected.settled)) return false;
   if ((actual.settlementDate || '') !== (expected.settlementDate || '')) return false;
   if ((actual.settlementConfirmedAt || '') !== (expected.settlementConfirmedAt || '')) return false;
+  if ((actual.lastModified || '') !== (expected.lastModified || '')) return false;
 
   const cashId = settlementPaymentId(expected);
   const cashRow = remoteOneTimePayments(data).find(payment => payment.id === cashId);
@@ -307,14 +312,16 @@ export const settlePriorYearBalanceDurably = async (
         settlementMethod: 'cash',
         settled: updated.signedBalance === 0 && !updated.requiresVerification,
         settlementDate: undefined,
-        settlementConfirmedAt: undefined,
-        settlementConfirmedBy: undefined,
+        settlementConfirmedAt: null,
+        settlementConfirmedBy: null,
+        lastModified: now,
         updatedAt: now,
       }
     : {
         ...updated,
         settlementConfirmedAt: now,
         settlementConfirmedBy: 'manager',
+        lastModified: now,
         updatedAt: now,
       };
 
@@ -340,14 +347,16 @@ export const editPriorYearBalanceDurably = async (
   });
   if (!updated) throw new Error('PRIOR_YEAR_BALANCE_UPDATE_FAILED');
 
+  const now = new Date().toISOString();
   const next: ManagedPriorYearBalanceRecord = {
     ...updated,
     settlementMethod: 'cash',
     settled: roundMoney(updated.signedBalance) === 0,
     settlementDate: undefined,
-    settlementConfirmedAt: undefined,
-    settlementConfirmedBy: undefined,
-    updatedAt: new Date().toISOString(),
+    settlementConfirmedAt: null,
+    settlementConfirmedBy: null,
+    lastModified: now,
+    updatedAt: now,
   };
   replaceManagedRow(next);
   reconcileAnnualOpeningBalances([next], next.targetSchoolYear);
