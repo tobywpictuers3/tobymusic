@@ -4,6 +4,7 @@ import AnnualSchoolYearReport from '@/components/admin/AnnualSchoolYearReport';
 import PriorYearBalancesCard from '@/components/admin/PriorYearBalancesCard';
 import HistoricalStudentPayments from '@/components/admin/HistoricalStudentPayments';
 import TuitionSettingsCard from '@/components/admin/TuitionSettingsCard';
+import StudentTuitionPricingTable from '@/components/admin/StudentTuitionPricingTable';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getTithePaid, isDevMode } from '@/lib/storage';
 import { hydrateTithePaidFromHistory, persistTitheMonthDurably } from '@/lib/titheDurability';
@@ -148,8 +149,9 @@ export default function PaymentManagementShell() {
           <AnnualSchoolYearReport key={`annual-report-${revision}`} />
         </TabsContent>
 
-        <TabsContent value="pricing" className="mt-0">
-          <TuitionSettingsCard />
+        <TabsContent value="pricing" className="mt-0 space-y-6">
+          <TuitionSettingsCard onSaved={() => setRevision(value => value + 1)} />
+          <StudentTuitionPricingTable key={`student-pricing-${revision}`} />
         </TabsContent>
       </Tabs>
     </div>
