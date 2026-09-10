@@ -2,6 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import PaymentManagement from '@/components/admin/PaymentManagement';
 import AnnualSchoolYearReport from '@/components/admin/AnnualSchoolYearReport';
 import PriorYearBalancesCard from '@/components/admin/PriorYearBalancesCard';
+import HistoricalStudentPayments from '@/components/admin/HistoricalStudentPayments';
+import TuitionSettingsCard from '@/components/admin/TuitionSettingsCard';
+import StudentTuitionPricingTable from '@/components/admin/StudentTuitionPricingTable';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getTithePaid, isDevMode } from '@/lib/storage';
 import { hydrateTithePaidFromHistory, persistTitheMonthDurably } from '@/lib/titheDurability';
 import { preparePriorYearSettlementRows } from '@/lib/priorYearSettlementFlow';
@@ -127,9 +131,29 @@ export default function PaymentManagementShell() {
           }
         }
       `}</style>
-      <PriorYearBalancesCard key={`prior-year-${revision}`} selectedBaseYear={currentSchoolYear - 1} />
-      <PaymentManagement key={`payments-${revision}`} />
-      <AnnualSchoolYearReport key={`annual-report-${revision}`} />
+
+      <Tabs defaultValue="current" dir="rtl" className="space-y-5">
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto p-1">
+          <TabsTrigger value="current" className="shrink-0">שנה נוכחית</TabsTrigger>
+          <TabsTrigger value="history" className="shrink-0">שנים קודמות וסגירת שנה</TabsTrigger>
+          <TabsTrigger value="pricing" className="shrink-0">תמחור</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="current" className="mt-0">
+          <PaymentManagement key={`payments-${revision}`} />
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-0 space-y-6">
+          <PriorYearBalancesCard key={`prior-year-${revision}`} selectedBaseYear={currentSchoolYear - 1} />
+          <HistoricalStudentPayments key={`payment-history-${revision}`} />
+          <AnnualSchoolYearReport key={`annual-report-${revision}`} />
+        </TabsContent>
+
+        <TabsContent value="pricing" className="mt-0 space-y-6">
+          <TuitionSettingsCard onSaved={() => setRevision(value => value + 1)} />
+          <StudentTuitionPricingTable key={`student-pricing-${revision}`} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

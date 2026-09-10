@@ -2,6 +2,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import StudentActiveToggleDecorator from "./components/admin/StudentActiveToggleDecorator";
+import StudentPaymentMethodDecorator from "./components/admin/StudentPaymentMethodDecorator";
 import "./index.css";
 
 import { ThemeProvider } from "./brand/ThemeProvider";
@@ -188,6 +189,7 @@ async function initializeApp() {
     createRoot(root).render(
       <ThemeProvider defaultTheme="system">
         <StudentActiveToggleDecorator />
+        <StudentPaymentMethodDecorator />
         <App />
       </ThemeProvider>
     );
