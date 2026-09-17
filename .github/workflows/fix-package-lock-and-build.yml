@@ -22,6 +22,7 @@ jobs:
       - name: Clean install and build
         run: |
           npm ci --no-audit --no-fund
+          npm ls react-router-dom --depth=0
           npm run build
       - name: Commit corrected lock file
         run: |
