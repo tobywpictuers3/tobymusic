@@ -4,11 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/patch-student-list-order.mjs && node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-sync-runtime-efficiency.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs && node scripts/patch-prior-year-balances.mjs && node scripts/patch-school-year-close-init.mjs && node scripts/patch-payment-method-ui-pre.mjs && node scripts/patch-payment-method-ui.mjs",
+    "predev": "node scripts/patch-student-list-order.mjs && node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-sync-runtime-efficiency.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs && node scripts/patch-prior-year-balances.mjs && node scripts/patch-school-year-close-init.mjs && node scripts/patch-payment-method-ui-pre.mjs && node scripts/patch-payment-method-ui.mjs && node scripts/patch-payment-method-card-mount.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/patch-student-list-order.mjs && node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-sync-runtime-efficiency.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs && node scripts/patch-prior-year-balances.mjs && node scripts/patch-school-year-close-init.mjs && node scripts/patch-payment-method-ui-pre.mjs && node scripts/patch-payment-method-ui.mjs",
+    "prebuild": "node scripts/patch-student-list-order.mjs && node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-sync-runtime-efficiency.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs && node scripts/patch-prior-year-balances.mjs && node scripts/patch-school-year-close-init.mjs && node scripts/patch-payment-method-ui-pre.mjs && node scripts/patch-payment-method-ui.mjs && node scripts/patch-payment-method-card-mount.mjs",
     "build": "vite build",
-    "prebuild:dev": "node scripts/patch-student-list-order.mjs && node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-sync-runtime-efficiency.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs && node scripts/patch-prior-year-balances.mjs && node scripts/patch-school-year-close-init.mjs && node scripts/patch-payment-method-ui-pre.mjs && node scripts/patch-payment-method-ui.mjs",
+    "prebuild:dev": "node scripts/patch-student-list-order.mjs && node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-sync-runtime-efficiency.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs && node scripts/patch-prior-year-balances.mjs && node scripts/patch-school-year-close-init.mjs && node scripts/patch-payment-method-ui-pre.mjs && node scripts/patch-payment-method-ui.mjs && node scripts/patch-payment-method-card-mount.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -63,7 +63,6 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.61.1",
     "react-resizable-panels": "^2.1.9",
-    "react-router-dom": "^6.30.1",
     "recharts": "^2.15.4",
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.6.0",
