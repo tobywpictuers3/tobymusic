@@ -17,6 +17,7 @@ export interface Student {
   leftReason?: string; // Optional: why student left
   startingLessonNumber: number; // Starting lesson number (default: 1)
   annualAmount: number; // Annual payment amount
+  annualDiscountAmount?: number; // Manual fixed annual discount in NIS
   paymentMonths: number; // Number of payment months (default: 12)
   calculatedAmount?: number; // Proportional amount when starting mid-year (overrides annualAmount for payment calculation)
   monthlyAmount: number; // Calculated: (calculatedAmount || annualAmount) / paymentMonths

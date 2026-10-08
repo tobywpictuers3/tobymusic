@@ -73,8 +73,8 @@ const PracticeHistory = ({ studentId, refreshKey = 0, onRefresh }: PracticeHisto
 
       if (deleted) {
         toast({
-          title: '✅ נמחק בהצלחה',
-          description: 'האימון נמחק',
+          title: 'האימון נמחק מהרשימה',
+          description: 'מחיקת הענן מתבצעת ברקע, ותאומת לאחר הסנכרון.',
           duration: 3000,
         });
         onRefresh?.();
@@ -180,8 +180,8 @@ const PracticeHistory = ({ studentId, refreshKey = 0, onRefresh }: PracticeHisto
       }
 
       toast({
-        title: '✅ עודכן',
-        description: 'האימון עודכן בהצלחה',
+        title: 'האימון עודכן ברשימה',
+        description: 'העדכון לענן מתבצע ברקע; בדקי את מצב הסנכרון.',
         duration: 2500,
       });
 

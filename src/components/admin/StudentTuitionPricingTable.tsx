@@ -70,6 +70,7 @@ export default function StudentTuitionPricingTable() {
         monthlyAmount: roundMoney(currentYearTarget / paymentMonths),
         annualDiscountEnabled: false,
         annualDiscountPercent: 0,
+        annualDiscountAmount: 0,
         annualRateManuallyOverridden: false,
       } as any);
 
