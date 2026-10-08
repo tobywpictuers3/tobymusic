@@ -179,9 +179,8 @@ const StudentsManagement = () => {
       annualDiscountEnabled: true,
       annualDiscountAmount: amount,
       annualDiscountPercent: 0,
-      annualAmount: current.annualRateManuallyOverridden
-        ? current.annualAmount
-        : fixedDiscountRate(tuitionSettings.annualRate, amount),
+      annualRateManuallyOverridden: false,
+      annualAmount: fixedDiscountRate(tuitionSettings.annualRate, amount),
     }));
   };
 
