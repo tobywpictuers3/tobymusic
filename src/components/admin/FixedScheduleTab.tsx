@@ -9,7 +9,54 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Calendar, Plus, Edit, Trash2, Check, X } from 'lucide-react';
 import { getStudents, getScheduleTemplates, addScheduleTemplate, updateScheduleTemplate, deleteScheduleTemplate, activateScheduleTemplate } from '@/lib/storage';
 import { Student, ScheduleTemplate, WeeklyScheduleData } from '@/lib/types';
+import { hybridSync } from '@/lib/hybridSync';
+import { downloadCanonicalDropboxLatest } from '@/lib/canonicalDropboxRead';
+import { getLocalJsonDraftState } from '@/lib/localJsonDraft';
+import { isDevMode } from '@/lib/devMode';
 import { toast } from '@/hooks/use-toast';
+
+// Each edit gets its own object graph; never mutate the loaded template by reference.
+const cloneSchedule = (schedule: WeeklyScheduleData): WeeklyScheduleData =>
+  JSON.parse(JSON.stringify(schedule || {})) as WeeklyScheduleData;
+
+const scheduleFingerprint = (schedule: WeeklyScheduleData): string =>
+  JSON.stringify(Object.entries(schedule || {}).sort(([a], [b]) => a.localeCompare(b)).map(
+    ([day, slots]) => [day, Object.entries(slots || {}).sort(([a], [b]) => a.localeCompare(b))]
+  ));
+
+// Approved correction for the 2026-27 active timetable. Applies only to the
+// exact existing assignments, never to other years, students or occupied slots.
+const requestedScheduleMove = (template: ScheduleTemplate): WeeklyScheduleData | null => {
+  if (!template.isActive || template.id !== 'mt8q01ofu63reai6ksf' || template.effectiveDate !== '2026-09-01') {
+    return null;
+  }
+  const debitId = 'meu48id3mbfogi7x97a';
+  const tamarId = 'mle4l7wymb16dhqcqtk';
+  const wednesday = template.schedule?.['3'] || {};
+  if (wednesday['19:45']?.studentId !== debitId || wednesday['20:15']?.studentId !== tamarId) {
+    return null;
+  }
+  const monday = template.schedule?.['1'] || {};
+  if ((monday['19:30'] && monday['19:30'].studentId !== debitId) ||
+      (monday['20:00'] && monday['20:00'].studentId !== tamarId)) {
+    throw new Error('MONDAY_SLOTS_OCCUPIED');
+  }
+  const next = cloneSchedule(template.schedule);
+  const d = { ...(next['3'] || {}) };
+  const mondayNext = { ...(next['1'] || {}) };
+  const debitSlot = d['19:45'];
+  const tamarSlot = d['20:15'];
+  delete d['19:45'];
+  delete d['20:15'];
+  if (Object.keys(d).length > 0) next['3'] = d;
+  else delete next['3'];
+  next['1'] = {
+    ...mondayNext,
+    '19:30': mondayNext['19:30'] || debitSlot,
+    '20:00': mondayNext['20:00'] || tamarSlot,
+  };
+  return next;
+};
 
 const FixedScheduleTab = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -19,16 +66,39 @@ const FixedScheduleTab = () => {
   const [templateName, setTemplateName] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
   const [scheduleData, setScheduleData] = useState<WeeklyScheduleData>({});
+  const [isSaving, setIsSaving] = useState(false);
 
   const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
   useEffect(() => {
     loadData();
+    // Run the requested timetable correction once, after canonical admin data has loaded.
+    // The original Wednesday slots are the idempotency precondition.
+    if (isDevMode() || getLocalJsonDraftState().active) return;
+    const current = getScheduleTemplates().find(t => t.isActive && t.id === 'mt8q01ofu63reai6ksf');
+    if (!current) return;
+    let corrected: WeeklyScheduleData | null = null;
+    try {
+      corrected = requestedScheduleMove(current);
+    } catch {
+      toast({ title: 'נדרש אימות', description: 'לא הועברו שיעורים: משבצות יום שני תפוסות.', variant: 'destructive' });
+      return;
+    }
+    if (!corrected) return;
+    const updated = updateScheduleTemplate(current.id, { schedule: corrected });
+    if (!updated) return;
+    loadData();
+    void verifyCloudSchedule(updated).catch(() => false).then(verified => {
+      toast(verified
+        ? { title: 'המערכת עודכנה ואומתה בדרופבוקס', description: 'השיעורים הועברו ליום שני והוסרו מיום רביעי.' }
+        : { title: 'נדרש אימות שמירה', description: 'העדכון בוצע מקומית אך טרם אומת בדרופבוקס.', variant: 'destructive' });
+      loadData();
+    });
   }, []);
 
   const loadData = () => {
     setStudents(getStudents());
-    setTemplates(getScheduleTemplates().sort((a, b) => 
+    setTemplates([...getScheduleTemplates()].sort((a, b) => 
       new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime()
     ));
   };
@@ -38,7 +108,7 @@ const FixedScheduleTab = () => {
       setEditingTemplate(template);
       setTemplateName(template.name);
       setEffectiveDate(template.effectiveDate);
-      setScheduleData(template.schedule);
+      setScheduleData(cloneSchedule(template.schedule));
     } else {
       setEditingTemplate(null);
       setTemplateName('');
@@ -48,35 +118,77 @@ const FixedScheduleTab = () => {
     setShowDialog(true);
   };
 
-  const handleSaveTemplate = () => {
-    if (!templateName.trim()) {
+  // Canonical read-back, not a local toast or queued upload, is the success criterion.
+  const verifyCloudSchedule = async (expected: ScheduleTemplate): Promise<boolean> => {
+    if (isDevMode()) return true;
+    if (getLocalJsonDraftState().active || !navigator.onLine) return false;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await hybridSync.manualSync();
+      const latest = await downloadCanonicalDropboxLatest();
+      const actual = (latest.data?.musicSystem_scheduleTemplates as ScheduleTemplate[] | undefined)
+        ?.find(t => t.id === expected.id);
+      if (latest.success && actual &&
+          actual.name === expected.name &&
+          actual.effectiveDate === expected.effectiveDate &&
+          scheduleFingerprint(actual.schedule) === scheduleFingerprint(expected.schedule)) {
+        return true;
+      }
+      if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    return false;
+  };
+
+  const handleSaveTemplate = async () => {
+    if (isSaving) return;
+    if (!templateName.trim() || !effectiveDate) {
       toast({
         title: 'שגיאה',
-        description: 'יש להזין שם למערכת',
+        description: 'יש להזין שם ותאריך תחילת תוקף למערכת',
         variant: 'destructive'
       });
       return;
     }
+    setIsSaving(true);
+    try {
+      const fields = {
+        name: templateName.trim(),
+        effectiveDate,
+        schedule: cloneSchedule(scheduleData),
+      };
+      const updated = editingTemplate
+        ? updateScheduleTemplate(editingTemplate.id, fields)
+        : addScheduleTemplate({ ...fields, isActive: getScheduleTemplates().length === 0 });
+      if (!updated) throw new Error('TEMPLATE_NOT_FOUND');
 
-    if (editingTemplate) {
-      updateScheduleTemplate(editingTemplate.id, {
-        name: templateName,
-        effectiveDate,
-        schedule: scheduleData
+      // Reusing the same record on retries prevents duplicate templates after a
+      // local save whose cloud acknowledgement failed.
+      setEditingTemplate(updated);
+      const verified = await verifyCloudSchedule(updated);
+      loadData();
+      if (!verified) {
+        toast({
+          title: 'השמירה לענן עדיין לא אומתה',
+          description: getLocalJsonDraftState().active
+            ? 'המערכת נמצאת בטיוטת JSON מקומית. יש להשתמש בכפתור שמור JSON ל-Dropbox.'
+            : 'המערכת נשמרה מקומית; אין לסגור עד שמצב הסנכרון מאשר שמירה בדרופבוקס. אפשר לנסות שוב.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      toast({
+        title: isDevMode() ? 'נשמר בסביבת בדיקה' : 'נשמר ואומת בדרופבוקס',
+        description: 'שינויי המערכת הקבועה נשמרו בהצלחה.',
       });
-      toast({ description: 'המערכת עודכנה בהצלחה' });
-    } else {
-      addScheduleTemplate({
-        name: templateName,
-        effectiveDate,
-        isActive: false,
-        schedule: scheduleData
+      setShowDialog(false);
+    } catch {
+      toast({
+        title: 'שגיאה בשמירת מערכת',
+        description: 'העדכון לא אומת. הנתונים שבחלון העריכה נשמרו וניתן לנסות שוב.',
+        variant: 'destructive',
       });
-      toast({ description: 'המערכת נוספה בהצלחה' });
+    } finally {
+      setIsSaving(false);
     }
-
-    loadData();
-    setShowDialog(false);
   };
 
   const handleActivateTemplate = (templateId: string) => {
@@ -94,33 +206,35 @@ const FixedScheduleTab = () => {
   };
 
   const addLessonToSchedule = (dayOfWeek: number, studentId: string, startTime: string) => {
-    const newSchedule = { ...scheduleData };
     const dayKey = dayOfWeek.toString();
-    
-    if (!newSchedule[dayKey]) {
-      newSchedule[dayKey] = {};
+    const time = startTime.trim();
+    if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
+      toast({ title: 'שעה לא תקינה', variant: 'destructive' });
+      return;
     }
-    
-    newSchedule[dayKey][startTime] = {
-      studentId,
-      duration: 30
-    };
-    
-    setScheduleData(newSchedule);
+    // Do not silently replace another student's existing lesson.
+    if (scheduleData[dayKey]?.[time]) {
+      toast({ title: 'המשבצת תפוסה', description: 'יש להסיר את השיעור הקיים לפני שיבוץ אחר.', variant: 'destructive' });
+      return;
+    }
+    setScheduleData(previous => ({
+      ...previous,
+      [dayKey]: {
+        ...(previous[dayKey] || {}),
+        [time]: { studentId, duration: 30 },
+      },
+    }));
   };
 
   const removeLessonFromSchedule = (dayOfWeek: number, startTime: string) => {
-    const newSchedule = { ...scheduleData };
     const dayKey = dayOfWeek.toString();
-    
-    if (newSchedule[dayKey] && newSchedule[dayKey][startTime]) {
-      delete newSchedule[dayKey][startTime];
-      if (Object.keys(newSchedule[dayKey]).length === 0) {
-        delete newSchedule[dayKey];
-      }
-    }
-    
-    setScheduleData(newSchedule);
+    setScheduleData(previous => {
+      const next = cloneSchedule(previous);
+      if (!next[dayKey]?.[startTime]) return previous;
+      delete next[dayKey][startTime];
+      if (Object.keys(next[dayKey]).length === 0) delete next[dayKey];
+      return next;
+    });
   };
 
   const getNextAvailableTime = (dayOfWeek: number): string => {
@@ -241,7 +355,7 @@ const FixedScheduleTab = () => {
       </Card>
 
       {/* Dialog for Add/Edit Template */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <Dialog open={showDialog} onOpenChange={(open) => { if (!isSaving) setShowDialog(open); }}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -317,11 +431,11 @@ const FixedScheduleTab = () => {
 
             {/* Action Buttons */}
             <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={() => setShowDialog(false)}>
+              <Button variant="outline" disabled={isSaving} onClick={() => setShowDialog(false)}>
                 ביטול
               </Button>
-              <Button onClick={handleSaveTemplate} className="hero-gradient">
-                {editingTemplate ? 'עדכן מערכת' : 'שמור מערכת'}
+              <Button onClick={handleSaveTemplate} disabled={isSaving} className="hero-gradient">
+                {isSaving ? 'שומר ומאמת...' : editingTemplate ? 'עדכן מערכת' : 'שמור מערכת'}
               </Button>
             </div>
           </div>
