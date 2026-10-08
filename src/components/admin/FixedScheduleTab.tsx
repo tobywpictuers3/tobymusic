@@ -88,7 +88,7 @@ const FixedScheduleTab = () => {
     const updated = updateScheduleTemplate(current.id, { schedule: corrected });
     if (!updated) return;
     loadData();
-    void verifyCloudSchedule(updated).then(verified => {
+    void verifyCloudSchedule(updated).catch(() => false).then(verified => {
       toast(verified
         ? { title: 'המערכת עודכנה ואומתה בדרופבוקס', description: 'השיעורים הועברו ליום שני והוסרו מיום רביעי.' }
         : { title: 'נדרש אימות שמירה', description: 'העדכון בוצע מקומית אך טרם אומת בדרופבוקס.', variant: 'destructive' });
@@ -208,7 +208,7 @@ const FixedScheduleTab = () => {
   const addLessonToSchedule = (dayOfWeek: number, studentId: string, startTime: string) => {
     const dayKey = dayOfWeek.toString();
     const time = startTime.trim();
-    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time)) {
+    if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
       toast({ title: 'שעה לא תקינה', variant: 'destructive' });
       return;
     }
