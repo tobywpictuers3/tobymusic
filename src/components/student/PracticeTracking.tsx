@@ -20,6 +20,8 @@ import {
   checkForNewStreakMilestone,
 } from '@/lib/medalEngine';
 
+const getIsraelDate = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
 interface PracticeTrackingProps {
   studentId: string;
 }
@@ -29,7 +31,7 @@ const PracticeTracking = ({ studentId }: PracticeTrackingProps) => {
   const [isTracking, setIsTracking] = useState(false);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
+  const [manualDate, setManualDate] = useState(getIsraelDate());
   const [manualStartTime, setManualStartTime] = useState('');
   const [manualEndTime, setManualEndTime] = useState('');
   const [activeCelebration, setActiveCelebration] = useState<{ message: string; medal: string } | null>(null);
@@ -83,7 +85,7 @@ const PracticeTracking = ({ studentId }: PracticeTrackingProps) => {
       return;
     }
     
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIsraelDate();
     if (dateForCheck === today) {
       const previousStreak = getCurrentStreak(studentId);
       const streakMilestone = checkForNewStreakMilestone(previousStreak - 1, previousStreak);
@@ -114,33 +116,18 @@ const PracticeTracking = ({ studentId }: PracticeTrackingProps) => {
         return false;
       }
       
+      const savedSession = addPracticeSession(sessionData); // already queues the cloud sync
+      if (!getStudentPracticeSessions(studentId).some(session => session.id === savedSession.id)) throw new Error('PRACTICE_LOCAL_SAVE_FAILED');
       checkAndShowCelebrations(sessionData.date, sessionData.durationMinutes);
-      addPracticeSession(sessionData);
       
-      const result = await hybridSync.onDataChange();
+      const result = hybridSync.getSyncState();
       
-      if (result.synced) {
-        toast({
-          title: '✅ נשמר!',
-          description: `${sessionData.durationMinutes} דקות נשמרו`,
-          duration: 3000,
-        });
-      } else if (result.success) {
-        toast({
-          title: '💾 נשמר מקומית',
-          description: 'יסונכרן אוטומטית',
-          duration: 3000,
-        });
+      if (result.lastError) {
+        toast({ title: '⚠️ האימון נרשם במכשיר', description: 'סנכרון הענן טרם אומת. אין להזין את האימון שוב.', variant: 'destructive' });
       } else {
-        toast({
-          title: '❌ שמירה נכשלה',
-          description: result.message || 'בדקי חיבור',
-          variant: 'destructive',
-          duration: 4000,
-        });
-        return false;
+        toast({ title: '💾 האימון נרשם במכשיר', description: 'נשמר ברשימת האימונים; האימות בענן מתבצע ברקע.' });
       }
-      
+
       return true;
     } catch (error) {
       console.error('Save error:', error);
@@ -183,7 +170,7 @@ const PracticeTracking = ({ studentId }: PracticeTrackingProps) => {
 
     const sessionData = {
       studentId,
-      date: new Date().toISOString().split('T')[0],
+      date: getIsraelDate(),
       startTime: startTime.toTimeString().slice(0, 5),
       endTime: endTime.toTimeString().slice(0, 5),
       durationMinutes,
@@ -235,7 +222,7 @@ const PracticeTracking = ({ studentId }: PracticeTrackingProps) => {
     if (saved) {
       setManualStartTime('');
       setManualEndTime('');
-      setManualDate(new Date().toISOString().split('T')[0]);
+      setManualDate(getIsraelDate());
       setRefreshKey(k => k + 1);
     }
   };

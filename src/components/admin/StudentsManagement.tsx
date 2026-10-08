@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/s
 import { Label } from '@/components/safe-ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/safe-ui/select';
 import { Badge } from '@/components/safe-ui/badge';
-import { Grid, List, UserPlus, Edit, Trash2, Users, History, Coins, DoorOpen, Percent } from 'lucide-react';
+import { Grid, List, UserPlus, Edit, Trash2, Users, History, Coins, DoorOpen } from 'lucide-react';
 import { NumberStepper } from '@/components/ui/number-stepper';
 import { getStudents, addStudent, updateStudent, deleteStudentCascade, getCompletedLessonsCount, convertAnnualToPerLesson, getPayments } from '@/lib/storage';
 import { deleteMessagesForStudentCascade } from '@/lib/messages';
@@ -18,7 +18,7 @@ import { toast } from '@/hooks/use-toast';
 import StudentLessonHistory from './StudentLessonHistory';
 import StudentSchoolYearSummary from './StudentSchoolYearSummary';
 import TuitionSettingsCard from './TuitionSettingsCard';
-import { calculateDiscountedAnnualRate, getTuitionSettings, type TuitionSettings } from '@/lib/tuitionSettings';
+import { getTuitionSettings, type TuitionSettings } from '@/lib/tuitionSettings';
 import {
   calculateBaseAnnualTarget,
   ensureSchoolYearRollover,
@@ -34,10 +34,13 @@ import {
 const DEFAULT_SCHOOL_YEAR = getSchoolYearForDate();
 const DEFAULT_START_DATE = getSchoolYearBounds(DEFAULT_SCHOOL_YEAR).start;
 const money = (value: number) => `₪${Number(value || 0).toLocaleString('he-IL', { maximumFractionDigits: 2 })}`;
+const fixedDiscountRate = (rate: number, discount: number) =>
+  Math.round(Math.max(0, Math.max(0, rate) - Math.max(0, discount)) * 100) / 100;
 
 type StudentPricingFields = {
   annualDiscountEnabled: boolean;
-  annualDiscountPercent: number;
+  annualDiscountPercent: number; // legacy field kept for backward compatibility
+  annualDiscountAmount: number;
   annualRateManuallyOverridden: boolean;
   lessonRateManuallyOverridden: boolean;
 };
@@ -76,6 +79,7 @@ const createDefaultForm = (settings: TuitionSettings): StudentForm => ({
   lessonPrice: settings.lessonRate,
   annualDiscountEnabled: false,
   annualDiscountPercent: 0,
+  annualDiscountAmount: 0,
   annualRateManuallyOverridden: false,
   lessonRateManuallyOverridden: false,
 });
@@ -108,7 +112,7 @@ const StudentsManagement = () => {
         ...current,
         annualAmount: current.annualRateManuallyOverridden
           ? current.annualAmount
-          : calculateDiscountedAnnualRate(settings.annualRate, current.annualDiscountEnabled ? current.annualDiscountPercent : 0),
+          : fixedDiscountRate(settings.annualRate, current.annualDiscountEnabled ? current.annualDiscountAmount : 0),
         lessonPrice: current.lessonRateManuallyOverridden ? current.lessonPrice : settings.lessonRate,
       }));
     }
@@ -126,6 +130,10 @@ const StudentsManagement = () => {
     // as explicit overrides until the manager chooses "use generic rate".
     const annualDiscountEnabled = pricing.annualDiscountEnabled === true;
     const annualDiscountPercent = Math.min(100, Math.max(0, Number(pricing.annualDiscountPercent || 0)));
+    // Migrate only in the editor; closed-year terms are never recalculated.
+    const annualDiscountAmount = pricing.annualDiscountAmount !== undefined
+      ? Math.max(0, Number(pricing.annualDiscountAmount) || 0)
+      : Math.round(tuitionSettings.annualRate * annualDiscountPercent) / 100;
     const annualRateManuallyOverridden = pricing.annualRateManuallyOverridden ?? true;
     const lessonRateManuallyOverridden = pricing.lessonRateManuallyOverridden ?? true;
 
@@ -147,6 +155,7 @@ const StudentsManagement = () => {
       lessonPrice: student.lessonPrice || tuitionSettings.lessonRate,
       annualDiscountEnabled,
       annualDiscountPercent,
+      annualDiscountAmount,
       annualRateManuallyOverridden,
       lessonRateManuallyOverridden,
     });
@@ -154,28 +163,25 @@ const StudentsManagement = () => {
   };
 
   const setDiscountEnabled = (enabled: boolean) => {
-    setStudentForm(current => {
-      const discountPercent = enabled ? current.annualDiscountPercent : 0;
-      return {
-        ...current,
-        annualDiscountEnabled: enabled,
-        annualDiscountPercent: discountPercent,
-        annualAmount: current.annualRateManuallyOverridden
-          ? current.annualAmount
-          : calculateDiscountedAnnualRate(tuitionSettings.annualRate, discountPercent),
-      };
-    });
-  };
-
-  const setDiscountPercent = (discountPercentRaw: number) => {
-    const discountPercent = Math.min(100, Math.max(0, discountPercentRaw));
     setStudentForm(current => ({
       ...current,
-      annualDiscountEnabled: discountPercent > 0 || current.annualDiscountEnabled,
-      annualDiscountPercent: discountPercent,
+      annualDiscountEnabled: enabled,
       annualAmount: current.annualRateManuallyOverridden
         ? current.annualAmount
-        : calculateDiscountedAnnualRate(tuitionSettings.annualRate, discountPercent),
+        : fixedDiscountRate(tuitionSettings.annualRate, enabled ? current.annualDiscountAmount : 0),
+    }));
+  };
+
+  const setDiscountAmount = (rawAmount: number) => {
+    const amount = Math.min(tuitionSettings.annualRate, Math.max(0, Number(rawAmount) || 0));
+    setStudentForm(current => ({
+      ...current,
+      annualDiscountEnabled: true,
+      annualDiscountAmount: amount,
+      annualDiscountPercent: 0,
+      annualAmount: current.annualRateManuallyOverridden
+        ? current.annualAmount
+        : fixedDiscountRate(tuitionSettings.annualRate, amount),
     }));
   };
 
@@ -185,10 +191,7 @@ const StudentsManagement = () => {
       annualRateManuallyOverridden: enabled,
       annualAmount: enabled
         ? current.annualAmount
-        : calculateDiscountedAnnualRate(
-            tuitionSettings.annualRate,
-            current.annualDiscountEnabled ? current.annualDiscountPercent : 0,
-          ),
+        : fixedDiscountRate(tuitionSettings.annualRate, current.annualDiscountEnabled ? current.annualDiscountAmount : 0),
     }));
   };
 
@@ -213,9 +216,9 @@ const StudentsManagement = () => {
   const openingFinancialBalance = storedYearRecord?.openingFinancialBalance || 0;
   const netAnnualTarget = Math.max(0, baseAnnualTarget - openingFinancialBalance);
   const previewMonthlyAmount = studentForm.paymentMonths > 0 ? netAnnualTarget / studentForm.paymentMonths : netAnnualTarget;
-  const autoDiscountedFullRate = calculateDiscountedAnnualRate(
+  const autoDiscountedFullRate = fixedDiscountRate(
     tuitionSettings.annualRate,
-    studentForm.annualDiscountEnabled ? studentForm.annualDiscountPercent : 0,
+    studentForm.annualDiscountEnabled ? studentForm.annualDiscountAmount : 0,
   );
   const discountValue = Math.max(0, tuitionSettings.annualRate - autoDiscountedFullRate);
 
@@ -258,7 +261,8 @@ const StudentsManagement = () => {
 
     const pricingFields: StudentPricingFields = {
       annualDiscountEnabled: studentForm.annualDiscountEnabled,
-      annualDiscountPercent: studentForm.annualDiscountEnabled ? studentForm.annualDiscountPercent : 0,
+      annualDiscountPercent: 0,
+      annualDiscountAmount: studentForm.annualDiscountEnabled ? studentForm.annualDiscountAmount : 0,
       annualRateManuallyOverridden: studentForm.annualRateManuallyOverridden,
       lessonRateManuallyOverridden: studentForm.lessonRateManuallyOverridden,
     };
@@ -431,8 +435,8 @@ const StudentsManagement = () => {
                           {isPerLesson && (
                             <Badge variant="secondary" className="text-xs"><Coins className="h-3 w-3 mr-1" />חד-פעמי</Badge>
                           )}
-                          {!isPerLesson && pricing.annualDiscountEnabled && Number(pricing.annualDiscountPercent || 0) > 0 && (
-                            <Badge variant="outline" className="text-xs"><Percent className="h-3 w-3 mr-1" />הנחת ותק {pricing.annualDiscountPercent}%</Badge>
+                          {!isPerLesson && pricing.annualDiscountEnabled && (
+                            <Badge variant="outline" className="text-xs">הנחה {money(Number(pricing.annualDiscountAmount ?? Math.round(tuitionSettings.annualRate * Number(pricing.annualDiscountPercent || 0)) / 100))}</Badge>
                           )}
                         </div>
                         <div className="text-sm space-y-1 text-muted-foreground">
@@ -446,7 +450,7 @@ const StudentsManagement = () => {
                         </div>
                         {!isPerLesson && <StudentSchoolYearSummary student={student} />}
                         <div className="flex gap-2 pt-2">
-                          <Button size="sm" variant="outline" onClick={() => { setHistoryStudent(student); setShowHistoryDialog(true); }}><History className="h-3 w-3" /></Button>
+                          <Button size="sm" variant="outline" title="דו״ח שיעורים — השנה ושנים קודמות" className="gap-1 text-xs" onClick={() => { setHistoryStudent(student); setShowHistoryDialog(true); }}><History className="h-3 w-3" />דו״ח שיעורים</Button>
                           <Button size="sm" variant="outline" onClick={() => handleEditStudent(student)}><Edit className="h-3 w-3" /></Button>
                           <Button size="sm" variant="outline" className="border-yellow-600 text-yellow-600 hover:bg-yellow-50" onClick={() => handleMarkLeft(student)} title="סמן כ-עזבה (לא ימחק נתונים)"><DoorOpen className="h-3 w-3" /></Button>
                           <Button size="sm" variant="destructive" onClick={() => handleDeleteStudent(student.id)}><Trash2 className="h-3 w-3" /></Button>
@@ -479,7 +483,7 @@ const StudentsManagement = () => {
                       <TableCell>₪{student.annualAmount}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => { setHistoryStudent(student); setShowHistoryDialog(true); }}><History className="h-3 w-3" /></Button>
+                          <Button size="sm" variant="outline" title="דו״ח שיעורים — השנה ושנים קודמות" className="gap-1 text-xs" onClick={() => { setHistoryStudent(student); setShowHistoryDialog(true); }}><History className="h-3 w-3" />דו״ח שיעורים</Button>
                           <Button size="sm" variant="outline" onClick={() => handleEditStudent(student)}><Edit className="h-3 w-3" /></Button>
                           <Button size="sm" variant="destructive" onClick={() => handleDeleteStudent(student.id)}><Trash2 className="h-3 w-3" /></Button>
                         </div>
@@ -560,16 +564,16 @@ const StudentsManagement = () => {
             {studentForm.paymentType === 'annual' && (
               <>
                 <div className="rounded-lg border border-primary/20 p-4 space-y-4">
-                  <div className="flex items-center gap-2 font-semibold"><Percent className="h-4 w-4" />הנחה שנתית / ותק</div>
+                  <div className="flex items-center gap-2 font-semibold">הנחה שנתית בסכום ידני</div>
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input type="checkbox" checked={studentForm.annualDiscountEnabled} onChange={(e) => setDiscountEnabled(e.target.checked)} />
                     תלמידה זכאית להנחה שנתית
                   </label>
                   {studentForm.annualDiscountEnabled && (
                     <div>
-                      <Label htmlFor="annualDiscountPercent">אחוז הנחה</Label>
-                      <NumberStepper id="annualDiscountPercent" value={studentForm.annualDiscountPercent} onValueChange={setDiscountPercent} step={1} min={0} max={100} unit="%" />
-                      <p className="text-xs text-muted-foreground mt-1">הנחה לפי התעריף הכללי: {money(discountValue)}. מחיר לאחר הנחה: {money(autoDiscountedFullRate)}.</p>
+                      <Label htmlFor="annualDiscountAmount">סכום ההנחה בשקלים (₪)</Label>
+                      <NumberStepper id="annualDiscountAmount" value={studentForm.annualDiscountAmount} onValueChange={setDiscountAmount} step={10} min={0} max={tuitionSettings.annualRate} unit="₪" />
+                      <p className="text-xs text-muted-foreground mt-1">הנחה: {money(discountValue)}. מחיר לאחר הנחה: {money(autoDiscountedFullRate)}.</p>
                     </div>
                   )}
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -585,7 +589,7 @@ const StudentsManagement = () => {
                     <p className="text-xs text-muted-foreground mt-1">
                       {studentForm.annualRateManuallyOverridden
                         ? 'מחיר ידני — שינוי התעריף הכללי לא ישנה תלמידה זו.'
-                        : `מחושב אוטומטית מתעריף כללי ${money(tuitionSettings.annualRate)}${studentForm.annualDiscountEnabled ? ` פחות ${studentForm.annualDiscountPercent}%` : ''}.`}
+                        : `מחושב אוטומטית מתעריף כללי ${money(tuitionSettings.annualRate)}${studentForm.annualDiscountEnabled ? ` פחות ${money(discountValue)}` : ''}.`}
                     </p>
                   </div>
                   <div><Label htmlFor="paymentMonths">מס' חודשי תשלום</Label><NumberStepper id="paymentMonths" value={studentForm.paymentMonths} onValueChange={(n) => setStudentForm({...studentForm, paymentMonths: Math.min(12, Math.max(1, n))})} step={1} min={1} max={12} /></div>
@@ -604,7 +608,7 @@ const StudentsManagement = () => {
                     <div>שיעורים לחיוב<br/><b>{billedLessonCount}</b></div>
                     <div>יעד מחושב<br/><b>{money(baseAnnualTarget)}</b></div>
                   </div>
-                  {studentForm.annualDiscountEnabled && <div className="text-sm">הנחה שנתית: <b>{studentForm.annualDiscountPercent}%</b>{!studentForm.annualRateManuallyOverridden && <> ({money(discountValue)})</>}</div>}
+                  {studentForm.annualDiscountEnabled && <div className="text-sm">הנחה שנתית ידנית: <b>{money(discountValue)}</b>{studentForm.annualRateManuallyOverridden && <> (המחיר השנתי הידני גובר על ההנחה)</>}</div>}
                   {Math.abs(openingFinancialBalance) > 0.009 && <div className={openingFinancialBalance > 0 ? 'text-green-700 dark:text-green-400' : 'text-destructive'}>יתרה משנה קודמת: <b>{openingFinancialBalance > 0 ? 'זכות' : 'חוב'} {money(Math.abs(openingFinancialBalance))}</b></div>}
                   <div>יעד לתשלום לאחר יתרה קודמת: <b>{money(netAnnualTarget)}</b></div>
                   <div>תשלום חודשי מחושב: <b>{money(previewMonthlyAmount)}</b></div>
