@@ -241,14 +241,27 @@ const syncAndVerify = async (
 ): Promise<boolean> => {
   if (isDevMode()) return true;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const synced = await hybridSync.manualSync();
-    if (!synced) continue;
+  const readBackMatches = async (): Promise<boolean> => {
     const remote = await downloadCanonicalDropboxLatest();
-    if (!remote.success || !remote.data) continue;
-    if (expectedRows.every(row => verifyRemoteRecord(remote.data!, row))) return true;
+    return Boolean(
+      remote.success &&
+      remote.data &&
+      expectedRows.every(row => verifyRemoteRecord(remote.data!, row))
+    );
+  };
+
+  // manualSync may hand off to a pending canonical dirty-bucket writer.
+  // Wait for read-back instead of reporting a false verification failure.
+  // Never claim success without the expected durable settlement and cash row.
+  if (await readBackMatches()) return true;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if (attempt === 0 || attempt === 4) {
+      await hybridSync.manualSync();
+    }
+    if (await readBackMatches()) return true;
+    await new Promise(resolve => setTimeout(resolve, attempt < 3 ? 500 : 900));
   }
-  return false;
+  return await readBackMatches();
 };
 
 export const preparePriorYearSettlementRowsDurably = async (

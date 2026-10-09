@@ -95,6 +95,8 @@
 
 - Standard annual students have a 38-lesson full-year contract.
 - Per-lesson students (`paymentType='per_lesson'`) are excluded from the 38-lesson rollover logic.
+- **Attendance policy confirmed 2026-10-09:** A lesson marked `status='completed'` counts as a delivered/numbered/billable lesson even if the note says `תלמידה נעדרה`. Do not subtract such lessons or recalculate refunds based only on an absence note; cancelled lessons remain excluded.
+- Closed-year refunds for inactive/former students remain payable and must appear prominently in the year-end closing and annual reports, regardless of current active status. Highlight *unsettled* positive balances before long scrollable tables; do not change financial snapshots to fix visibility.
 
 ### Critical rule: numbering is not billing
 
