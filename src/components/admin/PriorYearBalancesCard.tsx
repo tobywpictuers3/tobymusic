@@ -79,7 +79,15 @@ export default function PriorYearBalancesCard({ selectedBaseYear }: Props) {
     .filter(row => !row.requiresVerification && row.signedBalance < 0)
     .reduce((sum, row) => sum + Math.abs(row.signedBalance), 0);
   const pendingCount = actionable.filter(row => !row.settled || row.requiresVerification).length;
-  const visibleRows = showBalanced ? rows : actionable;
+  // Inactive students must not disappear below a long scrollable ledger:
+  // surface their unresolved refunds at the very top of the closing table.
+  const pendingRefunds = actionable
+    .filter(row => row.signedBalance > 0 && !row.settled && !row.requiresVerification)
+    .sort((a, b) => b.signedBalance - a.signedBalance);
+  const pendingRefundIds = new Set(pendingRefunds.map(row => row.id));
+  const visibleRows = [...(showBalanced ? rows : actionable)].sort((a, b) =>
+    Number(pendingRefundIds.has(b.id)) - Number(pendingRefundIds.has(a.id)),
+  );
 
   const run = async (row: ManagedPriorYearBalanceRecord, fn: () => Promise<unknown>, success: string) => {
     setBusyId(row.id);
@@ -136,6 +144,21 @@ export default function PriorYearBalancesCard({ selectedBaseYear }: Props) {
         </div>
       </CardHeader>
       <CardContent>
+        {pendingRefunds.length > 0 && (
+          <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-100" dir="rtl">
+            <strong>החזרים שממתינים לטיפול — כולל תלמידות שכבר אינן פעילות:</strong>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+              {pendingRefunds.map(row => {
+                const student = students.find(item => item.id === row.studentId);
+                return (
+                  <span key={row.id}>
+                    {student ? `${student.firstName} ${student.lastName}`.trim() : 'תלמידה היסטורית'} — {money(row.signedBalance)}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="rounded-lg border overflow-auto max-h-[62vh]" dir="rtl">
           <Table className="w-full min-w-[1220px] table-fixed">
             <TableHeader className="sticky top-0 z-20 bg-background/95">
