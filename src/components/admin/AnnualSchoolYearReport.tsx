@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/c
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/safe-ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
 import { getStudents } from '@/lib/storage';
+import { getPriorYearBalanceRecords } from '@/lib/priorYearBalances';
 import {
   calculateStudentYearSnapshot,
   ensureSchoolYearRollover,
@@ -55,7 +56,23 @@ export default function AnnualSchoolYearReport() {
     );
   }
 
-  const students = getStudents().filter(student => student.paymentType !== 'per_lesson');
+  // Include inactive students in the closed year and surface unresolved
+  // financial credits first. Neither sorting nor rendering changes the archive.
+  const pendingCreditIds = new Set(
+    getPriorYearBalanceRecords()
+      .filter(row =>
+        row.sourceSchoolYear === selectedYear &&
+        row.signedBalance > 0 &&
+        !row.settled &&
+        !row.requiresVerification
+      )
+      .map(row => row.studentId),
+  );
+  const students = getStudents()
+    .filter(student => student.paymentType !== 'per_lesson')
+    .sort((a, b) =>
+      Number(pendingCreditIds.has(b.id)) - Number(pendingCreditIds.has(a.id)),
+    );
   const rows = students.map(student => {
     const stored = getStudentSchoolYearRecord(student.id, selectedYear);
     const snapshot = stored?.status === 'closed' && stored.completedLessons !== undefined
@@ -78,6 +95,7 @@ export default function AnnualSchoolYearReport() {
         </div>
       </CardHeader>
       <CardContent>
+        <p className="mb-3 text-sm text-muted-foreground">כולל תלמידות שסיימו ללמוד. יתרות זכות שממתינות לטיפול מופיעות בראש הדו״ח.</p>
         <div className="overflow-x-auto">
           <Table className="min-w-[1250px]">
             <TableHeader>
