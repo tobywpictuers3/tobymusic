@@ -1,13 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/card';
 import { Button } from '@/components/safe-ui/button';
 import { Label } from '@/components/safe-ui/label';
 import { NumberStepper } from '@/components/ui/number-stepper';
-import { Coins, Percent } from 'lucide-react';
-import { getStudents } from '@/lib/storage';
+import { Coins } from 'lucide-react';
 import { getSchoolYearForDate, getSchoolYearLabel } from '@/lib/schoolYear';
 import {
-  getCohortSchoolYear,
+  getCohortDiscountAmount,
   getTuitionSettings,
   saveTuitionSettings,
   type TuitionSettings,
@@ -23,33 +22,21 @@ const TuitionSettingsCard = ({ onSaved }: TuitionSettingsCardProps) => {
   const [saving, setSaving] = useState(false);
   const currentSchoolYear = getSchoolYearForDate();
 
-  const cohortYears = useMemo(() => {
-    const years = new Set<number>();
-    for (let year = currentSchoolYear; year >= currentSchoolYear - 9; year -= 1) years.add(year);
-    getStudents().forEach(student => {
-      const year = getCohortSchoolYear(student.startDate);
-      if (year) years.add(year);
-    });
-    Object.keys(settings.cohortDiscounts || {}).forEach(key => {
-      const year = Number(key);
-      if (Number.isFinite(year)) years.add(year);
-    });
-    return Array.from(years).sort((a, b) => b - a);
-  }, [currentSchoolYear, settings.cohortDiscounts]);
-
   const handleSave = async () => {
     setSaving(true);
     try {
       const saved = await saveTuitionSettings({
         annualRate: settings.annualRate,
         lessonRate: settings.lessonRate,
-        cohortDiscounts: settings.cohortDiscounts,
+        priorYearDiscount: settings.priorYearDiscount,
+        additionalYearDiscount: settings.additionalYearDiscount,
+        maxTenureDiscount: settings.maxTenureDiscount,
       });
       setSettings(saved);
       onSaved?.(saved);
       toast({
         title: 'התעריפים נשמרו',
-        description: 'התעריף השנתי, מחיר השיעור והנחות הוותק נשמרו. שנים שכבר נסגרו אינן משתנות רטרואקטיבית.',
+        description: 'התעריפים והנחות הוותק בשקלים נשמרו. מחירי תלמידות קיימות וסגירות שנה לא שונו אוטומטית.',
       });
     } catch {
       toast({
@@ -73,7 +60,7 @@ const TuitionSettingsCard = ({ onSaved }: TuitionSettingsCardProps) => {
       <CardContent className="space-y-6">
         <div>
           <p className="text-sm text-muted-foreground">
-            המחיר השנתי הוא מחיר מלא ל־38 שיעורים. תאריך ההתחלה של כל תלמידה קובע את קבוצת הוותק שלה, והמערכת יכולה לחשב את המחיר השנתי לפי ההנחה של שנת ההצטרפות.
+            המחיר השנתי הוא מחיר מלא ל־38 שיעורים. הנחות הוותק הן בסכומים קבועים בשקלים, לפי שנת ההתחלה, ומחושבות מחדש בכל 1 בספטמבר.
           </p>
         </div>
 
@@ -103,46 +90,47 @@ const TuitionSettingsCard = ({ onSaved }: TuitionSettingsCardProps) => {
         </div>
 
         <div className="rounded-lg border p-4 space-y-4">
-          <div className="flex items-center gap-2 font-semibold">
-            <Percent className="h-4 w-4" />
-            הנחת ותק לפי שנת התחלה
-          </div>
+          <div className="font-semibold flex items-center gap-2"><Coins className="h-4 w-4" />הנחת ותק שנתית (בשקלים)</div>
           <p className="text-xs text-muted-foreground">
-            לדוגמה: תלמידה שהתחילה בשנת 2025-26 שייכת תמיד לקבוצת 2025-26, גם בשנים הבאות. 0% פירושו מחיר מלא.
+            בשנת ההצטרפות אין הנחת ותק. בשנה שאחריה ניתנת הנחה ראשונית, וכל שנה נוספת מוסיפה סכום עד לתקרה.
+            במסלול לפי שיעור אין הנחה שנתית זו.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {cohortYears.map(year => {
-              const key = String(year);
-              const discount = Number(settings.cohortDiscounts?.[key] || 0);
-              return (
-                <div key={year} className="rounded-md border bg-background/70 p-3">
-                  <Label htmlFor={`cohort-${year}`}>התחילה בשנת {getSchoolYearLabel(year)}</Label>
-                  <NumberStepper
-                    id={`cohort-${year}`}
-                    value={discount}
-                    onValueChange={(value) => setSettings(current => ({
-                      ...current,
-                      cohortDiscounts: {
-                        ...current.cohortDiscounts,
-                        [key]: Math.min(100, Math.max(0, value)),
-                      },
-                    }))}
-                    step={1}
-                    min={0}
-                    max={100}
-                    unit="%"
-                  />
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    מחיר מלא לאחר הנחה: ₪{Math.round(settings.annualRate * (1 - discount / 100) * 100) / 100}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="priorYearDiscount">התחילה בשנה שעברה — הנחה</Label>
+              <NumberStepper id="priorYearDiscount" value={settings.priorYearDiscount}
+                onValueChange={(v) => setSettings(s => ({...s, priorYearDiscount: Math.max(0,v)}))}
+                min={0} step={50} unit="₪" />
+            </div>
+            <div>
+              <Label htmlFor="additionalYearDiscount">לכל שנת ותק נוספת — תוספת</Label>
+              <NumberStepper id="additionalYearDiscount" value={settings.additionalYearDiscount}
+                onValueChange={(v) => setSettings(s => ({...s, additionalYearDiscount: Math.max(0,v)}))}
+                min={0} step={50} unit="₪" />
+            </div>
+            <div>
+              <Label htmlFor="maxTenureDiscount">תקרת הנחה שנתית</Label>
+              <NumberStepper id="maxTenureDiscount" value={settings.maxTenureDiscount}
+                onValueChange={(v) => setSettings(s => ({...s, maxTenureDiscount: Math.max(0,v)}))}
+                min={0} step={100} unit="₪" />
+            </div>
+          </div>
+          <div className="rounded bg-muted/50 p-3">
+            <p className="text-xs font-semibold mb-2">דוגמה לשנה"ל {getSchoolYearLabel(currentSchoolYear)}</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+              {[0,1,2,3,4,5].map(age => {
+                const joinYear = currentSchoolYear - age;
+                const discount = getCohortDiscountAmount(settings, String(joinYear - 1) + '-09-01', currentSchoolYear);
+                return <div key={age} className="rounded border bg-background p-2">
+                  התחילה ב־{getSchoolYearLabel(joinYear)}: <strong>₪{discount.toLocaleString('he-IL')}</strong>
+                </div>;
+              })}
+            </div>
           </div>
         </div>
 
         <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
-          שינוי תמחור אינו משנה אוטומטית סגירות שנה היסטוריות. בכרטיס תלמידה ניתן לשמור מחיר ידני במקרה חריג.
+          לעדכון מחיר שמור לתלמידה קיימת לחצי ״החל מחיר מחושב״ בטבלת התמחור. אין שינוי אוטומטי לנתונים היסטוריים או למחיר ידני.
         </div>
 
         <div className="flex justify-end">

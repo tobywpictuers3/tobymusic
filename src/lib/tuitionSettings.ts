@@ -1,21 +1,25 @@
 import { getDevStore, isDevMode, markStorageKeyDirty } from './storage';
 import { hybridSync } from './hybridSync';
+import { getSchoolYearForDate } from './schoolYear';
 
 export interface TuitionSettings {
   annualRate: number;
   lessonRate: number;
-  /**
-   * Discount percent by the school year in which the student first joined.
-   * The key follows the platform school-year convention: 2026 = 2025-09-01..2026-08-31.
-   */
-  cohortDiscounts: Record<string, number>;
+  /** Fixed NIS discount for joining in the preceding school year. */
+  priorYearDiscount: number;
+  /** Additional NIS per earlier joining school year. */
+  additionalYearDiscount: number;
+  /** Maximum annual tenure discount in NIS. */
+  maxTenureDiscount: number;
   updatedAt: string;
 }
 
 export const DEFAULT_TUITION_SETTINGS: TuitionSettings = {
   annualRate: 4800,
   lessonRate: 150,
-  cohortDiscounts: {},
+  priorYearDiscount: 200,
+  additionalYearDiscount: 100,
+  maxTenureDiscount: 500,
   updatedAt: '',
 };
 
@@ -25,21 +29,7 @@ const normalizeMoney = (value: unknown, fallback: number): number => {
   return Math.round((numeric + Number.EPSILON) * 100) / 100;
 };
 
-const normalizePercent = (value: unknown): number => {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 0;
-  return Math.round(Math.min(100, Math.max(0, numeric)) * 100) / 100;
-};
-
-const normalizeCohortDiscounts = (value: unknown): Record<string, number> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => /^\d{4}$/.test(key))
-      .map(([key, percent]) => [key, normalizePercent(percent)]),
-  );
-};
-
+// Historical cohortDiscounts were percentages. They must not be read as NIS.
 const getMutableStore = (): Record<string, any> => {
   if (isDevMode()) return getDevStore();
   if (typeof window === 'undefined') return {};
@@ -48,24 +38,28 @@ const getMutableStore = (): Record<string, any> => {
 
 export const getTuitionSettings = (): TuitionSettings => {
   const raw = getMutableStore().tuitionSettings;
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_TUITION_SETTINGS, cohortDiscounts: {} };
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_TUITION_SETTINGS };
   return {
     annualRate: normalizeMoney(raw.annualRate, DEFAULT_TUITION_SETTINGS.annualRate),
     lessonRate: normalizeMoney(raw.lessonRate, DEFAULT_TUITION_SETTINGS.lessonRate),
-    cohortDiscounts: normalizeCohortDiscounts(raw.cohortDiscounts),
+    priorYearDiscount: normalizeMoney(raw.priorYearDiscount, DEFAULT_TUITION_SETTINGS.priorYearDiscount),
+    additionalYearDiscount: normalizeMoney(raw.additionalYearDiscount, DEFAULT_TUITION_SETTINGS.additionalYearDiscount),
+    maxTenureDiscount: normalizeMoney(raw.maxTenureDiscount, DEFAULT_TUITION_SETTINGS.maxTenureDiscount),
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
   };
 };
 
 export const saveTuitionSettings = async (
-  next: Pick<TuitionSettings, 'annualRate' | 'lessonRate'> & Partial<Pick<TuitionSettings, 'cohortDiscounts'>>,
+  next: Pick<TuitionSettings, 'annualRate' | 'lessonRate'> & Partial<Pick<TuitionSettings, 'priorYearDiscount' | 'additionalYearDiscount' | 'maxTenureDiscount'>>,
 ): Promise<TuitionSettings> => {
   const store = getMutableStore();
   const current = getTuitionSettings();
   const normalized: TuitionSettings = {
     annualRate: normalizeMoney(next.annualRate, DEFAULT_TUITION_SETTINGS.annualRate),
     lessonRate: normalizeMoney(next.lessonRate, DEFAULT_TUITION_SETTINGS.lessonRate),
-    cohortDiscounts: normalizeCohortDiscounts(next.cohortDiscounts ?? current.cohortDiscounts),
+    priorYearDiscount: normalizeMoney(next.priorYearDiscount ?? current.priorYearDiscount, DEFAULT_TUITION_SETTINGS.priorYearDiscount),
+    additionalYearDiscount: normalizeMoney(next.additionalYearDiscount ?? current.additionalYearDiscount, DEFAULT_TUITION_SETTINGS.additionalYearDiscount),
+    maxTenureDiscount: normalizeMoney(next.maxTenureDiscount ?? current.maxTenureDiscount, DEFAULT_TUITION_SETTINGS.maxTenureDiscount),
     updatedAt: new Date().toISOString(),
   };
   store.tuitionSettings = normalized;
@@ -77,11 +71,9 @@ export const saveTuitionSettings = async (
   return normalized;
 };
 
-export const calculateDiscountedAnnualRate = (baseRate: number, discountPercent: number): number => {
-  const base = normalizeMoney(baseRate, 0);
-  const discount = normalizePercent(discountPercent);
-  return Math.round((base * (1 - discount / 100) + Number.EPSILON) * 100) / 100;
-};
+/** Fixed NIS discount; annual price is never negative. */
+export const calculateDiscountedAnnualRate = (baseRate: number, amount: number): number =>
+  Math.round((Math.max(0, normalizeMoney(baseRate, 0) - normalizeMoney(amount, 0)) + Number.EPSILON) * 100) / 100;
 
 /** Returns the school-year key for a student's original start date. */
 export const getCohortSchoolYear = (startDate: string | undefined): number | undefined => {
@@ -92,16 +84,27 @@ export const getCohortSchoolYear = (startDate: string | undefined): number | und
   return month >= 9 ? year + 1 : year;
 };
 
-export const getCohortDiscountPercent = (
+/** Seniority advances at September school-year boundaries, starting one year after joining. */
+export const getCohortDiscountAmount = (
   settings: TuitionSettings,
   startDate: string | undefined,
+  currentSchoolYear = getSchoolYearForDate(),
 ): number => {
-  const schoolYear = getCohortSchoolYear(startDate);
-  if (!schoolYear) return 0;
-  return normalizePercent(settings.cohortDiscounts[String(schoolYear)] || 0);
+  const joined = getCohortSchoolYear(startDate);
+  if (!joined || joined >= currentSchoolYear) return 0;
+  const amount = settings.priorYearDiscount + (currentSchoolYear - joined - 1) * settings.additionalYearDiscount;
+  return Math.min(
+    normalizeMoney(settings.annualRate, 0),
+    normalizeMoney(settings.maxTenureDiscount, 0),
+    normalizeMoney(amount, 0),
+  );
 };
 
 export const calculateCohortAnnualRate = (
   settings: TuitionSettings,
   startDate: string | undefined,
-): number => calculateDiscountedAnnualRate(settings.annualRate, getCohortDiscountPercent(settings, startDate));
+  currentSchoolYear = getSchoolYearForDate(),
+): number => calculateDiscountedAnnualRate(
+  settings.annualRate,
+  getCohortDiscountAmount(settings, startDate, currentSchoolYear),
+);

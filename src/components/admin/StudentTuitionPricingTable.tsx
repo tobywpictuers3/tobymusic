@@ -14,7 +14,7 @@ import {
 } from '@/lib/schoolYear';
 import {
   calculateCohortAnnualRate,
-  getCohortDiscountPercent,
+  getCohortDiscountAmount,
   getCohortSchoolYear,
   getTuitionSettings,
 } from '@/lib/tuitionSettings';
@@ -31,8 +31,8 @@ export default function StudentTuitionPricingTable() {
 
   const rows = students.map(student => {
     const cohortSchoolYear = getCohortSchoolYear(student.startDate);
-    const cohortDiscount = getCohortDiscountPercent(settings, student.startDate);
-    const calculatedAnnualRate = calculateCohortAnnualRate(settings, student.startDate);
+    const cohortDiscount = getCohortDiscountAmount(settings, student.startDate, currentSchoolYear);
+    const calculatedAnnualRate = calculateCohortAnnualRate(settings, student.startDate, currentSchoolYear);
     const currentRecord = getStudentSchoolYearRecord(student.id, currentSchoolYear);
     const startingLessonNumber = currentRecord?.startingLessonNumber || student.startingLessonNumber || 1;
     const startReason: SchoolYearStartReason = currentRecord?.startReason || (startingLessonNumber > 1 ? 'midyear_join' : 'regular');
@@ -109,7 +109,7 @@ export default function StudentTuitionPricingTable() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          החישוב משתמש בתאריך ההתחלה שכבר נשמר בכרטיס התלמידה. המחיר המלא נקבע לפי קבוצת הוותק; במקרה של הצטרפות באמצע השנה, יעד השנה ממשיך להיות יחסי לפי מנגנון 38 השיעורים הקיים.
+          הנחת הוותק מחושבת בשקלים (לא באחוזים) לפי שנת הלימודים הנוכחית ותאריך ההתחלה. יש להחיל את המחיר במפורש על תלמידה קיימת. תמחור שנה חלקית עדיין יחסי ל־38 שיעורים.
         </p>
         <div className="rounded-lg border overflow-auto max-h-[62vh]" dir="rtl">
           <Table className="min-w-[1080px]">
@@ -131,7 +131,7 @@ export default function StudentTuitionPricingTable() {
                   <TableCell className="font-semibold">{row.student.firstName} {row.student.lastName}</TableCell>
                   <TableCell>{row.student.startDate || 'לא הוגדר'}</TableCell>
                   <TableCell>{row.cohortSchoolYear ? getSchoolYearLabel(row.cohortSchoolYear) : 'לא ידוע'}</TableCell>
-                  <TableCell>{row.cohortDiscount}%</TableCell>
+                  <TableCell>{money(row.cohortDiscount)}</TableCell>
                   <TableCell className="font-semibold">{money(row.calculatedAnnualRate)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
