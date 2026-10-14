@@ -285,6 +285,28 @@ export const updateStudentBankTime = (studentId: string, changeInMinutes: number
   return false;
 };
 
+// Fail closed for accidental overlapping completed records. This is a write-time
+// guard, not a data migration: historic overlaps and deliberate double lessons
+// remain untouched. Distinct consecutive times are always allowed.
+const assertNoDuplicateCompletedLessonSlot = (
+  candidate: Pick<Lesson, 'studentId' | 'date' | 'startTime' | 'endTime' | 'status'>,
+  lessons: Lesson[],
+  excludedId?: string,
+): void => {
+  if (candidate.status !== 'completed') return;
+  const collision = lessons.some(existing =>
+    existing.id !== excludedId &&
+    existing.status === 'completed' &&
+    existing.studentId === candidate.studentId &&
+    existing.date === candidate.date &&
+    existing.startTime === candidate.startTime &&
+    existing.endTime === candidate.endTime
+  );
+  if (collision) {
+    throw new Error('כבר קיים שיעור שהושלם לתלמידה באותו תאריך ובאותן שעות. בדקי את הרישום הקיים לפני הוספה.');
+  }
+};
+
 // Lessons
 export const getLessons = (): Lesson[] => {
   if (isDevMode()) return devData['lessons'] || [];
@@ -293,6 +315,7 @@ export const getLessons = (): Lesson[] => {
 
 export const addLesson = (lesson: Omit<Lesson, 'id'>): Lesson => {
   const lessons = getLessons();
+  assertNoDuplicateCompletedLessonSlot(lesson, lessons);
   const newLesson: Lesson = {
     ...lesson,
     id: generateId(),
@@ -316,11 +339,9 @@ export const updateLesson = (id: string, updatedFields: Partial<Lesson>): Lesson
     return undefined; // Lesson not found
   }
 
-  lessons[lessonIndex] = { 
-    ...lessons[lessonIndex], 
-    ...updatedFields,
-    lastModified: new Date().toISOString()
-  };
+  const candidate = { ...lessons[lessonIndex], ...updatedFields };
+  assertNoDuplicateCompletedLessonSlot(candidate, lessons, id);
+  lessons[lessonIndex] = { ...candidate, lastModified: new Date().toISOString() };
   if (isDevMode()) {
     devData['lessons'] = lessons;
   } else {
