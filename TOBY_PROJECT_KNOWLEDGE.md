@@ -242,3 +242,10 @@ The payment data model already contains all 12 academic months, September throug
 - Names on buttons/reports use Israeli octave terminology: `C4=דו ראשון`, `A4=לה ראשון=440Hz`, `C5=דו שני`, `C3=דו קטן`, `C2=דו גדול`; MIDI values remain unmodified.
 - PC note-key instructions explicitly ask to switch keyboard layout to English (EN).
 - Continuous React notation state updates are rate-limited (~8 fps while audio timing is on the Web Audio clock), and the teacher sandbox no longer forces remount through `key={revision}`. No global app reload or sync behavior is changed. Browser-level reload, actual tablet input jitter, and student score persistence still require production/manual verification.
+
+## TOBY PLAY performance stability follow-up (2026-10-18)
+- Teacher's earlier fixes (note highlight behind staff, two beats for recall, calibrated exact-onset performance, English keyboard instruction, and Israeli octave names anchored to A4=440Hz) are already in production source and were preserved.
+- Progress animation no longer triggers periodic React score renders. Playback timing and judgement remain on the Web Audio clock; only cursor/event changes update React, with an SVG ref for in-note progress. Count-in updates only when the visible integer changes.
+- The active-note marker is now a small triangle away from the staff, not a frame crossing stave lines; the pale background is painted *behind* five staff lines and notes.
+- Browsers receive a beforeunload warning during active playing/calibration, and when the ear game is listening/answering. This cannot force a browser to block reload, but prevents many accidental interruptions.
+- Code/CI checks must be green; user-device audio, tablet performance, and unrelated extension/browser-triggered reloads remain to be tested with the teacher.

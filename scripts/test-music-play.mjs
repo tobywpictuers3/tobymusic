@@ -134,3 +134,11 @@ test('reaction calibration uses measured sample SD and rejects unstable calibrat
   assert.equal(exports.computeTimingCalibration([0.1,0.12],1),null);
   assert.equal(exports.computeTimingCalibration([0,0.4,0,0.4,0.4,0,0,0.4],1),null);
 });
+
+test('notation performance guard: progress uses SVG ref, not per-frame React state', () => {
+  const component = readFileSync(new URL('../src/components/student/MusicPlay.tsx', import.meta.url), 'utf8');
+  assert.ok(component.includes("progressRect.current?.setAttribute('width'"));
+  assert.ok(component.includes('if (visibleCursor.current !== index)'));
+  assert.ok(!component.includes('setPhase('));
+  assert.ok(component.includes('beforeunload'));
+});
