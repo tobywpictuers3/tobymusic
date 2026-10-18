@@ -219,3 +219,5 @@ The payment data model already contains all 12 academic months, September throug
 - Test in the isolated dev environment before any merge; require typecheck, build, multi-device sync verification, correct lower-level access, no leaks above assigned ranges, and accurate grand-staff/chord notation. Do not deploy from student main until verified and approved.
 
 - Music rules regression tests are available via `npm run test:music` and run in the PR validation workflow before the production build.
+
+- Admin dashboard has an isolated TOBY PLAY sandbox with 3 presets, pitch/rhythm/BPM/chord controls. It uses a synthetic student and `preview` mode, which MUST never write to student records or Dropbox. Teacher can try it before assigning levels to real students.

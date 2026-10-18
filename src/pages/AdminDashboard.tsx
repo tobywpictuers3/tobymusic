@@ -32,6 +32,7 @@ import MessagingHub from '@/components/admin/MessagingHub';
 import GlobalMessageAdminTools from '@/components/admin/GlobalMessageAdminTools';
 import FixedScheduleTab from '@/components/admin/FixedScheduleTab';
 import YemotSettingsCard from '@/components/admin/YemotSettingsCard';
+import MusicPlaySandbox from '@/components/admin/MusicPlaySandbox';
 
 /** רקעי סקשן מותג — אותה תמונת "במה ריקה" המשמשת באתר הראשי (tobymusic.club),
     כדי לשמור על שפה עיצובית אחידה בין הפלטפורמות (במקום 4 תמונות רקע שלא קיימות באתר) */
@@ -248,6 +249,8 @@ const AdminDashboard = () => {
                   הופעות
                 </TabsTrigger>
 
+                <TabsTrigger value="music-play" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">🎹 TOBY PLAY · התנסות</TabsTrigger>
+
                 <TabsTrigger value="practice" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
                   <Trophy className="h-4 w-4" />
                   נתוני אימונים
@@ -314,7 +317,11 @@ const AdminDashboard = () => {
                 </BrandSection>
               </TabsContent>
 
-              <TabsContent value="practice" className="fade-slide-in">
+              <TabsContent value="music-play" className="fade-slide-in">
+                 <MusicPlaySandbox />
+               </TabsContent>
+
+               <TabsContent value="practice" className="fade-slide-in">
                 <BrandSection index={1}>
                   <AdminPracticeStats />
                 </BrandSection>

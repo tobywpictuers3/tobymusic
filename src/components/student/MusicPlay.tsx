@@ -99,7 +99,7 @@ function Notation({ events, cursor, level, phase }: { events: MusicEvent[]; curs
     </div>
   );
 }
-export default function MusicPlay({ student }: { student: Student }) {
+export default function MusicPlay({ student, preview = false }: { student: Student; preview?: boolean }) {
   const settings = normalizeMusicSettings(student.musicPlaySettings);
   const [level, setLevel] = useState(1);
   const [events, setEvents] = useState<MusicEvent[]>([]);
@@ -126,7 +126,7 @@ export default function MusicPlay({ student }: { student: Student }) {
     setRunning(false);
     setCountIn(null);
     const previous = getStudents().find(s => s.id === student.id);
-    if (previous) {
+    if (!preview && previous) {
       const attempt: MusicPlayAttempt = {
         id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
         at: new Date().toISOString(), level, bpm: settings.bpm,
@@ -137,7 +137,7 @@ export default function MusicPlay({ student }: { student: Student }) {
       updateStudent(student.id, { musicPlayAttempts: [...(previous.musicPlayAttempts || []), attempt].slice(-30) });
     }
     void runtime.audio.close();
-  }, [level, settings.bpm, student.id]);
+  }, [level, settings.bpm, student.id, preview]);
   const stop = useCallback(() => {
     cancelAnimationFrame(raf.current);
     const active = engine.current;
@@ -237,7 +237,7 @@ export default function MusicPlay({ student }: { student: Student }) {
   const keyboardNotes = NATURAL_MIDI.filter(n => (level===4 ? n>=settings.bassFrom && n<=settings.bassTo :
     level>=5 ? (n>=settings.trebleFrom && n<=settings.trebleTo)||(n>=settings.bassFrom && n<=settings.bassTo) :
     n>=settings.trebleFrom && n<=settings.trebleTo));
-  const history = (student.musicPlayAttempts || []).filter(attempt=>attempt.level===level);
+  const history = preview ? [] : (student.musicPlayAttempts || []).filter(attempt=>attempt.level===level);
   const prior = history.length ? history[history.length-1] : null;
   return <div className="space-y-5" dir="rtl">
     <Card className="border-violet-200 dark:border-violet-900 overflow-hidden">
@@ -291,7 +291,7 @@ export default function MusicPlay({ student }: { student: Student }) {
           <div className="font-bold text-lg">סיימת את האימון!</div>
           <div>דיוק תווים: <strong>{Math.round(result.correct/result.total*100)}%</strong> ({result.correct} מתוך {result.total})</div>
           <div>דיוק כניסה בפעימה: <strong>{Math.round(result.timely/result.total*100)}%</strong></div>
-          <p className="text-xs">התוצאה נרשמה מקומית; יש לוודא השלמת סנכרון הענן.</p>
+          <p className="text-xs">{preview ? 'מצב התנסות: לא נרשמו נתונים לתלמידות.' : 'התוצאה נרשמה מקומית; יש לוודא השלמת סנכרון הענן.'}</p>
           <Button variant="outline" onClick={()=>void start()}><RotateCcw className="w-4 h-4 ml-1"/> שוב</Button>
         </div>}
         {!running && prior && !result && <p className="text-sm text-muted-foreground">באימון האחרון ברמה זו: {prior.accuracy}% זיהוי נכון.</p>}
