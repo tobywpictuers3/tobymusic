@@ -17,6 +17,7 @@ import { Student } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import StudentLessonHistory from './StudentLessonHistory';
 import StudentSchoolYearSummary from './StudentSchoolYearSummary';
+import MusicPlaySettingsEditor from './MusicPlaySettingsEditor';
 import TuitionSettingsCard from './TuitionSettingsCard';
 import { getTuitionSettings, type TuitionSettings } from '@/lib/tuitionSettings';
 import {
@@ -91,6 +92,7 @@ const StudentsManagement = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [historyStudent, setHistoryStudent] = useState<Student | null>(null);
+  const [musicStudent, setMusicStudent] = useState<Student | null>(null);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [tuitionSettings, setTuitionSettings] = useState<TuitionSettings>(() => getTuitionSettings());
   const [studentForm, setStudentForm] = useState<StudentForm>(() => createDefaultForm(getTuitionSettings()));
@@ -450,6 +452,7 @@ const StudentsManagement = () => {
                         {!isPerLesson && <StudentSchoolYearSummary student={student} />}
                         <div className="flex gap-2 pt-2">
                           <Button size="sm" variant="outline" title="דו״ח שיעורים — השנה ושנים קודמות" className="gap-1 text-xs" onClick={() => { setHistoryStudent(student); setShowHistoryDialog(true); }}><History className="h-3 w-3" />דו״ח שיעורים</Button>
+                          <Button size="sm" variant="outline" onClick={() => setMusicStudent(student)} title="הגדרת ידע ורמות TOBY PLAY">🎹 רמות אימון</Button>
                           <Button size="sm" variant="outline" onClick={() => handleEditStudent(student)}><Edit className="h-3 w-3" /></Button>
                           <Button size="sm" variant="outline" className="border-yellow-600 text-yellow-600 hover:bg-yellow-50" onClick={() => handleMarkLeft(student)} title="סמן כ-עזבה (לא ימחק נתונים)"><DoorOpen className="h-3 w-3" /></Button>
                           <Button size="sm" variant="destructive" onClick={() => handleDeleteStudent(student.id)}><Trash2 className="h-3 w-3" /></Button>
@@ -483,6 +486,7 @@ const StudentsManagement = () => {
                       <TableCell>
                         <div className="flex gap-2">
                           <Button size="sm" variant="outline" title="דו״ח שיעורים — השנה ושנים קודמות" className="gap-1 text-xs" onClick={() => { setHistoryStudent(student); setShowHistoryDialog(true); }}><History className="h-3 w-3" />דו״ח שיעורים</Button>
+                          <Button size="sm" variant="outline" onClick={() => setMusicStudent(student)} title="הגדרת ידע ורמות TOBY PLAY">🎹 רמות אימון</Button>
                           <Button size="sm" variant="outline" onClick={() => handleEditStudent(student)}><Edit className="h-3 w-3" /></Button>
                           <Button size="sm" variant="destructive" onClick={() => handleDeleteStudent(student.id)}><Trash2 className="h-3 w-3" /></Button>
                         </div>
@@ -625,6 +629,12 @@ const StudentsManagement = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!musicStudent} onOpenChange={open => { if (!open) setMusicStudent(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogHeader><DialogTitle>🎹 TOBY PLAY — ידע אישי: {musicStudent?.firstName} {musicStudent?.lastName}</DialogTitle></DialogHeader>
+          {musicStudent && <MusicPlaySettingsEditor student={musicStudent} onSaved={() => { refreshStudents(); setMusicStudent(null); }} />}
+        </DialogContent>
+      </Dialog>
       {historyStudent && <StudentLessonHistory student={historyStudent} open={showHistoryDialog} onOpenChange={setShowHistoryDialog} />}
     </div>
   );

@@ -207,3 +207,23 @@ The payment data model already contains all 12 academic months, September throug
 - Configurable defaults: `priorYearDiscount=200` NIS (joined the preceding year), `additionalYearDiscount=100` NIS per earlier joining year, `maxTenureDiscount=500` NIS. Joined this year or later: zero. The effective discount is capped by the full annual rate.
 - In school year 2027: joined in school year 2027 → 0; 2026 → 200; 2025 → 300; 2024 → 400; 2023 or earlier → 500 NIS.
 - Existing legacy `cohortDiscounts` values were **percentages** and must never be reinterpreted as shekel amounts. Stored student annual prices, individual fixed discounts, current annual terms and closed-year financial snapshots are preserved. A manager must explicitly click “Apply calculated price” for an existing student.
+
+
+## TOBY PLAY music training (feature branch, 2026-10-18)
+- Feature branch `feature/toby-play-music-training-20261018` introduces a first playable vertical slice, **not yet deployed**.
+- Admin assigns `Student.musicPlaySettings` via the new "רמות אימון" control inside each student card; it uses the existing `updateStudent` storage/Dropbox synchronization mechanism. The highest opened level unlocks all lower levels; all higher levels are disabled for the student. An unconfigured student defaults to level 1.
+- The 6 initial tiers are: basic treble, continuous treble, extended treble, bass, grand staff, and grand staff with multiple noteheads. Each exercise is constrained by the student's treble/bass natural-note range, approved rhythmic durations and steps/mixed motion. Four 4/4 bars are generated as exact beat sums.
+- Student dashboard adds `TOBY PLAY` with a horizontal notation strip: current event highlighted, subsequent events visible, progress moves after the event's beat duration, and metronome offers four count-in beats. Touch, computer keys and supported Web MIDI are prototype inputs; microphone pitch recognition is **not implemented**.
+- Individual event evaluation compares expected and played pitches and onsets. Recent attempts (max 30) are stored additively in the student's data object; this is a preliminary client-side write, **not a verified multi-device append-only receipt protocol**. Don't claim cloud durability until actual production sync read-back is verified.
+- Current notation is a simple SVG prototype (individual eighth flags; no beaming, rests, accidentals or imported scores). Full engraving, polyphonic timing calibration and double-staff refinements still need quality checks and real-instrument tests.
+- Test in the isolated dev environment before any merge; require typecheck, build, multi-device sync verification, correct lower-level access, no leaks above assigned ranges, and accurate grand-staff/chord notation. Do not deploy from student main until verified and approved.
+
+- Music rules regression tests are available via `npm run test:music` and run in the PR validation workflow before the production build.
+
+- Admin dashboard has an isolated TOBY PLAY sandbox with 3 presets, pitch/rhythm/BPM/chord controls. It uses a synthetic student and `preview` mode, which MUST never write to student records or Dropbox. Teacher can try it before assigning levels to real students.
+
+- Student TOBY PLAY tab is only visible after the manager explicitly configures `musicPlaySettings`; other students are not exposed to the beta. Admin preview deep link: `/admin#music-play`, or the equivalent normal authenticated admin route. Rhythm mode evaluates onset taps (screen, Space, or MIDI) and deliberately does not score note duration yet.
+
+- The teacher studio includes local-only feedback notes and a clipboard report (configuration + feedback, no PII) for iterative improvements. No database writes are made by this panel.
+
+- Generated exercises offer reference playback via a cancellable Web Audio context that plays event pitches and durations separately from scoring.

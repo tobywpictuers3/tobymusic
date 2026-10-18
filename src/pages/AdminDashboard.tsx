@@ -32,6 +32,7 @@ import MessagingHub from '@/components/admin/MessagingHub';
 import GlobalMessageAdminTools from '@/components/admin/GlobalMessageAdminTools';
 import FixedScheduleTab from '@/components/admin/FixedScheduleTab';
 import YemotSettingsCard from '@/components/admin/YemotSettingsCard';
+import MusicPlaySandbox from '@/components/admin/MusicPlaySandbox';
 
 /** רקעי סקשן מותג — אותה תמונת "במה ריקה" המשמשת באתר הראשי (tobymusic.club),
     כדי לשמור על שפה עיצובית אחידה בין הפלטפורמות (במקום 4 תמונות רקע שלא קיימות באתר) */
@@ -70,7 +71,7 @@ function DateToggle() {
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const isStorybook = typeof window !== 'undefined' && window.location?.port === '6006';
-  const [activeTab, setActiveTab] = useState('journal');
+  const [activeTab, setActiveTab] = useState(() => typeof window !== 'undefined' && window.location.hash === '#music-play' ? 'music-play' : 'journal');
 
   const [user, setUser] = useState<any>(() => {
     const existing = getCurrentUser();
@@ -126,6 +127,7 @@ const AdminDashboard = () => {
       payments: 'תשלומים',
       performances: 'הופעות',
       practice: 'נתוני אימונים',
+      'music-play': 'TOBY PLAY — התנסות',
       messages: 'תקשורת',
       yemot: 'ימות המשיח',
       backup: 'גיבוי',
@@ -238,6 +240,8 @@ const AdminDashboard = () => {
                   תלמידות
                 </TabsTrigger>
 
+                <TabsTrigger value="music-play" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">🎹 TOBY PLAY · התנסות</TabsTrigger>
+
                 <TabsTrigger value="payments" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
                   <CreditCard className="h-4 w-4" />
                   תשלומים
@@ -314,7 +318,11 @@ const AdminDashboard = () => {
                 </BrandSection>
               </TabsContent>
 
-              <TabsContent value="practice" className="fade-slide-in">
+              <TabsContent value="music-play" className="fade-slide-in">
+                 <MusicPlaySandbox />
+               </TabsContent>
+
+               <TabsContent value="practice" className="fade-slide-in">
                 <BrandSection index={1}>
                   <AdminPracticeStats />
                 </BrandSection>

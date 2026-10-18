@@ -11,7 +11,8 @@
     "prebuild:dev": "node scripts/patch-student-list-order.mjs && node scripts/patch-current-year-billing-and-student-mailing.mjs && node scripts/patch-storage-hydration-dirty.mjs && node scripts/patch-sync-cutover-legacy-writers.mjs && node scripts/patch-sync-runtime-efficiency.mjs && node scripts/patch-canonical-dropbox-header-auth.mjs && node scripts/patch-worker-api-privacy-logs.mjs && node scripts/patch-prior-year-balances.mjs && node scripts/patch-school-year-close-init.mjs && node scripts/patch-payment-method-ui-pre.mjs && node scripts/patch-payment-method-ui.mjs && node scripts/patch-payment-method-card-mount.mjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:music": "node --test scripts/test-music-play.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
