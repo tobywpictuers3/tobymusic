@@ -381,7 +381,7 @@ export const workerApi = {
       // ⚠️ Cloudflare Workers cap subrequests per invocation (50 on free, 1000 paid).
       // Without a `limit`, the Worker tries to enumerate every version in Dropbox
       // and crashes with "Too many subrequests by single Worker invocation".
-      const r = await fetch(buildWorkerUrl("list_versions", { limit: 25 }), {
+      const r = await fetch(buildWorkerUrl("list_versions", { limit: 24 }), {
         method: "GET",
         headers: {
           "Cache-Control": "no-store",
