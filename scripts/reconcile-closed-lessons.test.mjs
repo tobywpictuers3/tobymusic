@@ -65,3 +65,17 @@ test('a deleted lesson removes its own bank note from reconciliation', () => {
   assert.equal(data.musicSystem_schoolYearRecords[0].bankMinutesThisYear, 0);
   assert.equal(data.musicSystem_schoolYearRecords[1].openingCarryoverBankMinutes, 0);
 });
+
+
+test('only explicitly selected students are changed by a scoped proposal', () => {
+  const input = sample();
+  const { data, report } = reconcile(input, { studentIds: ['s2'] });
+  assert.deepEqual(data.musicSystem_schoolYearRecords, input.musicSystem_schoolYearRecords);
+  assert.equal(report.patchedYears.length, 0);
+});
+
+test('not a generic replacement operation: unknown student selection changes nothing', () => {
+  const input = sample();
+  const { data } = reconcile(input, { studentIds: ['unknown'] });
+  assert.deepEqual(data, input);
+});
