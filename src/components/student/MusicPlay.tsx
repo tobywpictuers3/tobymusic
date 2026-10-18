@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Student } from '@/lib/types';
 import MusicEarGame from './MusicEarGame';
 import { getStudents, updateStudent } from '@/lib/storage';
@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Lock, Play, RotateCcw, Music2, Keyboard, Volume2 } from 'lucide-react';
 import {
   canAccessMusicLevel, generateMusicExercise, MUSIC_LEVELS, MusicEvent, MusicNote,
-  MusicPlayAttempt, NATURAL_MIDI, noteName, normalizeMusicSettings, scoreMusicEvent, scoreRhythmEvent,
+  MusicPlayAttempt, NATURAL_MIDI, noteName, normalizeMusicSettings, scoreMusicEvent, scoreRecallMusicEvent, scoreTimedMusicEvent, scoreRhythmEvent, computeTimingCalibration, type TimingCalibration,
 } from '@/lib/musicPlay';
 
 type Hit = { midi: number; beat: number };
@@ -21,7 +21,8 @@ type Runtime = {
   correct: number;
   timely: number;
   finished: boolean;
-  mode: 'reading' | 'rhythm';
+  mode: 'reading' | 'timed' | 'rhythm';
+  calibration: TimingCalibration | null;
 };
 function tone(context: AudioContext, midi: number, at = context.currentTime, duration = 0.16, volume = 0.09) {
   const oscillator = context.createOscillator();
@@ -66,6 +67,8 @@ function Notation({ events, cursor, level, phase, rhythmOnly }: { events: MusicE
     <div className="overflow-x-auto rounded-xl border bg-white p-1 shadow-inner" dir="ltr" aria-label="תווי המנגינה, התו הפעיל מסומן בזהב">
       <svg viewBox={`0 0 ${width} ${doubleStaff ? 282:180}`} className="w-full min-w-[590px] text-slate-900" role="img">
         <rect x={0} y={0} width={width} height={doubleStaff ? 282:180} fill="#fffefa" />
+        {displayed.map((ev, i) => (first + i === cursor ?
+          <rect key={'highlight-' + ev.id} x={eventX(i)-40} y={26} width={78} height={doubleStaff?238:125} rx={11} fill="#fffbeb" /> : null))}
         {clefs.map(clef => {
           const bottom = clef === 'treble' ? 112 : 222;
           return <g key={clef}>
@@ -80,7 +83,7 @@ function Notation({ events, cursor, level, phase, rhythmOnly }: { events: MusicE
           const active = actualIndex === cursor;
           const opacity = actualIndex < cursor ? 0.35 : 1;
           return <g key={ev.id} opacity={opacity}>
-            {active && <rect x={x-40} y={26} width={78} height={doubleStaff?238:125} rx={11} fill="#fef3c7" stroke="#f59e0b" strokeWidth="1.8" />}
+            {active && <rect x={x-40} y={26} width={78} height={doubleStaff?238:125} rx={11} fill="none" stroke="#d97706" strokeWidth="2" pointerEvents="none" />}
             {(rhythmOnly ? [{ clef: 'treble' as const, midi: 69 }] : ev.notes).map((n,j) => {
               const y = rhythmOnly ? 88 : staffY(n);
               const bottom = n.clef === 'treble' ? 112 : 222;
@@ -104,7 +107,9 @@ function Notation({ events, cursor, level, phase, rhythmOnly }: { events: MusicE
   );
 }
 export default function MusicPlay({ student, preview = false }: { student: Student; preview?: boolean }) {
-  const settings = normalizeMusicSettings(student.musicPlaySettings);
+  // Stable normalized settings prevent a running ear game being reset on every parent render.
+  const settingsKey = JSON.stringify(student.musicPlaySettings || {});
+  const settings = useMemo(() => normalizeMusicSettings(student.musicPlaySettings), [settingsKey]);
   const [level, setLevel] = useState(1);
   const [events, setEvents] = useState<MusicEvent[]>([]);
   const [cursor, setCursor] = useState(0);
@@ -113,7 +118,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ correct: number; timely: number; total: number } | null>(null);
   const [lastPlayed, setLastPlayed] = useState<string>('');
-  const [mode, setMode] = useState<'reading' | 'rhythm'>('reading');
+  const [mode, setMode] = useState<'reading' | 'timed' | 'rhythm'>('reading');
   const [activeGame, setActiveGame] = useState<'performance' | 'ear'>('performance');
   const [audioError, setAudioError] = useState('');
   const [inputMode, setInputMode] = useState<'touch'|'keyboard'|'midi'>('touch');
@@ -122,6 +127,15 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
   const referenceAudio = useRef<AudioContext | null>(null);
   const raf = useRef(0);
   const accessRef = useRef<{ inputs?: Map<string, { onmidimessage: ((e: any)=>void)|null }> } | null>(null);
+  const [calibrating, setCalibrating] = useState(false);
+  const [calibrationHits, setCalibrationHits] = useState(0);
+  const [calibration, setCalibration] = useState<TimingCalibration | null>(null);
+  const [calibrationMessage, setCalibrationMessage] = useState('');
+  const calibrationRef = useRef<{
+    audio: AudioContext; startsAt: number; secondsPerBeat: number;
+    hits: Map<number,number>; timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const drawAt = useRef(0);
   const currentInput = useRef(inputMode);
   currentInput.current = inputMode;
   const end = useCallback(() => {
@@ -147,8 +161,55 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     }
     void runtime.audio.close();
   }, [level, settings.bpm, student.id, preview]);
+  const stopCalibration = useCallback(() => {
+    const c = calibrationRef.current;
+    if (c) {
+      clearTimeout(c.timer);
+      void c.audio.close().catch(() => undefined);
+    }
+    calibrationRef.current = null;
+    setCalibrating(false);
+  }, []);
+  const recordCalibrationTap = useCallback(() => {
+    const c = calibrationRef.current;
+    if (!c) return;
+    const beat = (c.audio.currentTime - c.startsAt) / c.secondsPerBeat;
+    const index = Math.round(beat);
+    if (index < 0 || index >= 8 || Math.abs(beat-index) > 0.49 || c.hits.has(index)) return;
+    c.hits.set(index, (beat-index) * c.secondsPerBeat);
+    setCalibrationHits(c.hits.size);
+  }, []);
+  const calibrate = async () => {
+    stopCalibration();
+    setCalibration(null);
+    setCalibrationHits(0);
+    setCalibrationMessage('');
+    try {
+      const audio = new AudioContext();
+      await audio.resume();
+      const secondsPerBeat = 60/settings.bpm;
+      const startsAt = audio.currentTime + 0.8;
+      for (let beat=0; beat<8; beat++) click(audio, startsAt+beat*secondsPerBeat, beat%4===0);
+      const timer = setTimeout(() => {
+        const current = calibrationRef.current;
+        if (!current || current.audio !== audio) return;
+        const value = computeTimingCalibration([...current.hits.values()], secondsPerBeat);
+        setCalibration(value);
+        setCalibrationMessage(value
+          ? `הכיול הושלם: סטיית תקן ${value.deviationMs} אלפיות שנייה, חלון בדיקה ±${Math.round(value.toleranceBeats*secondsPerBeat*1000)} אלפיות שנייה.`
+          : 'הכיול לא היה יציב או שלא היו לפחות 5 הקשות מתוך 8. נא לנסות שוב.');
+        stopCalibration();
+      }, Math.ceil((0.8 + 8*secondsPerBeat) * 1000));
+      calibrationRef.current = { audio, startsAt, secondsPerBeat, hits: new Map(), timer };
+      setCalibrating(true);
+    } catch {
+      stopCalibration();
+      setCalibrationMessage('לא ניתן להפעיל את הצלילים. בדקי הרשאות שמע בדפדפן.');
+    }
+  };
   const stop = useCallback(() => {
     cancelAnimationFrame(raf.current);
+    stopCalibration();
     const active = engine.current;
     if (active) {
       active.finished = true;
@@ -157,29 +218,40 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     engine.current = null;
     setRunning(false);
     setCountIn(null);
-  }, []);
+  }, [stopCalibration]);
   useEffect(() => () => {
     cancelAnimationFrame(raf.current);
+    if (calibrationRef.current) {
+      clearTimeout(calibrationRef.current.timer);
+      void calibrationRef.current.audio.close().catch(() => undefined);
+    }
     if (engine.current && !engine.current.finished) void engine.current.audio.close();
     if (referenceAudio.current) void referenceAudio.current.close();
     if (accessRef.current?.inputs) accessRef.current.inputs.forEach(v => { v.onmidimessage = null; });
   }, []);
   const inputPitch = useCallback((midi: number, sound: boolean) => {
     const active = engine.current;
+    if (calibrationRef.current) { recordCalibrationTap(); return; }
     if (sound && active && !active.finished) tone(active.audio, midi);
     if (active?.mode === 'rhythm') return;
     setLastPlayed(noteName(midi));
     if (!active || active.finished) return;
     const beat = (active.audio.currentTime - active.startTime)/active.secondsPerBeat;
-    if (beat < 0) return;
-    const idx = active.events.findIndex(ev => beat >= ev.startBeat && beat < ev.startBeat + ev.durationBeats);
+    if (beat < (active.mode === 'timed' ? -0.4 : 0)) return;
+    const corrected = beat - (active.calibration?.offsetBeats ?? 0);
+    const idx = active.mode === 'timed'
+      ? active.events.reduce((best, ev, i) =>
+          i > active.judged && Math.abs(ev.startBeat-corrected) <
+            (best < 0 ? Infinity : Math.abs(active.events[best].startBeat-corrected)) ? i : best, -1)
+      : active.events.findIndex(ev => beat >= ev.startBeat && beat < ev.startBeat + ev.durationBeats);
     if (idx < 0 || idx <= active.judged) return;
     const played = active.hits.get(idx) || [];
-    // Debounce only duplicate note-ons, not new notes in a chord.
-    if (!played.some(p=>p.midi===midi)) played.push({midi,beat});
+    // In strict mode, extra notes must also be counted as errors, not silently debounced.
+    if (active.mode === 'timed' || !played.some(p=>p.midi===midi)) played.push({midi,beat});
     active.hits.set(idx,played);
-  }, []);
+  }, [recordCalibrationTap]);
   const inputRhythm = useCallback(() => {
+    if (calibrationRef.current) { recordCalibrationTap(); return; }
     const active = engine.current;
     if (!active || active.finished || active.mode !== 'rhythm') return;
     const beat = (active.audio.currentTime - active.startTime)/active.secondsPerBeat;
@@ -194,20 +266,20 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     const existing=active.hits.get(nearest)||[];
     if (existing.length < 2) { existing.push({ midi: -1, beat }); active.hits.set(nearest, existing); }
     setLastPlayed('הקשה');
-  }, []);
-    useEffect(() => {
+  }, [recordCalibrationTap]);
+  useEffect(() => {
     const map = ['a','s','d','f','g','h','j','k','l'];
     const options = NATURAL_MIDI.filter(n=>level===4 ? n>=settings.bassFrom && n<=settings.bassTo : level>=5 ? (n>=settings.trebleFrom && n<=settings.trebleTo)||(n>=settings.bassFrom && n<=settings.bassTo) : n>=settings.trebleFrom && n<=settings.trebleTo);
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.ctrlKey || e.altKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName || '')) return;
-      if (e.code === 'Space' && mode === 'rhythm') { e.preventDefault(); currentInput.current='keyboard'; inputRhythm(); return; }
-      if (mode === 'rhythm') return;
+      if (e.code === 'Space' && (mode === 'rhythm' || calibrating)) { e.preventDefault(); currentInput.current='keyboard'; inputRhythm(); return; }
+      if (mode === 'rhythm' || calibrating) return;
       const index = map.indexOf(e.key.toLowerCase());
       if (index >= 0 && options[index] !== undefined) { e.preventDefault(); currentInput.current='keyboard'; inputPitch(options[index],true); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settings.trebleFrom, settings.trebleTo, settings.bassFrom, settings.bassTo, level, inputPitch, inputRhythm, mode]);
+  }, [settings.trebleFrom, settings.trebleTo, settings.bassFrom, settings.bassTo, level, inputPitch, inputRhythm, mode, calibrating]);
   const connectMidi = async () => {
     const request = (navigator as Navigator & { requestMIDIAccess?: () => Promise<any> }).requestMIDIAccess;
     if (!request) { setMidiMessage('MIDI אינו נתמך בדפדפן זה. אפשר להשתמש במקלדת או במסך.'); return; }
@@ -219,7 +291,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         connected++;
         input.onmidimessage = (e: { data: Uint8Array }) => {
           const [status, pitch, velocity] = e.data;
-          if ((status & 0xf0) === 0x90 && velocity > 0) { currentInput.current='midi'; if (mode === 'rhythm') inputRhythm(); else inputPitch(pitch,false); }
+          if ((status & 0xf0) === 0x90 && velocity > 0) { currentInput.current='midi'; if (calibrationRef.current || mode === 'rhythm') inputRhythm(); else inputPitch(pitch,false); }
         };
       });
       setMidiMessage(connected ? `מחוברות ${connected} כניסות MIDI` : 'לא נמצאה מקלדת MIDI. חברי אותה ונסי שוב.');
@@ -257,8 +329,8 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
       void referenceAudio.current.close();
       referenceAudio.current = null;
     }
-    if (!canAccessMusicLevel(settings, level)) return;
-    const generated = generateMusicExercise(level, settings, 4);
+    if (!canAccessMusicLevel(settings, level) || (mode === 'timed' && !calibration)) return;
+    const generated = generateMusicExercise(level, settings, 4, Math.random, mode);
     let audio: AudioContext;
     try {
       audio = new AudioContext();
@@ -272,7 +344,8 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     const startTime = audio.currentTime + 4*secondsPerBeat + 0.12;
     const totalBeats = generated.reduce((total, ev)=>Math.max(total,ev.startBeat+ev.durationBeats),0);
     for(let b=-4;b<totalBeats;b++) click(audio,startTime+b*secondsPerBeat,(b+4)%4===0);
-    engine.current = { audio,startTime,secondsPerBeat,events:generated,judged:-1,hits:new Map(),correct:0,timely:0,finished:false,mode };
+    engine.current = { audio,startTime,secondsPerBeat,events:generated,judged:-1,hits:new Map(),correct:0,timely:0,finished:false,mode,calibration };
+    drawAt.current=0;
     setEvents(generated);setCursor(0);setPhase(0);setResult(null);setLastPlayed('');setRunning(true);
     const tick = () => {
       const active = engine.current;
@@ -285,16 +358,26 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         while(active.judged+1<active.events.length &&
           active.events[active.judged+1].startBeat + active.events[active.judged+1].durationBeats <= beat) {
           const next = ++active.judged;
+          const plays = active.hits.get(next) || [];
+          const offset = active.calibration?.offsetBeats ?? 0;
+          const tolerance = active.calibration?.toleranceBeats ?? 0.25;
           const score = active.mode === 'rhythm'
-            ? scoreRhythmEvent(active.events[next],(active.hits.get(next)||[]).map(hit=>hit.beat))
-            : scoreMusicEvent(active.events[next],active.hits.get(next)||[]);
+            ? scoreRhythmEvent(active.events[next],plays.map(hit=>hit.beat))
+            : active.mode === 'timed'
+              ? scoreTimedMusicEvent(active.events[next],plays,tolerance,offset)
+              : scoreRecallMusicEvent(active.events[next],plays);
           if(score.correct) active.correct++;
           if(score.timely) active.timely++;
         }
         if(index<0) index=active.events.length-1;
-        setCursor(index);
-        const ev=active.events[index];
-        setPhase(Math.max(0,Math.min(1,(beat-ev.startBeat)/ev.durationBeats)));
+        // Limit expensive full-score React redraws to ~8 fps. Audio/timing keep the
+        // Web Audio clock and requestAnimationFrame precision independently.
+        if (performance.now()-drawAt.current>=125) {
+          drawAt.current=performance.now();
+          setCursor(index);
+          const ev=active.events[index];
+          setPhase(Math.max(0,Math.min(1,(beat-ev.startBeat)/ev.durationBeats)));
+        }
         if(beat>=totalBeats) { end(); return; }
       }
       raf.current=requestAnimationFrame(tick);
@@ -310,13 +393,14 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     <Card className="border-violet-200 dark:border-violet-900 overflow-hidden">
       <CardHeader className="bg-gradient-to-l from-violet-100 via-sky-50 to-amber-50 dark:from-violet-950 dark:via-slate-900 dark:to-indigo-950">
         <CardTitle className="flex items-center gap-2"><Music2 className="h-6 w-6"/> TOBY PLAY — אימונים מוזיקליים</CardTitle>
-        <p className="text-sm text-muted-foreground">קריאה רציפה מהדף בקצב המטרונום. תמיד רואים גם את התווים הבאים.</p>
+        <p className="text-sm text-muted-foreground">שליפה: שתי פעימות לכל צליל, תגובה בכל רגע בחלון. נגינה במקצב: רק כניסה מדויקת בזמן לאחר כיול. התווים הבאים נשארים גלויים.</p>
       </CardHeader>
       <CardContent className="space-y-5 pt-5">
         <div className="flex flex-wrap gap-2 rounded-lg border p-2 bg-muted/20">
-          <Button variant={activeGame==='performance' && mode==='reading'?'default':'outline'} disabled={running} onClick={()=>{setActiveGame('performance');setMode('reading');setEvents([]);setResult(null);}}>🎼 קריאה ונגינה</Button>
-          <Button variant={activeGame==='performance' && mode==='rhythm'?'default':'outline'} disabled={running} onClick={()=>{setActiveGame('performance');setMode('rhythm');setEvents([]);setResult(null);}}>🥁 הקשת מקצבים</Button>
-          <Button variant={activeGame==='ear'?'default':'outline'} disabled={running} onClick={()=>{
+          <Button variant={activeGame==='performance' && mode==='reading'?'default':'outline'} disabled={running || calibrating} onClick={()=>{setActiveGame('performance');setMode('reading');setEvents([]);setResult(null);}}>🎼 שליפת תווים</Button>
+          <Button variant={activeGame==='performance' && mode==='timed'?'default':'outline'} disabled={running || calibrating} onClick={()=>{setActiveGame('performance');setMode('timed');setEvents([]);setResult(null);}}>🎹 נגינה מדויקת במקצב</Button>
+          <Button variant={activeGame==='performance' && mode==='rhythm'?'default':'outline'} disabled={running || calibrating} onClick={()=>{setActiveGame('performance');setMode('rhythm');setEvents([]);setResult(null);}}>🥁 הקשת מקצבים</Button>
+          <Button variant={activeGame==='ear'?'default':'outline'} disabled={running || calibrating} onClick={()=>{
             if (referenceAudio.current) { void referenceAudio.current.close(); referenceAudio.current=null; }
             setActiveGame('ear'); setEvents([]); setResult(null);
           }}>🎧 מנגינה סודית</Button>
@@ -324,7 +408,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {MUSIC_LEVELS.map(item => {
             const locked=!canAccessMusicLevel(settings,item.id);
-            return <button type="button" key={item.id} disabled={locked||running}
+            return <button type="button" key={item.id} disabled={locked||running||calibrating}
               onClick={()=>{setLevel(item.id);setEvents([]);setResult(null);}}
               className={`rounded-xl border p-3 text-right transition-colors min-h-24 ${locked?'opacity-45 bg-muted cursor-not-allowed':item.id===level?'border-violet-500 bg-violet-100 dark:bg-violet-950':'hover:border-violet-400'}`}>
               <div className="flex items-center gap-2 font-bold text-sm">{locked&&<Lock className="w-3 h-3"/>} רמה {item.id}</div>
@@ -335,23 +419,32 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         </div>
         {activeGame === 'ear' ? <MusicEarGame key={level} student={student} level={level} settings={settings} preview={preview} /> : <>
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/40 p-3">
-          <div className="text-sm">מטרונום: <strong>{settings.bpm} BPM</strong> | משקל: <strong>4/4</strong> | 4 פעימות הכנה</div>
+          <div className="text-sm">מטרונום: <strong>{settings.bpm} BPM</strong> | משקל: <strong>4/4</strong> | {mode==='reading' ? '2 פעימות לכל צליל' : '4 פעימות הכנה'}</div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={()=>setInputMode('touch')}>מסך מגע</Button>
-            <Button size="sm" variant="outline" onClick={()=>setInputMode('keyboard')}><Keyboard className="w-4 h-4 ml-1"/> מקלדת</Button>
-            <Button size="sm" variant="outline" onClick={()=>void connectMidi()}>חיבור MIDI</Button>
+            <Button size="sm" variant="outline" disabled={running || calibrating} onClick={()=>{setInputMode('touch');setCalibration(null);}}>מסך מגע</Button>
+            <Button size="sm" variant="outline" disabled={running || calibrating} onClick={()=>{setInputMode('keyboard');setCalibration(null);}}><Keyboard className="w-4 h-4 ml-1"/> מקלדת</Button>
+            <Button size="sm" variant="outline" disabled={running || calibrating} onClick={()=>{setCalibration(null);void connectMidi();}}>חיבור MIDI</Button>
           </div>
         </div>
         {midiMessage && <p className="text-xs text-muted-foreground" role="status">{midiMessage}</p>}
+        {mode==='timed' && <div className="space-y-2 rounded-xl border border-sky-300 bg-sky-50 p-3 text-slate-900">
+          <p className="text-sm font-semibold">כיול תגובה לפני נגינה מדויקת</p>
+          <p className="text-xs">שמונת קליקי הכיול מיועדים להקשה יחד עם המטרונום. בצעי לפחות 5 מתוך 8 הקשות באותו אמצעי קלט שבו תנגני. סטיית התקן שלך קובעת את חלון הדיוק. בלי כיול לא מתחילים בדיקה מדויקת.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" onClick={()=>void calibrate()} disabled={running || calibrating}>התחלת כיול / כיול מחדש</Button>
+            {calibrating && <button type="button" onPointerDown={e=>{e.preventDefault();recordCalibrationTap();}} className="rounded-lg bg-sky-700 text-white min-h-14 px-6 touch-manipulation">הקישי עם הקליק! {calibrationHits}/8</button>}
+          </div>
+          <p className="text-xs" role="status">{calibrating ? 'הכיול פועל: מקש רווח, מסך או קליד MIDI.' : calibrationMessage || 'התחילי בכיול תגובה.'}</p>
+        </div>}
         {audioError && <p className="text-sm text-destructive" role="alert">{audioError}</p>}
         {events.length>0 && <Notation events={events} cursor={cursor} level={level} phase={phase} rhythmOnly={mode==='rhythm'}/>}
         {!events.length && <div className="min-h-48 rounded-xl border border-dashed flex items-center justify-center bg-muted/20 text-center p-5">
           <p>בחרי רמה ולחצי על התחלת אימון. המנגינה תופיע כשורת תווים, ותתקדם לפי משך כל צליל.</p>
         </div>}
         {countIn!==null && <div className="text-4xl font-bold text-center text-amber-600" aria-live="polite">{countIn} — הכנה לנגינה</div>}
-        {running && countIn===null && <div className="text-center text-sm text-violet-700 dark:text-violet-300">{mode==='rhythm' ? 'הקישי כשמגיע תו חדש · אפשר גם עם מקש הרווח' : 'התו המודגש הוא התו הנוכחי · הקישי או נגני בזמן · התקדמות אוטומטית'}</div>}
+        {running && countIn===null && <div className="text-center text-sm text-violet-700 dark:text-violet-300">{mode==='rhythm' ? 'הקישי בתחילת כל תו · מקש הרווח זמין' : mode==='timed' ? 'נגני בתזמון הנכון לפי המטרונום · כל סטייה מעבר לחלון הכיול היא טעות' : 'שלפי את התו בכל זמן בתוך שתי הפעימות שלו'}</div>}
         <div className="flex gap-3 justify-center">
-          {!running ? <Button onClick={()=>void start()} size="lg" className="bg-violet-700 hover:bg-violet-800 text-white"><Play className="w-4 h-4 ml-2"/> {events.length?'אימון חדש':'התחלת אימון'}</Button>
+          {!running ? <Button onClick={()=>void start()} disabled={calibrating || (mode==='timed' && !calibration)} size="lg" className="bg-violet-700 hover:bg-violet-800 text-white"><Play className="w-4 h-4 ml-2"/> {events.length?'אימון חדש':'התחלת אימון'}</Button>
             : <Button onClick={stop} variant="outline">עצירת האימון</Button>}
           {events.length>0 && !running && <Button variant="outline" onClick={()=>void playReference()}><Volume2 className="w-4 h-4 ml-2" /> האזנה למנגינה</Button>}
         </div>
@@ -361,7 +454,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
           <p className="text-xs text-muted-foreground">אפשר גם להשתמש במקש הרווח או בכל קליד MIDI. כרגע נבדק זמן תחילת ההקשה, ולא משך החזקת הקליד.</p>
         </div> : <div className="space-y-2">
           <div className="text-sm flex items-center gap-2"><Volume2 className="w-4 h-4"/> מקלדת נגינה על המסך · ניתן להקיש כמה צלילים באותה פעימה</div>
-          <p className="text-xs text-muted-foreground">במקלדת מחשב האותיות A, S, D, F, G, H, J, K, L מפעילות את תשעת הקלידים הראשונים המוצגים.</p>
+          <p className="text-xs text-muted-foreground"><strong>לפני המשחק: העבירי את שפת המקלדת לאנגלית (EN).</strong> האותיות A, S, D, F, G, H, J, K, L מפעילות את תשעת הקלידים הראשונים המוצגים.</p>
           <div className="flex flex-wrap gap-1 justify-center">
             {keyboardNotes.map(n=><button type="button" key={n} onClick={()=>{currentInput.current='touch';inputPitch(n,true);}} className="rounded-md border bg-white text-slate-800 shadow-sm hover:bg-amber-100 active:bg-amber-200 min-w-12 min-h-14 p-2 font-semibold text-sm" aria-label={`נגן ${noteName(n)}`}>
               {noteName(n)}
@@ -371,8 +464,8 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         </div>}
         {result && <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 dark:bg-emerald-950 p-5 text-center space-y-2" role="status">
           <div className="font-bold text-lg">סיימת את האימון!</div>
-          <div>{mode==='rhythm' ? 'זיהוי מספר ההקשות' : 'דיוק תווים'}: <strong>{Math.round(result.correct/result.total*100)}%</strong> ({result.correct} מתוך {result.total})</div>
-          <div>דיוק כניסה בפעימה: <strong>{Math.round(result.timely/result.total*100)}%</strong></div>
+          <div>{mode==='rhythm' ? 'זיהוי מספר ההקשות' : mode==='timed' ? 'תווים נכונים ובזמן' : 'דיוק שליפת תווים'}: <strong>{Math.round(result.correct/result.total*100)}%</strong> ({result.correct} מתוך {result.total})</div>
+          {mode!=='reading' && <div>דיוק כניסה בפעימה: <strong>{Math.round(result.timely/result.total*100)}%</strong></div>}
           <p className="text-xs">{preview ? 'מצב התנסות: לא נרשמו נתונים לתלמידות.' : 'התוצאה נרשמה מקומית; יש לוודא השלמת סנכרון הענן.'}</p>
           <Button variant="outline" onClick={()=>void start()}><RotateCcw className="w-4 h-4 ml-1"/> שוב</Button>
         </div>}
