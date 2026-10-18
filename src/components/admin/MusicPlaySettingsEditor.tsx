@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Student } from '@/lib/types';
+import MusicRecallSettingsEditor from './MusicRecallSettingsEditor';
 import { updateStudent } from '@/lib/storage';
 import { MUSIC_LEVELS, MusicPlaySettings, normalizeMusicSettings, NATURAL_MIDI, noteName } from '@/lib/musicPlay';
 import { toast } from '@/hooks/use-toast';
@@ -18,13 +19,16 @@ export default function MusicPlaySettingsEditor({ student, onSaved }: Props) {
   useEffect(() => { setDraft(normalizeMusicSettings(student.musicPlaySettings)); }, [student.id, student.musicPlaySettings]);
   const change = (part: Partial<MusicPlaySettings>) => setDraft(v => normalizeMusicSettings({ ...v, ...part }));
   const save = () => {
-    const updated = updateStudent(student.id, { musicPlaySettings: normalizeMusicSettings(draft) });
+    const updated = updateStudent(student.id, { musicPlaySettings: { ...student.musicPlaySettings, ...normalizeMusicSettings(draft) } });
     if (!updated) { toast({ title: 'לא ניתן לשמור הגדרות', variant: 'destructive' }); return; }
     toast({ title: 'ההגדרות עודכנו מקומית', description: 'יש לוודא שהסנכרון ל-Dropbox הסתיים לפני סגירת המערכת.' });
     onSaved();
   };
   return (
     <div dir="rtl" className="space-y-5 text-right">
+      <MusicRecallSettingsEditor student={student} onSaved={onSaved} />
+      <details className="rounded-xl border p-4"><summary className="cursor-pointer font-semibold">הגדרות ותיקות למשחקי מקצב ונגינה (נפרדות מרמות השליפה האישיות)</summary>
+      <div className="space-y-5 pt-4">
       <p className="text-sm text-muted-foreground">לכל תלמידה פתוחות הרמה שהוגדרה וכל הרמות שמתחתיה. הרמות הגבוהות יותר נעולות.</p>
       <div className="space-y-2">
         <Label htmlFor="music-level">הרמה הגבוהה הפתוחה</Label>
@@ -70,7 +74,8 @@ export default function MusicPlaySettingsEditor({ student, onSaved }: Props) {
           </select>
         </label>
       </div>
-      <Button onClick={save} className="w-full">שמור ידע ורמות לתלמידה</Button>
+      <Button onClick={save} className="w-full">שמור הגדרות משחקים ותיקות</Button>
+      </div></details>
     </div>
   );
 }

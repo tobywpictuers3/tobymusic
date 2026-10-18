@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { Student } from '@/lib/types';
 import MusicEarGame from './MusicEarGame';
+import MusicRecall from './MusicRecall';
 import { getStudents, updateStudent } from '@/lib/storage';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -119,7 +120,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
   const [result, setResult] = useState<{ correct: number; timely: number; total: number } | null>(null);
   const [lastPlayed, setLastPlayed] = useState<string>('');
   const [mode, setMode] = useState<'reading' | 'timed' | 'rhythm'>('reading');
-  const [activeGame, setActiveGame] = useState<'performance' | 'ear'>('performance');
+  const [activeGame, setActiveGame] = useState<'performance' | 'ear' | 'recall'>('recall');
   const [audioError, setAudioError] = useState('');
   const [inputMode, setInputMode] = useState<'touch'|'keyboard'|'midi'>('touch');
   const [midiMessage, setMidiMessage] = useState('');
@@ -413,7 +414,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
       </CardHeader>
       <CardContent className="space-y-5 pt-5">
         <div className="flex flex-wrap gap-2 rounded-lg border p-2 bg-muted/20">
-          <Button variant={activeGame==='performance' && mode==='reading'?'default':'outline'} disabled={running || calibrating} onClick={()=>{setActiveGame('performance');setMode('reading');setEvents([]);setResult(null);}}>🎼 שליפת תווים</Button>
+          <Button variant={activeGame==='recall'?'default':'outline'} disabled={running || calibrating} onClick={()=>{setActiveGame('recall');setEvents([]);setResult(null);}}>🎼 שליפת תווים</Button>
           <Button variant={activeGame==='performance' && mode==='timed'?'default':'outline'} disabled={running || calibrating} onClick={()=>{setActiveGame('performance');setMode('timed');setEvents([]);setResult(null);}}>🎹 נגינה מדויקת במקצב</Button>
           <Button variant={activeGame==='performance' && mode==='rhythm'?'default':'outline'} disabled={running || calibrating} onClick={()=>{setActiveGame('performance');setMode('rhythm');setEvents([]);setResult(null);}}>🥁 הקשת מקצבים</Button>
           <Button variant={activeGame==='ear'?'default':'outline'} disabled={running || calibrating} onClick={()=>{
@@ -421,6 +422,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
             setActiveGame('ear'); setEvents([]); setResult(null);
           }}>🎧 מנגינה סודית</Button>
         </div>
+        {activeGame==='recall' ? <MusicRecall student={student} preview={preview} /> : <>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {MUSIC_LEVELS.map(item => {
             const locked=!canAccessMusicLevel(settings,item.id);
@@ -487,6 +489,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         </div>}
         {!running && prior && !result && <p className="text-sm text-muted-foreground">באימון האחרון ברמה זו: {prior.accuracy}% זיהוי נכון.</p>}
         <p className="text-xs text-muted-foreground">גרסה ראשונית: קלט במיקרופון, עריכת תרגיל ידני ופענוח ביצוע פוליפוני אינם פעילים עדיין. במקלדת MIDI יש להשתמש בדפדפן תומך.</p>
+        </>}
         </>}
       </CardContent>
     </Card>

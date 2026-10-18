@@ -1,4 +1,5 @@
 /** TOBY PLAY: bounded, deterministic rules; no generated exercise can exceed the assigned knowledge. */
+import type { RecallProfile, RecallPreferences } from './musicRecall';
 export type MusicClef = 'treble' | 'bass';
 export type RhythmValue = 0.5 | 1 | 2 | 4;
 export interface MusicPlaySettings {
@@ -11,6 +12,9 @@ export interface MusicPlaySettings {
   motion: 'steps' | 'mixed';
   bpm: number;
   maxChordNotes: number;
+  /** Personalized recall progression, independent of the legacy six tiers. */
+  recallLevels?: RecallProfile[];
+  recallPreferences?: RecallPreferences;
 }
 export interface MusicNote { midi: number; clef: MusicClef }
 export interface MusicEvent { id: string; startBeat: number; durationBeats: RhythmValue; notes: MusicNote[] }
@@ -23,7 +27,10 @@ export interface MusicPlayAttempt {
   timing: number;
   correct: number;
   total: number;
-  input: 'touch' | 'keyboard' | 'midi';
+  input: 'touch' | 'keyboard' | 'midi' | 'microphone';
+  recallLevelId?: string;
+  responseMode?: 'play' | 'name';
+  durationSeconds?: number;
   mode?: 'reading' | 'timed' | 'rhythm' | 'ear';
 }
 export const MUSIC_LEVELS = [
