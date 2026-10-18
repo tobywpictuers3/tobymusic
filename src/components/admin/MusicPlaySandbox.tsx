@@ -27,7 +27,7 @@ export default function MusicPlaySandbox() {
     'תנועה: ' + settings.motion,
     'צלילים כפולים: ' + settings.maxChordNotes,
     'מה כדאי לדייק: ' + feedback.trim(),
-  ].join('\\n');
+  ].join('\n');
   const copyReport = async () => {
     try {
       await navigator.clipboard.writeText(report());

@@ -117,6 +117,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
   const [inputMode, setInputMode] = useState<'touch'|'keyboard'|'midi'>('touch');
   const [midiMessage, setMidiMessage] = useState('');
   const engine = useRef<Runtime | null>(null);
+  const referenceAudio = useRef<AudioContext | null>(null);
   const raf = useRef(0);
   const accessRef = useRef<{ inputs?: Map<string, { onmidimessage: ((e: any)=>void)|null }> } | null>(null);
   const currentInput = useRef(inputMode);
@@ -158,6 +159,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
   useEffect(() => () => {
     cancelAnimationFrame(raf.current);
     if (engine.current && !engine.current.finished) void engine.current.audio.close();
+    if (referenceAudio.current) void referenceAudio.current.close();
     if (accessRef.current?.inputs) accessRef.current.inputs.forEach(v => { v.onmidimessage = null; });
   }, []);
   const inputPitch = useCallback((midi: number, sound: boolean) => {
@@ -222,8 +224,37 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
       if (connected) setInputMode('midi');
     } catch { setMidiMessage('לא התקבלה הרשאה למקלדת MIDI'); }
   };
+  const playReference = async () => {
+    if (running || events.length === 0) return;
+    try {
+      if (referenceAudio.current) void referenceAudio.current.close();
+      const audio = new AudioContext();
+      referenceAudio.current = audio;
+      await audio.resume();
+      const beatSeconds = 60/settings.bpm;
+      const begin = audio.currentTime + 0.12;
+      for (const event of events) for (const note of event.notes) {
+        tone(audio, note.midi, begin + event.startBeat * beatSeconds,
+          Math.max(0.08, event.durationBeats * beatSeconds * 0.84), 0.045);
+      }
+      const last = events[events.length - 1];
+      const duration = last.startBeat + last.durationBeats;
+      setTimeout(() => {
+        if (referenceAudio.current === audio) {
+          referenceAudio.current = null;
+          void audio.close();
+        }
+      }, Math.ceil((duration*beatSeconds+0.5)*1000));
+    } catch {
+      setAudioError('לא ניתן להשמיע את הדוגמה בדפדפן זה.');
+    }
+  };
   const start = async () => {
     stop();
+    if (referenceAudio.current) {
+      void referenceAudio.current.close();
+      referenceAudio.current = null;
+    }
     if (!canAccessMusicLevel(settings, level)) return;
     const generated = generateMusicExercise(level, settings, 4);
     let audio: AudioContext;
@@ -315,6 +346,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         <div className="flex gap-3 justify-center">
           {!running ? <Button onClick={()=>void start()} size="lg" className="bg-violet-700 hover:bg-violet-800 text-white"><Play className="w-4 h-4 ml-2"/> {events.length?'אימון חדש':'התחלת אימון'}</Button>
             : <Button onClick={stop} variant="outline">עצירת האימון</Button>}
+          {events.length>0 && !running && <Button variant="outline" onClick={()=>void playReference()}><Volume2 className="w-4 h-4 ml-2" /> האזנה למנגינה</Button>}
         </div>
         {mode==='rhythm' ? <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border p-4 space-y-3 text-center">
           <p className="font-semibold text-sm">הקישי פעם אחת בתחילת כל ערך ריתמי, בדיוק לפי המטרונום</p>
