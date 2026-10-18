@@ -227,3 +227,10 @@ The payment data model already contains all 12 academic months, September throug
 - The teacher studio includes local-only feedback notes and a clipboard report (configuration + feedback, no PII) for iterative improvements. No database writes are made by this panel.
 
 - Generated exercises offer reference playback via a cancellable Web Audio context that plays event pitches and durations separately from scoring.
+
+## TOBY PLAY — melodic ear memory (feature branch, 2026-10-18)
+- The next playable exercise is **מנגינה סודית**: five short ear-memory rounds per session. Students listen to a generated natural-note melody and reproduce its pitch sequence from two to four on-screen choices or keyboard digits 1–4. The game shows progression, correct-note rate, and perfect-round stars; teacher preview remains write-free.
+- Generation is constrained by the student's currently unlocked tier and configured treble/bass ranges. The generator refuses a clef with fewer than two approved notes, and does not expand the teacher-approved pitch limits merely to make the game playable. Levels 4–6 may use the bass clef; at levels 5–6 the game chooses one eligible clef per round (not polyphonic hearing).
+- Audio is synthesized in the browser, with replay enabled and no raw audio uploaded. This is an **ear-memory prototype**, not a calibrated pitch-transcription assessment. Its result has `mode='ear'`; timing is explicitly not measured (`timing=0`).
+- Five-round completion appends one attempt using the existing student update path (max 30 attempts); cross-device persistence remains **unverified**, and the UI must not claim verified cloud storage. No score history is written in teacher preview mode.
+- The feature is limited to an extra game, not a replacement of the existing continuous note-reading/rhythm games. Microphone input, complete notation, real-instrument audio checks, and Dropbox read-back QA remain open.

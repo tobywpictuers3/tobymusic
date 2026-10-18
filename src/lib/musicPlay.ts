@@ -24,7 +24,7 @@ export interface MusicPlayAttempt {
   correct: number;
   total: number;
   input: 'touch' | 'keyboard' | 'midi';
-  mode?: 'reading' | 'rhythm';
+  mode?: 'reading' | 'rhythm' | 'ear';
 }
 export const MUSIC_LEVELS = [
   { id: 1, name: 'שליפה ראשונה', description: 'תו יחיד במפתח סול, רבעים' },
