@@ -217,3 +217,5 @@ The payment data model already contains all 12 academic months, September throug
 - Individual event evaluation compares expected and played pitches and onsets. Recent attempts (max 30) are stored additively in the student's data object; this is a preliminary client-side write, **not a verified multi-device append-only receipt protocol**. Don't claim cloud durability until actual production sync read-back is verified.
 - Current notation is a simple SVG prototype (individual eighth flags; no beaming, rests, accidentals or imported scores). Full engraving, polyphonic timing calibration and double-staff refinements still need quality checks and real-instrument tests.
 - Test in the isolated dev environment before any merge; require typecheck, build, multi-device sync verification, correct lower-level access, no leaks above assigned ranges, and accurate grand-staff/chord notation. Do not deploy from student main until verified and approved.
+
+- Music rules regression tests are available via `npm run test:music` and run in the PR validation workflow before the production build.
