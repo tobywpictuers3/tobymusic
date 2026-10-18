@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import { Student } from '@/lib/types';
 import MusicEarGame from './MusicEarGame';
 import { getStudents, updateStudent } from '@/lib/storage';
@@ -55,7 +56,7 @@ function staffY(note: MusicNote): number {
   const base = note.clef === 'treble' ? 64 : 43; // E4 or G2 = bottom staff line
   return bottom - (midiStep(note.midi) - midiStep(base)) * 6;
 }
-function Notation({ events, cursor, level, phase, rhythmOnly }: { events: MusicEvent[]; cursor: number; level: number; phase: number; rhythmOnly?: boolean }) {
+function Notation({ events, cursor, level, rhythmOnly, progressRef }: { events: MusicEvent[]; cursor: number; level: number; rhythmOnly?: boolean; progressRef: RefObject<SVGRectElement | null> }) {
   const first = Math.max(0, cursor - 1);
   const displayed = events.slice(first, first + 8);
   const doubleStaff = level >= 5 && !rhythmOnly;
@@ -83,7 +84,7 @@ function Notation({ events, cursor, level, phase, rhythmOnly }: { events: MusicE
           const active = actualIndex === cursor;
           const opacity = actualIndex < cursor ? 0.35 : 1;
           return <g key={ev.id} opacity={opacity}>
-            {active && <rect x={x-40} y={26} width={78} height={doubleStaff?238:125} rx={11} fill="none" stroke="#d97706" strokeWidth="2" pointerEvents="none" />}
+            {active && <path d={`M ${x-36} 40 L ${x-28} 40 L ${x-32} 48 Z`} fill="#b45309" pointerEvents="none" />}
             {(rhythmOnly ? [{ clef: 'treble' as const, midi: 69 }] : ev.notes).map((n,j) => {
               const y = rhythmOnly ? 88 : staffY(n);
               const bottom = n.clef === 'treble' ? 112 : 222;
@@ -98,7 +99,7 @@ function Notation({ events, cursor, level, phase, rhythmOnly }: { events: MusicE
               </g>;
             })}
             {Math.abs((ev.startBeat+ev.durationBeats)/4-Math.round((ev.startBeat+ev.durationBeats)/4)) < 0.0001 && <line x1={x+44} x2={x+44} y1="64" y2={doubleStaff?222:112} stroke="#334155" strokeWidth="1.6"/>}
-            {active && <rect x={x-35} y={doubleStaff?258:151} width={Math.max(1,70*phase)} height="4" rx="2" fill="#f59e0b" />}
+            {active && <rect ref={progressRef} x={x-35} y={doubleStaff?258:151} width={1} height="4" rx="2" fill="#f59e0b" />}
           </g>;
         })}
         <text x="10" y={doubleStaff?277:176} fontSize="12" fill="#475569">TOBY PLAY</text>
@@ -113,7 +114,6 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
   const [level, setLevel] = useState(1);
   const [events, setEvents] = useState<MusicEvent[]>([]);
   const [cursor, setCursor] = useState(0);
-  const [phase, setPhase] = useState(0);
   const [countIn, setCountIn] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ correct: number; timely: number; total: number } | null>(null);
@@ -135,7 +135,9 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     audio: AudioContext; startsAt: number; secondsPerBeat: number;
     hits: Map<number,number>; timer: ReturnType<typeof setTimeout>;
   } | null>(null);
-  const drawAt = useRef(0);
+  const visibleCursor = useRef(0);
+  const visibleCountIn = useRef<number | null>(null);
+  const progressRect = useRef<SVGRectElement | null>(null);
   const currentInput = useRef(inputMode);
   currentInput.current = inputMode;
   const end = useCallback(() => {
@@ -229,6 +231,15 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     if (referenceAudio.current) void referenceAudio.current.close();
     if (accessRef.current?.inputs) accessRef.current.inputs.forEach(v => { v.onmidimessage = null; });
   }, []);
+  useEffect(() => {
+    if (!running && !calibrating) return;
+    const warnOnUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnOnUnload);
+    return () => window.removeEventListener('beforeunload', warnOnUnload);
+  }, [running, calibrating]);
   const inputPitch = useCallback((midi: number, sound: boolean) => {
     const active = engine.current;
     if (calibrationRef.current) { recordCalibrationTap(); return; }
@@ -345,15 +356,18 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     const totalBeats = generated.reduce((total, ev)=>Math.max(total,ev.startBeat+ev.durationBeats),0);
     for(let b=-4;b<totalBeats;b++) click(audio,startTime+b*secondsPerBeat,(b+4)%4===0);
     engine.current = { audio,startTime,secondsPerBeat,events:generated,judged:-1,hits:new Map(),correct:0,timely:0,finished:false,mode,calibration };
-    drawAt.current=0;
-    setEvents(generated);setCursor(0);setPhase(0);setResult(null);setLastPlayed('');setRunning(true);
+    visibleCursor.current=0;
+    visibleCountIn.current=null;
+    setEvents(generated);setCursor(0);setResult(null);setLastPlayed('');setRunning(true);
     const tick = () => {
       const active = engine.current;
       if (!active || active.finished) return;
       const beat = (active.audio.currentTime-active.startTime)/active.secondsPerBeat;
-      if (beat < 0) setCountIn(Math.max(1,Math.ceil(-beat)));
-      else {
-        setCountIn(null);
+      if (beat < 0) {
+        const remaining = Math.max(1,Math.ceil(-beat));
+        if (visibleCountIn.current !== remaining) { visibleCountIn.current=remaining; setCountIn(remaining); }
+      } else {
+        if (visibleCountIn.current !== null) { visibleCountIn.current=null; setCountIn(null); }
         let index = active.events.findIndex(ev=>beat>=ev.startBeat && beat<ev.startBeat+ev.durationBeats);
         while(active.judged+1<active.events.length &&
           active.events[active.judged+1].startBeat + active.events[active.judged+1].durationBeats <= beat) {
@@ -370,14 +384,16 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
           if(score.timely) active.timely++;
         }
         if(index<0) index=active.events.length-1;
-        // Limit expensive full-score React redraws to ~8 fps. Audio/timing keep the
-        // Web Audio clock and requestAnimationFrame precision independently.
-        if (performance.now()-drawAt.current>=125) {
-          drawAt.current=performance.now();
+        // A full React render occurs ONLY when advancing to another note.
+        // The current-note progress bar is updated directly on SVG, without
+        // reconciling the entire score, keyboard and dashboard on every frame.
+        if (visibleCursor.current !== index) {
+          visibleCursor.current = index;
           setCursor(index);
-          const ev=active.events[index];
-          setPhase(Math.max(0,Math.min(1,(beat-ev.startBeat)/ev.durationBeats)));
         }
+        const ev = active.events[index];
+        const fraction = Math.max(0,Math.min(1,(beat-ev.startBeat)/ev.durationBeats));
+        progressRect.current?.setAttribute('width', (70*fraction).toFixed(1));
         if(beat>=totalBeats) { end(); return; }
       }
       raf.current=requestAnimationFrame(tick);
@@ -437,7 +453,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
           <p className="text-xs" role="status">{calibrating ? 'הכיול פועל: מקש רווח, מסך או קליד MIDI.' : calibrationMessage || 'התחילי בכיול תגובה.'}</p>
         </div>}
         {audioError && <p className="text-sm text-destructive" role="alert">{audioError}</p>}
-        {events.length>0 && <Notation events={events} cursor={cursor} level={level} phase={phase} rhythmOnly={mode==='rhythm'}/>}
+        {events.length>0 && <Notation events={events} cursor={cursor} level={level} progressRef={progressRect} rhythmOnly={mode==='rhythm'}/>}
         {!events.length && <div className="min-h-48 rounded-xl border border-dashed flex items-center justify-center bg-muted/20 text-center p-5">
           <p>בחרי רמה ולחצי על התחלת אימון. המנגינה תופיע כשורת תווים, ותתקדם לפי משך כל צליל.</p>
         </div>}

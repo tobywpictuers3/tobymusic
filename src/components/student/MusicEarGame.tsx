@@ -30,6 +30,15 @@ export default function MusicEarGame({
   const [round, setRound] = useState<EarRound | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
   const [phase, setPhase] = useState<Phase>('ready');
+  useEffect(() => {
+    if (phase !== 'listening' && phase !== 'answering' && phase !== 'feedback') return;
+    const warnOnUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnOnUnload);
+    return () => window.removeEventListener('beforeunload', warnOnUnload);
+  }, [phase]);
   const [answer, setAnswer] = useState<number[]>([]);
   const answerRef = useRef<number[]>([]);
   const totals = useRef({ correct: 0, total: 0, perfect: 0 });
