@@ -196,13 +196,10 @@ const BackupHistory = () => {
   try {
     const result = await workerApi.listVersions();
 
-    console.log('listVersions raw result:', result);
 
     if (result.success && result.data) {
       const versionsArray = extractVersions(result.data);
 
-      console.log('versionsArray count:', versionsArray.length);
-      console.log('first 10 raw versions:', versionsArray.slice(0, 10));
 
       const sorted = [...versionsArray].sort(
         (a, b) =>
@@ -210,8 +207,6 @@ const BackupHistory = () => {
           new Date(a.server_modified).getTime()
       );
 
-      console.log('newest version after sort:', sorted[0]);
-      console.log('oldest version after sort:', sorted[sorted.length - 1]);
 
       setVersions(sorted);
       logger.info(`Loaded ${sorted.length} versions`);
@@ -490,7 +485,7 @@ const BackupHistory = () => {
               <History className="h-5 w-5" />
               היסטוריית גיבויים
               {versions.length > 0 && (
-                <Badge variant="secondary">{versions.length} גרסאות</Badge>
+                <Badge variant="secondary">{versions.length} גרסאות גיבוי</Badge>
               )}
             </CardTitle>
 
@@ -516,12 +511,16 @@ const BackupHistory = () => {
           <div className="space-y-4">
             <div className="p-4 bg-muted/50 rounded-lg">
               <p className="text-sm text-muted-foreground">
-                <strong>🔒 מקור האמת:</strong> כל הגרסאות נשמרות ב-Worker החיצוני שלך בלבד.
+                <strong>🔒 מקור האמת:</strong> הגיבויים נשמרים בדרופבוקס ללא שינוי. המסך מציג עד 24 גרסאות גולמיות אחרונות כפי שהוחזרו מהשרת; אין בכך התחייבות לשני גיבויים ביום או ל־12 ימי היסטוריה.
                 <br />
                 לחצי על גרסה כדי לשחזר אותה.
               </p>
             </div>
 
+            <div role="status" className="p-3 border rounded-lg text-sm">
+              סינון התאריך פועל רק על עד 24 הגרסאות האחרונות שנטענו. אין כרגע חיפוש בארכיון המלא לפי תאריך,
+              ואין שינוי בגיבויים השוטפים בדרופבוקס.
+            </div>
             {/* Date range filter */}
             <div className="p-4 border rounded-lg bg-card/50 space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium">
@@ -555,8 +554,8 @@ const BackupHistory = () => {
                 )}
                 <div className="text-xs text-muted-foreground mr-auto">
                   {dateFrom || dateTo
-                    ? `מציג ${filteredVersions.length} מתוך ${versions.length} גרסאות`
-                    : `סה"כ ${versions.length} גרסאות`}
+                    ? `מציג ${filteredVersions.length} מתוך ${versions.length} גרסאות שנטענו`
+                    : `סה״כ ${versions.length} גרסאות שנטענו`}
                   {' · '}
                   ניתן לשחזר הכל, רק אימונים, או הכל למעט אימונים מכל גרסה
                 </div>
