@@ -15,6 +15,27 @@ const range = (min: number,max: number) => NATURAL_MIDI.filter(n=>n>=min&&n<=max
 export default function MusicPlaySandbox() {
   const [settings, setSettings] = useState<MusicPlaySettings>({ ...DEFAULT_MUSIC_SETTINGS, maxUnlockedLevel: 6 });
   const [revision, setRevision] = useState(0);
+  const [feedback, setFeedback] = useState('');
+  const [clipboardState, setClipboardState] = useState('');
+  const report = () => [
+    'TOBY PLAY — דוח התנסות ללא פרטי תלמידות',
+    'רמה פתוחה: ' + settings.maxUnlockedLevel,
+    'מהירות: ' + settings.bpm + ' BPM',
+    'מפתח סול: ' + noteName(settings.trebleFrom) + ' עד ' + noteName(settings.trebleTo),
+    'מפתח פה: ' + noteName(settings.bassFrom) + ' עד ' + noteName(settings.bassTo),
+    'ערכים: ' + settings.rhythmValues.join(', '),
+    'תנועה: ' + settings.motion,
+    'צלילים כפולים: ' + settings.maxChordNotes,
+    'מה כדאי לדייק: ' + feedback.trim(),
+  ].join('\\n');
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(report());
+      setClipboardState('הדוח הועתק! אפשר להדביק אותו בשיחה כדי לדייק את הפיתוח.');
+    } catch {
+      setClipboardState('העתקה אוטומטית אינה נתמכת. סמני והעתיקי את הטקסט שבתיבה שלמטה.');
+    }
+  };
   const change = (part: Partial<MusicPlaySettings>) => { setSettings(s => ({...s,...part})); setRevision(r=>r+1); };
   const demo = useMemo(() => ({
     id: '__toby_music_preview_only__', firstName: 'תצוגת', lastName: 'מורה', musicPlaySettings: settings,
@@ -92,6 +113,18 @@ export default function MusicPlaySandbox() {
       </CardContent>
     </Card>
     <MusicPlay key={revision} student={demo} preview />
+    <Card>
+      <CardHeader><CardTitle>📝 מה לשפר אחרי ההתנסות?</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">כתבי כאן מה ראית ומה היית רוצה לשנות. המידע נשאר בדפדפן בלבד ואינו נשלח או נשמר במערכת.</p>
+        <textarea dir="rtl" rows={3} className="w-full border rounded-md bg-background p-3" placeholder="למשל: התווים קטנים מדי, אני רוצה שתי תיבות קבועות במסך..." value={feedback} onChange={e=>setFeedback(e.target.value)} />
+        <Button variant="outline" onClick={()=>void copyReport()}>העתקת הגדרות ומשוב לצ׳אט</Button>
+        {clipboardState && <p className="text-sm" role="status">{clipboardState}</p>}
+        <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">הצגת טקסט הדוח להעתקה ידנית</summary>
+          <textarea readOnly className="w-full border rounded-md bg-background p-2 mt-2" rows={8} value={report()} onFocus={e=>e.currentTarget.select()} />
+        </details>
+      </CardContent>
+    </Card>
     <p className="text-xs text-muted-foreground">זהו סטודיו התנסות. כדי לשייך ידע לתלמידה אמיתית, היכנסי ללשונית תלמידות ובחרי ״רמות אימון״ בכרטיס שלה.</p>
   </div>;
 }

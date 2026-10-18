@@ -223,3 +223,5 @@ The payment data model already contains all 12 academic months, September throug
 - Admin dashboard has an isolated TOBY PLAY sandbox with 3 presets, pitch/rhythm/BPM/chord controls. It uses a synthetic student and `preview` mode, which MUST never write to student records or Dropbox. Teacher can try it before assigning levels to real students.
 
 - Student TOBY PLAY tab is only visible after the manager explicitly configures `musicPlaySettings`; other students are not exposed to the beta. Admin preview deep link: `/admin#music-play`, or the equivalent normal authenticated admin route. Rhythm mode evaluates onset taps (screen, Space, or MIDI) and deliberately does not score note duration yet.
+
+- The teacher studio includes local-only feedback notes and a clipboard report (configuration + feedback, no PII) for iterative improvements. No database writes are made by this panel.
