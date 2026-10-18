@@ -24,6 +24,7 @@ export interface MusicPlayAttempt {
   correct: number;
   total: number;
   input: 'touch' | 'keyboard' | 'midi';
+  mode?: 'reading' | 'rhythm';
 }
 export const MUSIC_LEVELS = [
   { id: 1, name: 'שליפה ראשונה', description: 'תו יחיד במפתח סול, רבעים' },
@@ -131,4 +132,10 @@ export function scoreMusicEvent(expected: MusicEvent, played: Array<{ midi: numb
   const correct = target.length === actual.length && target.every((pitch, i) => pitch === actual[i]);
   const timely = correct && played.length === target.length && played.every(p => Math.abs(p.beat - expected.startBeat) <= 0.35);
   return { correct, timely };
+}
+
+/** Basic rhythm onset scoring, independent of pitch. Extra taps disqualify the event. */
+export function scoreRhythmEvent(expected: MusicEvent, beats: number[]): { correct: boolean; timely: boolean } {
+  const correct = beats.length === 1;
+  return { correct, timely: correct && Math.abs(beats[0]-expected.startBeat) <= 0.25 };
 }

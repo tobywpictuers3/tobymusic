@@ -21,7 +21,7 @@ export default function MusicPlaySandbox() {
     musicPlayAttempts: [],
   } as Student), [settings]);
   const updatePreset=(name: keyof typeof preset) => {
-    setSettings(preset[name] as MusicPlaySettings);
+    setSettings({ ...preset[name], rhythmValues: [...preset[name].rhythmValues] });
     setRevision(v=>v+1);
   };
   return <div className="space-y-5" dir="rtl">

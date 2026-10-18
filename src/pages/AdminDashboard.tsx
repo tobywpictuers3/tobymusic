@@ -127,6 +127,7 @@ const AdminDashboard = () => {
       payments: 'תשלומים',
       performances: 'הופעות',
       practice: 'נתוני אימונים',
+      'music-play': 'TOBY PLAY — התנסות',
       messages: 'תקשורת',
       yemot: 'ימות המשיח',
       backup: 'גיבוי',

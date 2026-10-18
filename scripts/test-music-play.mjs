@@ -61,3 +61,10 @@ test('onset is scored separately from pitch correctness', () => {
   const late=scoreMusicEvent(ev,[{midi:60,beat:2.6},{midi:64,beat:2.6}]);
   assert.equal(late.correct,true);assert.equal(late.timely,false);
 });
+
+test('rhythm taps are judged at event onset independently of pitches', () => {
+  const ev={id:'r',startBeat:3,durationBeats:0.5,notes:[{midi:60,clef:'treble'}]};
+  assert.equal(exports.scoreRhythmEvent(ev,[3.1]).timely,true);
+  assert.equal(exports.scoreRhythmEvent(ev,[3.38]).timely,false);
+  assert.equal(exports.scoreRhythmEvent(ev,[3.1,3.2]).correct,false);
+});

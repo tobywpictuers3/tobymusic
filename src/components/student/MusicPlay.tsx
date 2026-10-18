@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Lock, Play, RotateCcw, Music2, Keyboard, Volume2 } from 'lucide-react';
 import {
   canAccessMusicLevel, generateMusicExercise, MUSIC_LEVELS, MusicEvent, MusicNote,
-  MusicPlayAttempt, NATURAL_MIDI, noteName, normalizeMusicSettings, scoreMusicEvent,
+  MusicPlayAttempt, NATURAL_MIDI, noteName, normalizeMusicSettings, scoreMusicEvent, scoreRhythmEvent,
 } from '@/lib/musicPlay';
 
 type Hit = { midi: number; beat: number };
@@ -20,6 +20,7 @@ type Runtime = {
   correct: number;
   timely: number;
   finished: boolean;
+  mode: 'reading' | 'rhythm';
 };
 function tone(context: AudioContext, midi: number, at = context.currentTime, duration = 0.16, volume = 0.09) {
   const oscillator = context.createOscillator();
@@ -109,6 +110,8 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ correct: number; timely: number; total: number } | null>(null);
   const [lastPlayed, setLastPlayed] = useState<string>('');
+  const [mode, setMode] = useState<'reading' | 'rhythm'>('reading');
+  const [audioError, setAudioError] = useState('');
   const [inputMode, setInputMode] = useState<'touch'|'keyboard'|'midi'>('touch');
   const [midiMessage, setMidiMessage] = useState('');
   const engine = useRef<Runtime | null>(null);
@@ -133,6 +136,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         accuracy: Math.round((finished.correct / finished.total) * 100),
         timing: Math.round((finished.timely / finished.total) * 100),
         correct: finished.correct, total: finished.total, input: currentInput.current,
+        mode: runtime.mode,
       };
       updateStudent(student.id, { musicPlayAttempts: [...(previous.musicPlayAttempts || []), attempt].slice(-30) });
     }
@@ -157,6 +161,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
   const inputPitch = useCallback((midi: number, sound: boolean) => {
     const active = engine.current;
     if (sound && active && !active.finished) tone(active.audio, midi);
+    if (active?.mode === 'rhythm') return;
     setLastPlayed(noteName(midi));
     if (!active || active.finished) return;
     const beat = (active.audio.currentTime - active.startTime)/active.secondsPerBeat;
@@ -168,17 +173,35 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     if (!played.some(p=>p.midi===midi)) played.push({midi,beat});
     active.hits.set(idx,played);
   }, []);
-  useEffect(() => {
+  const inputRhythm = useCallback(() => {
+    const active = engine.current;
+    if (!active || active.finished || active.mode !== 'rhythm') return;
+    const beat = (active.audio.currentTime - active.startTime)/active.secondsPerBeat;
+    if (beat < -0.3) return;
+    let nearest = -1;
+    let distance = Infinity;
+    active.events.forEach((ev, idx) => {
+      const error = Math.abs(ev.startBeat-beat);
+      if (idx > active.judged && error < distance) { distance = error; nearest = idx; }
+    });
+    if (nearest < 0 || distance > 0.42) return;
+    const existing=active.hits.get(nearest)||[];
+    if (existing.length < 2) { existing.push({ midi: -1, beat }); active.hits.set(nearest, existing); }
+    setLastPlayed('הקשה');
+  }, []);
+    useEffect(() => {
     const map = ['a','s','d','f','g','h','j','k','l'];
     const options = NATURAL_MIDI.filter(n=>level===4 ? n>=settings.bassFrom && n<=settings.bassTo : level>=5 ? (n>=settings.trebleFrom && n<=settings.trebleTo)||(n>=settings.bassFrom && n<=settings.bassTo) : n>=settings.trebleFrom && n<=settings.trebleTo);
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.ctrlKey || e.altKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName || '')) return;
+      if (e.code === 'Space' && mode === 'rhythm') { e.preventDefault(); currentInput.current='keyboard'; inputRhythm(); return; }
+      if (mode === 'rhythm') return;
       const index = map.indexOf(e.key.toLowerCase());
       if (index >= 0 && options[index] !== undefined) { e.preventDefault(); currentInput.current='keyboard'; inputPitch(options[index],true); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settings.trebleFrom, settings.trebleTo, settings.bassFrom, settings.bassTo, level, inputPitch]);
+  }, [settings.trebleFrom, settings.trebleTo, settings.bassFrom, settings.bassTo, level, inputPitch, inputRhythm, mode]);
   const connectMidi = async () => {
     const request = (navigator as Navigator & { requestMIDIAccess?: () => Promise<any> }).requestMIDIAccess;
     if (!request) { setMidiMessage('MIDI אינו נתמך בדפדפן זה. אפשר להשתמש במקלדת או במסך.'); return; }
@@ -190,7 +213,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         connected++;
         input.onmidimessage = (e: { data: Uint8Array }) => {
           const [status, pitch, velocity] = e.data;
-          if ((status & 0xf0) === 0x90 && velocity > 0) { currentInput.current='midi'; inputPitch(pitch,false); }
+          if ((status & 0xf0) === 0x90 && velocity > 0) { currentInput.current='midi'; if (mode === 'rhythm') inputRhythm(); else inputPitch(pitch,false); }
         };
       });
       setMidiMessage(connected ? `מחוברות ${connected} כניסות MIDI` : 'לא נמצאה מקלדת MIDI. חברי אותה ונסי שוב.');
@@ -201,13 +224,20 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
     stop();
     if (!canAccessMusicLevel(settings, level)) return;
     const generated = generateMusicExercise(level, settings, 4);
-    const audio = new AudioContext();
-    await audio.resume();
+    let audio: AudioContext;
+    try {
+      audio = new AudioContext();
+      await audio.resume();
+      setAudioError('');
+    } catch {
+      setAudioError('לא ניתן להפעיל שמע בדפדפן זה. מומלץ לבדוק הרשאות שמע או לנסות דפדפן אחר.');
+      return;
+    }
     const secondsPerBeat = 60/settings.bpm;
     const startTime = audio.currentTime + 4*secondsPerBeat + 0.12;
     const totalBeats = generated.reduce((total, ev)=>Math.max(total,ev.startBeat+ev.durationBeats),0);
     for(let b=-4;b<totalBeats;b++) click(audio,startTime+b*secondsPerBeat,(b+4)%4===0);
-    engine.current = { audio,startTime,secondsPerBeat,events:generated,judged:-1,hits:new Map(),correct:0,timely:0,finished:false };
+    engine.current = { audio,startTime,secondsPerBeat,events:generated,judged:-1,hits:new Map(),correct:0,timely:0,finished:false,mode };
     setEvents(generated);setCursor(0);setPhase(0);setResult(null);setLastPlayed('');setRunning(true);
     const tick = () => {
       const active = engine.current;
@@ -220,7 +250,9 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         while(active.judged+1<active.events.length &&
           active.events[active.judged+1].startBeat + active.events[active.judged+1].durationBeats <= beat) {
           const next = ++active.judged;
-          const score = scoreMusicEvent(active.events[next],active.hits.get(next)||[]);
+          const score = active.mode === 'rhythm'
+            ? scoreRhythmEvent(active.events[next],(active.hits.get(next)||[]).map(hit=>hit.beat))
+            : scoreMusicEvent(active.events[next],active.hits.get(next)||[]);
           if(score.correct) active.correct++;
           if(score.timely) active.timely++;
         }
@@ -246,6 +278,10 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         <p className="text-sm text-muted-foreground">קריאה רציפה מהדף בקצב המטרונום. תמיד רואים גם את התווים הבאים.</p>
       </CardHeader>
       <CardContent className="space-y-5 pt-5">
+        <div className="flex flex-wrap gap-2 rounded-lg border p-2 bg-muted/20">
+          <Button variant={mode==='reading'?'default':'outline'} disabled={running} onClick={()=>{setMode('reading');setEvents([]);setResult(null);}}>🎼 קריאה ונגינה</Button>
+          <Button variant={mode==='rhythm'?'default':'outline'} disabled={running} onClick={()=>{setMode('rhythm');setEvents([]);setResult(null);}}>🥁 הקשת מקצבים</Button>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {MUSIC_LEVELS.map(item => {
             const locked=!canAccessMusicLevel(settings,item.id);
@@ -267,17 +303,22 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
           </div>
         </div>
         {midiMessage && <p className="text-xs text-muted-foreground" role="status">{midiMessage}</p>}
+        {audioError && <p className="text-sm text-destructive" role="alert">{audioError}</p>}
         {events.length>0 && <Notation events={events} cursor={cursor} level={level} phase={phase}/>}
         {!events.length && <div className="min-h-48 rounded-xl border border-dashed flex items-center justify-center bg-muted/20 text-center p-5">
           <p>בחרי רמה ולחצי על התחלת אימון. המנגינה תופיע כשורת תווים, ותתקדם לפי משך כל צליל.</p>
         </div>}
         {countIn!==null && <div className="text-4xl font-bold text-center text-amber-600" aria-live="polite">{countIn} — הכנה לנגינה</div>}
-        {running && countIn===null && <div className="text-center text-sm text-violet-700 dark:text-violet-300">התו המודגש הוא התו הנוכחי · הקישי או נגני בזמן · התקדמות אוטומטית</div>}
+        {running && countIn===null && <div className="text-center text-sm text-violet-700 dark:text-violet-300">{mode==='rhythm' ? 'הקישי כשמגיע תו חדש · אפשר גם עם מקש הרווח' : 'התו המודגש הוא התו הנוכחי · הקישי או נגני בזמן · התקדמות אוטומטית'}</div>}
         <div className="flex gap-3 justify-center">
           {!running ? <Button onClick={()=>void start()} size="lg" className="bg-violet-700 hover:bg-violet-800 text-white"><Play className="w-4 h-4 ml-2"/> {events.length?'אימון חדש':'התחלת אימון'}</Button>
             : <Button onClick={stop} variant="outline">עצירת האימון</Button>}
         </div>
-        <div className="space-y-2">
+        {mode==='rhythm' ? <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border p-4 space-y-3 text-center">
+          <p className="font-semibold text-sm">הקישי פעם אחת בתחילת כל ערך ריתמי, בדיוק לפי המטרונום</p>
+          <button type="button" onPointerDown={e=>{e.preventDefault();currentInput.current='touch';inputRhythm();}} disabled={!running} className="w-full max-w-sm min-h-28 rounded-full shadow-lg bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-900 text-2xl font-bold disabled:opacity-50 touch-manipulation">🥁 הקישי כאן</button>
+          <p className="text-xs text-muted-foreground">אפשר גם להשתמש במקש הרווח או בכל קליד MIDI. כרגע נבדק זמן תחילת ההקשה, ולא משך החזקת הקליד.</p>
+        </div> : <div className="space-y-2">
           <div className="text-sm flex items-center gap-2"><Volume2 className="w-4 h-4"/> מקלדת נגינה על המסך · ניתן להקיש כמה צלילים באותה פעימה</div>
           <p className="text-xs text-muted-foreground">במקלדת מחשב האותיות A, S, D, F, G, H, J, K, L מפעילות את תשעת הקלידים הראשונים המוצגים.</p>
           <div className="flex flex-wrap gap-1 justify-center">
@@ -286,10 +327,10 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
             </button>)}
           </div>
           {lastPlayed && <p className="text-center text-xs text-muted-foreground">צליל אחרון: {lastPlayed}</p>}
-        </div>
+        </div>}
         {result && <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 dark:bg-emerald-950 p-5 text-center space-y-2" role="status">
           <div className="font-bold text-lg">סיימת את האימון!</div>
-          <div>דיוק תווים: <strong>{Math.round(result.correct/result.total*100)}%</strong> ({result.correct} מתוך {result.total})</div>
+          <div>{mode==='rhythm' ? 'זיהוי מספר ההקשות' : 'דיוק תווים'}: <strong>{Math.round(result.correct/result.total*100)}%</strong> ({result.correct} מתוך {result.total})</div>
           <div>דיוק כניסה בפעימה: <strong>{Math.round(result.timely/result.total*100)}%</strong></div>
           <p className="text-xs">{preview ? 'מצב התנסות: לא נרשמו נתונים לתלמידות.' : 'התוצאה נרשמה מקומית; יש לוודא השלמת סנכרון הענן.'}</p>
           <Button variant="outline" onClick={()=>void start()}><RotateCcw className="w-4 h-4 ml-1"/> שוב</Button>
