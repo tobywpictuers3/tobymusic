@@ -33,7 +33,8 @@ const dateInside = (date, year) =>
   typeof date === 'string' && date >= (year - 1) + '-09-01' &&
   date <= year + '-08-31';
 
-export function reconcile(inputData) {
+export function reconcile(inputData, options = {}) {
+  const selectedStudents = options.studentIds ? new Set(options.studentIds) : null;
   const data = structuredClone(inputData);
   const lessons = data.musicSystem_lessons || [];
   const records = data.musicSystem_schoolYearRecords || [];
@@ -52,6 +53,7 @@ export function reconcile(inputData) {
 
   for (const old of records) {
     if (old.status !== 'closed' || !students.has(old.studentId)) continue;
+    if (selectedStudents && !selectedStudents.has(old.studentId)) continue;
     if (students.get(old.studentId).paymentType === 'per_lesson') continue;
     if (!Number.isFinite(old.expectedLessons) || old.expectedLessons <= 0 ||
         !Number.isFinite(old.baseTarget) || !Number.isFinite(old.paidTotal)) continue;
@@ -134,12 +136,19 @@ export function reconcile(inputData) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (!input || args.some(a => a === '--output') && !output) {
-    console.error('Usage: node scripts/reconcile-closed-lessons.mjs --input latest.json [--output proposed.json]');
+    console.error('Usage: node scripts/reconcile-closed-lessons.mjs --input latest.json [--output proposed.json --student-id STUDENT_ID ...]');
     process.exit(2);
   }
-  const { data, report } = reconcile(JSON.parse(fs.readFileSync(input, 'utf8')));
+  const selectedStudentIds = args.flatMap((arg, i) => arg === '--student-id' ? [args[i + 1]] : []).filter(Boolean);
+  if (output && selectedStudentIds.length === 0) {
+    throw new Error('Writing a proposal requires explicit --student-id (repeat for each selected student).');
+  }
+  const { data, report } = reconcile(JSON.parse(fs.readFileSync(input, 'utf8')), { studentIds: output ? selectedStudentIds : undefined });
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');
   if (output) {
+    if (report.duplicateSlots.length) {
+      throw new Error('Refusing to export while duplicate completed lesson slots remain; delete the duplicate in the source first.');
+    }
     if (path.resolve(output) === path.resolve(input)) {
       throw new Error('Refusing to overwrite input');
     }
