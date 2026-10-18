@@ -1,6 +1,10 @@
 // Data Models for Music Students Management System - Updated
 
+import type { MusicPlaySettings, MusicPlayAttempt } from './musicPlay';
+
 export interface Student {
+  musicPlaySettings?: MusicPlaySettings;
+  musicPlayAttempts?: MusicPlayAttempt[];
   id: string;
   firstName: string;
   lastName: string;
