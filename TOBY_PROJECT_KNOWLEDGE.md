@@ -234,3 +234,11 @@ The payment data model already contains all 12 academic months, September throug
 - Audio is synthesized in the browser, with replay enabled and no raw audio uploaded. This is an **ear-memory prototype**, not a calibrated pitch-transcription assessment. Its result has `mode='ear'`; timing is explicitly not measured (`timing=0`).
 - Five-round completion appends one attempt using the existing student update path (max 30 attempts); cross-device persistence remains **unverified**, and the UI must not claim verified cloud storage. No score history is written in teacher preview mode.
 - The feature is limited to an extra game, not a replacement of the existing continuous note-reading/rhythm games. Microphone input, complete notation, real-instrument audio checks, and Dropbox read-back QA remain open.
+
+## TOBY PLAY — 2026-10-18 teacher feedback corrections (feature)
+- Teacher-reported note highlight obscured staff: highlight background is behind staff lines; active rectangle becomes transparent outline.
+- TOBY PLAY separates **שליפת תווים** (two full beats per event, accept correct pitches anywhere in its window) from **נגינה מדויקת במקצב** (pitches and onsets BOTH must match). The existing independent rhythm tapping and ear-memory modes remain.
+- Strict play requires an eight-click human-response calibration in the selected input mode, at least five distinct matched taps; measured mean response offset is corrected and a one-sample-standard-deviation timing tolerance is applied with a minimum 50ms device-jitter floor. Calibration with >180ms SD is rejected. Treat it as in-browser human/device calibration, NOT externally validated clinical response norms or accredited musical assessment.
+- Names on buttons/reports use Israeli octave terminology: `C4=דו ראשון`, `A4=לה ראשון=440Hz`, `C5=דו שני`, `C3=דו קטן`, `C2=דו גדול`; MIDI values remain unmodified.
+- PC note-key instructions explicitly ask to switch keyboard layout to English (EN).
+- Continuous React notation state updates are rate-limited (~8 fps while audio timing is on the Web Audio clock), and the teacher sandbox no longer forces remount through `key={revision}`. No global app reload or sync behavior is changed. Browser-level reload, actual tablet input jitter, and student score persistence still require production/manual verification.

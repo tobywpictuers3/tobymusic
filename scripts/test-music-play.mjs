@@ -94,3 +94,43 @@ test('ear memory respects locked levels, treble and bass ranges', () => {
   }
   assert.throws(() => generateEarRound(1, normalizeMusicSettings({ trebleFrom: 60, trebleTo: 60 })), /INSUFFICIENT_NOTES/);
 });
+
+test('professional Hebrew octave names anchor A4 at 440 Hz', () => {
+  assert.equal(exports.noteName(69), 'לה ראשון');
+  assert.equal(exports.noteName(60), 'דו ראשון');
+  assert.equal(exports.noteName(72), 'דו שני');
+  assert.equal(exports.noteName(48), 'דו קטן');
+  assert.equal(exports.noteName(36), 'דו גדול');
+});
+
+test('recall is exactly two beats per note, regardless of teacher rhythm settings', () => {
+  const s = normalizeMusicSettings({ maxUnlockedLevel: 6, rhythmValues: [0.5,1], trebleFrom:60,trebleTo:67 });
+  for (const level of [1,2,3,4,5,6]) {
+    const events = generateMusicExercise(level, s, 4, () => 0.37, 'reading');
+    assert.equal(events.length,8);
+    assert.equal(events.reduce((sum, e) => sum + e.durationBeats,0),16);
+    assert.ok(events.every(e=>e.durationBeats===2));
+    const example=events[0];
+    const arbitraryLate = example.notes.map(n=>({midi:n.midi,beat:example.startBeat+1.85}));
+    assert.equal(exports.scoreRecallMusicEvent(example,arbitraryLate).correct,true);
+    assert.equal(exports.scoreTimedMusicEvent(example,arbitraryLate,0.1).correct,false);
+  }
+});
+
+test('strict playing rejects wrong pitch, extra notes and timing outside calibrated sigma', () => {
+  const ev={id:'strict',startBeat:4,durationBeats:1,notes:[{midi:69,clef:'treble'}]};
+  assert.equal(exports.scoreTimedMusicEvent(ev,[{midi:69,beat:4.16}],0.08,0.1).correct,true);
+  assert.equal(exports.scoreTimedMusicEvent(ev,[{midi:69,beat:4.21}],0.08,0.1).correct,false);
+  assert.equal(exports.scoreTimedMusicEvent(ev,[{midi:69,beat:4.1},{midi:69,beat:4.1}],0.08,0.1).correct,false);
+  assert.equal(exports.scoreTimedMusicEvent(ev,[{midi:70,beat:4.1}],0.08,0.1).correct,false);
+});
+
+test('reaction calibration uses measured sample SD and rejects unstable calibration', () => {
+  const c=exports.computeTimingCalibration([0.09,0.11,0.10,0.08,0.12,0.09,0.11,0.10],1);
+  assert.ok(c);
+  assert.equal(c.sampleCount,8);
+  assert.ok(c.offsetBeats>0.09 && c.offsetBeats<0.11);
+  assert.equal(c.toleranceBeats,0.05);
+  assert.equal(exports.computeTimingCalibration([0.1,0.12],1),null);
+  assert.equal(exports.computeTimingCalibration([0,0.4,0,0.4,0.4,0,0,0.4],1),null);
+});

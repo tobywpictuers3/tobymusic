@@ -14,7 +14,6 @@ const preset = {
 const range = (min: number,max: number) => NATURAL_MIDI.filter(n=>n>=min&&n<=max);
 export default function MusicPlaySandbox() {
   const [settings, setSettings] = useState<MusicPlaySettings>({ ...DEFAULT_MUSIC_SETTINGS, maxUnlockedLevel: 6 });
-  const [revision, setRevision] = useState(0);
   const [feedback, setFeedback] = useState('');
   const [clipboardState, setClipboardState] = useState('');
   const report = () => [
@@ -36,14 +35,13 @@ export default function MusicPlaySandbox() {
       setClipboardState('העתקה אוטומטית אינה נתמכת. סמני והעתיקי את הטקסט שבתיבה שלמטה.');
     }
   };
-  const change = (part: Partial<MusicPlaySettings>) => { setSettings(s => ({...s,...part})); setRevision(r=>r+1); };
+  const change = (part: Partial<MusicPlaySettings>) => { setSettings(s => ({...s,...part})); };
   const demo = useMemo(() => ({
     id: '__toby_music_preview_only__', firstName: 'תצוגת', lastName: 'מורה', musicPlaySettings: settings,
     musicPlayAttempts: [],
   } as Student), [settings]);
   const updatePreset=(name: keyof typeof preset) => {
     setSettings({ ...preset[name], rhythmValues: [...preset[name].rhythmValues] });
-    setRevision(v=>v+1);
   };
   return <div className="space-y-5" dir="rtl">
     <Card className="border-violet-400/60">
@@ -112,7 +110,7 @@ export default function MusicPlaySandbox() {
         </div>
       </CardContent>
     </Card>
-    <MusicPlay key={revision} student={demo} preview />
+    <MusicPlay student={demo} preview />
     <Card>
       <CardHeader><CardTitle>📝 מה לשפר אחרי ההתנסות?</CardTitle></CardHeader>
       <CardContent className="space-y-3">

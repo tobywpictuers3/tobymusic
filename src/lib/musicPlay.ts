@@ -24,7 +24,7 @@ export interface MusicPlayAttempt {
   correct: number;
   total: number;
   input: 'touch' | 'keyboard' | 'midi';
-  mode?: 'reading' | 'rhythm' | 'ear';
+  mode?: 'reading' | 'timed' | 'rhythm' | 'ear';
 }
 export const MUSIC_LEVELS = [
   { id: 1, name: 'שליפה ראשונה', description: 'תו יחיד במפתח סול, רבעים' },
@@ -42,8 +42,13 @@ export const DEFAULT_MUSIC_SETTINGS: MusicPlaySettings = {
 export const NATURAL_MIDI = Array.from({ length: 53 }, (_, i) => i + 36)
   .filter(midi => ![1, 3, 6, 8, 10].includes(midi % 12));
 export const NOTE_NAMES = ['דו', 'דו♯', 'רה', 'רה♯', 'מי', 'פה', 'פה♯', 'סול', 'סול♯', 'לה', 'לה♯', 'סי'];
+/** Israeli professional octave names: A4 (MIDI 69, 440 Hz) is לה ראשון. */
+const OCTAVE_NAMES: Record<number, string> = {
+  1: 'תת־גדול', 2: 'גדול', 3: 'קטן', 4: 'ראשון', 5: 'שני', 6: 'שלישי', 7: 'רביעי',
+};
 export function noteName(midi: number): string {
-  return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+  const octave = Math.floor(midi / 12) - 1;
+  return NOTE_NAMES[((midi % 12) + 12) % 12] + ' ' + (OCTAVE_NAMES[octave] || String(octave));
 }
 const cap = (value: unknown, fallback: number, min: number, max: number) =>
   Number.isFinite(Number(value)) ? Math.max(min, Math.min(max, Math.round(Number(value)))) : fallback;
@@ -81,14 +86,15 @@ function nextPitch(allowed: number[], previous: number | undefined, stepsOnly: b
   return choose(allowed, random);
 }
 /** One event is a vertical slice: simultaneous treble/bass notes share an onset and duration. */
-export function generateMusicExercise(level: number, input: MusicPlaySettings, bars = 4, random: () => number = Math.random): MusicEvent[] {
+export function generateMusicExercise(level: number, input: MusicPlaySettings, bars = 4, random: () => number = Math.random, mode: 'reading' | 'timed' | 'rhythm' = 'timed'): MusicEvent[] {
   const s = normalizeMusicSettings(input);
   if (!canAccessMusicLevel(s, level)) throw new Error('LEVEL_LOCKED');
   const treble = naturalWithin(s.trebleFrom, s.trebleTo);
   const bass = naturalWithin(s.bassFrom, s.bassTo);
   if (!treble.length || !bass.length) throw new Error('EMPTY_NOTE_RANGE');
   const options: RhythmValue[] = level === 1 ? [1] : level === 2 ? s.rhythmValues.filter(v => v <= 1) : s.rhythmValues;
-  const durations: RhythmValue[] = options.length ? options : [1];
+  // Recall has exactly two beats per note, regardless of enabled rhythm values.
+  const durations: RhythmValue[] = mode === 'reading' ? [2] : options.length ? options : [1];
   const stepsOnly = level <= 2 || s.motion === 'steps';
   const previous: { treble?: number; bass?: number } = {};
   const events: MusicEvent[] = [];
@@ -138,4 +144,47 @@ export function scoreMusicEvent(expected: MusicEvent, played: Array<{ midi: numb
 export function scoreRhythmEvent(expected: MusicEvent, beats: number[]): { correct: boolean; timely: boolean } {
   const correct = beats.length === 1;
   return { correct, timely: correct && Math.abs(beats[0]-expected.startBeat) <= 0.25 };
+}
+
+/** Recall checks pitches, not onset timing. The UI assigns only notes played inside each two-beat window. */
+export function scoreRecallMusicEvent(expected: MusicEvent, played: Array<{ midi: number; beat: number }>) {
+  const result = scoreMusicEvent(expected, played);
+  return { correct: result.correct, timely: result.correct };
+}
+
+/** Strict playing: pitches AND every onset must fit the individually calibrated response window. */
+export function scoreTimedMusicEvent(
+  expected: MusicEvent,
+  played: Array<{ midi: number; beat: number }>,
+  toleranceBeats: number, offsetBeats = 0,
+) {
+  const pitches = scoreMusicEvent(expected, played).correct;
+  const timely = pitches && played.length === expected.notes.length &&
+    played.every(hit => Math.abs((hit.beat - expected.startBeat) - offsetBeats) <= toleranceBeats + 1e-9);
+  return { correct: timely, timely };
+}
+
+export interface TimingCalibration {
+  offsetBeats: number;
+  toleranceBeats: number;
+  deviationMs: number;
+  sampleCount: number;
+}
+/** Calibrate with observed click-to-tap offsets, rather than guessing reaction times.
+ *  One sample standard deviation; 50 ms minimum for consumer-device jitter.
+ *  Outlier-heavy calibrations are rejected instead of making a very wide pass window.
+ */
+export function computeTimingCalibration(offsetsSeconds: readonly number[], secondsPerBeat: number): TimingCalibration | null {
+  if (offsetsSeconds.length < 5 || !(secondsPerBeat > 0) ||
+      !offsetsSeconds.every(n => Number.isFinite(n))) return null;
+  const mean = offsetsSeconds.reduce((a,b)=>a+b,0) / offsetsSeconds.length;
+  const variance = offsetsSeconds.reduce((sum,n)=>sum+(n-mean)**2,0) / (offsetsSeconds.length-1);
+  const deviationSeconds = Math.sqrt(variance);
+  if (deviationSeconds > 0.18) return null;
+  return {
+    offsetBeats: mean / secondsPerBeat,
+    toleranceBeats: Math.max(0.05, deviationSeconds) / secondsPerBeat,
+    deviationMs: Math.round(deviationSeconds * 1000),
+    sampleCount: offsetsSeconds.length,
+  };
 }
