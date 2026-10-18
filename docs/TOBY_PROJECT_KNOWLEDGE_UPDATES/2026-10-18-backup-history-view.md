@@ -1,9 +1,9 @@
-# Backup-history view — 2026-10-18
+# Backup history: 24 raw versions — 2026-10-18
 
-Scope: **read-only UI presentation**. Do not change Dropbox uploads, synchronization, retention, backup files, or restore transactions.
+Manager-approved revised scope: show the **24 most recent raw backup versions** returned by the existing Dropbox Worker. No 12-hour sampling, no promise of two per day or 15 days of coverage, no pagination, and no server-side historical date search.
 
-The BackupHistory component now samples the versions returned by the existing Worker list endpoint to at most one snapshot per 00:00–11:59 and 12:00–23:59 slot in Asia/Jerusalem. It displays up to 30 sampled rows at first and can reveal additional *already fetched* rows in groups of 30. Existing restore actions remain unchanged.
+Only the existing history-screen `list_versions` request is changed from 25 to 24. The UI sorts by modification time, retains the existing date filter **within the fetched 24 only**, explicitly labels that restriction, and keeps all existing restore actions unchanged.
 
-**Not complete / not deployed:** The existing `workerApi.listVersions()` calls `list_versions?limit=25`. The Dropbox Worker source/cursor contract has not been established in the canonical repositories. The UI therefore shows a coverage warning if 25 raw versions were returned and does **not** claim that filtering dates searches all Dropbox backups. Reaching 30 sampled versions / 15 days and searching arbitrary old dates requires a server-side date/cursor pagination contract and tests against the actual Worker, respecting Cloudflare subrequest limits. Never treat loaded local results as the complete archive.
+Do not change versioned Dropbox uploads, backup retention, synchronization, or the historical Dropbox files. Other callers of `workerApi.listVersions()` (e.g. recovery fallback) will also receive one fewer result; verify recovery behavior before merge.
 
-Validation still needed: build + RTL UI test, verify server paging/date search against live Worker, and production deployment asset verification.
+Status: feature branch only; deployment and build/check verification are required before marking production complete.
