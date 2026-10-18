@@ -249,3 +249,12 @@ The payment data model already contains all 12 academic months, September throug
 - The active-note marker is now a small triangle away from the staff, not a frame crossing stave lines; the pale background is painted *behind* five staff lines and notes.
 - Browsers receive a beforeunload warning during active playing/calibration, and when the ear game is listening/answering. This cannot force a browser to block reload, but prevents many accidental interruptions.
 - Code/CI checks must be green; user-device audio, tablet performance, and unrelated extension/browser-triggered reloads remain to be tested with the teacher.
+
+
+## Audited correction after deletion of duplicated lessons (2026-10-18)
+
+- A manually deleted completed lesson changes source records, not a previously frozen annual close automatically. Reconciliation must not overwrite payments, financial receipts, settlement decisions, or student profile fields.
+- \`scripts/reconcile-closed-lessons.mjs\` audits the input JSON and can generate a separate proposal. Export requires an explicit \`--student-id\` for every targeted student and is blocked while any duplicate completed student+date+start/end slot remains.
+- Proposed changes are limited to closed annual year calculation fields and rollover opening lesson/bank values only where they still exactly match the previous auto-generated carryover. Customized opening terms are preserved.
+- Any difference between the recalculated financial close and \`priorYearBalances\` is reported for manager review, without changing a settled amount or issuing cash/refund changes. Never infer the 2026 annual tuition rate from the 2027 student card.
+- It is not invoked at startup and performs no Dropbox writes. Validate with \`node --test scripts/reconcile-closed-lessons.test.mjs\`. An operator must compare against canonical current Dropbox data, reconcile cash receipts, and verify a safe import through the existing staged JSON workflow.
