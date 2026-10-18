@@ -190,3 +190,32 @@ test('recall student choices cap added notes and BPM without granting pitch acce
   const profile=exports.normalizeRecallProfile({clefs:'bass',placement:'bass',bassNotes:[43,45],intervals:[1],voices:1,minEvents:2});
   assert.ok(exports.generateRecallExercise(profile,50,()=>0.2).every(ev=>ev.notes.every(n=>n.clef==='bass'&&[43,45].includes(n.midi))));
 });
+
+test('recall accepts slightly early onsets without stealing a note still needed by the previous event',()=>{
+  const recallExports={};
+  const src=readFileSync(new URL('../src/lib/musicRecall.ts',import.meta.url),'utf8');
+  const result=ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}});
+  vm.runInNewContext(result.outputText,{exports:recallExports});
+  const {assignRecallInput,RECALL_EARLY_WINDOW_BEATS}=recallExports;
+  assert.equal(RECALL_EARLY_WINDOW_BEATS,0.25);
+  const notes=[
+    {id:'0',startBeat:0,durationBeats:2,notes:[{midi:60,clef:'treble'}]},
+    {id:'1',startBeat:2,durationBeats:2,notes:[{midi:67,clef:'treble'}]},
+  ];
+  assert.equal(assignRecallInput(notes,0,-0.2,60,[]),0);
+  assert.equal(assignRecallInput(notes,0,-0.3,60,[]),null);
+  assert.equal(assignRecallInput(notes,0,1.82,67,[]),1);
+  assert.equal(assignRecallInput(notes,0,1.82,60,[]),0);
+  assert.equal(assignRecallInput(notes,0,1.82,67,[60]),1);
+  assert.equal(assignRecallInput(notes,0,1.74,67,[]),0);
+  assert.equal(assignRecallInput(notes,0,2.02,67,[]),1);
+  assert.equal(assignRecallInput(notes,1,3.9,67,[]),1);
+  assert.equal(assignRecallInput(notes,1,4.01,67,[]),null);
+  assert.equal(assignRecallInput(notes,0,NaN,60,[]),null);
+});
+test('notation repaints staff lines above hollow noteheads for unobscured G on a line',()=>{
+  const source=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
+  const front=source.indexOf("clef+'-foreground-'+k");
+  assert.ok(front>source.indexOf('<ellipse cx={noteX}'), 'foreground stave is painted after noteheads');
+  assert.ok(source.includes('strokeWidth={1.5} pointerEvents="none"'), 'foreground stave does not catch input');
+});

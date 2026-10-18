@@ -28,6 +28,32 @@ export interface RecallEvent {
   durationBeats: 2;
   notes: Array<{ clef: 'treble' | 'bass'; midi: number }>;
 }
+/** Recall is not rhythm scoring: allow a modest early pickup near the next note.
+ * Unlike strict performance, onsets inside the 2-beat window are otherwise unrestricted.
+ */
+export const RECALL_EARLY_WINDOW_BEATS = 0.25;
+/** Choose the intended column without stealing a still-needed note from the previous one. */
+export function assignRecallInput(
+  events: readonly RecallEvent[], currentIndex: number, beat: number,
+  pitch: number, recordedCurrent: readonly number[],
+): number | null {
+  const current = events[currentIndex];
+  if (!current || !Number.isFinite(beat)) return null;
+  if (beat < current.startBeat - RECALL_EARLY_WINDOW_BEATS) return null;
+  const next = events[currentIndex + 1];
+  if (next && beat >= next.startBeat - RECALL_EARLY_WINDOW_BEATS && beat < next.startBeat) {
+    const alreadyFilled = recordedCurrent.length >= current.notes.length;
+    const matchesNext = next.notes.some(n => n.midi === pitch);
+    const matchesUnansweredCurrent = current.notes.some(n => n.midi === pitch) &&
+      !recordedCurrent.includes(pitch);
+    if (alreadyFilled || (matchesNext && !matchesUnansweredCurrent)) return currentIndex + 1;
+  }
+  if (beat >= current.startBeat + current.durationBeats) {
+    return next && beat < next.startBeat + next.durationBeats ? currentIndex + 1 : null;
+  }
+  return currentIndex;
+}
+
 export const DEFAULT_RECALL_PREFERENCES: RecallPreferences = { extraEvents: 0, bpm: 60, clock: 'metronome', answer: 'play' };
 export const NATURAL_PITCHES = Array.from({length: 49}, (_,i)=>36+i).filter(n=>![1,3,6,8,10].includes(n%12));
 export const DEFAULT_RECALL_PROFILE: RecallProfile = {

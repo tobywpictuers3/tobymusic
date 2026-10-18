@@ -5,7 +5,7 @@ import { noteName, type MusicPlayAttempt } from '@/lib/musicPlay';
 import { detectRecallPitch } from '@/lib/recallMicrophone';
 import {
   getRecallLevels, getInitialRecallProfile, normalizeRecallPreferences, generateRecallExercise,
-  scoreRecallAnswers, type RecallEvent, type RecallPreferences, type RecallProfile,
+  scoreRecallAnswers, assignRecallInput, type RecallEvent, type RecallPreferences, type RecallProfile,
 } from '@/lib/musicRecall';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,6 +54,12 @@ function RecallNotation({events,index,profile}:{events:RecallEvent[];index:numbe
           {selected&&<path d={'M '+(x-8)+' '+(height-10)+' l 8 -10 l 8 10 Z'} fill="#b45309"/>}
         </g>;
       })}
+      {/* Repaint stave lines above the hollow noteheads so the line crossing a note (e.g. G) stays visible. */}
+      {clefs.map(clef=>Array.from({length:5},(_,k)=>
+        <line key={clef+'-foreground-'+k} x1={52} x2={787}
+          y1={linesBottom(clef)-k*12} y2={linesBottom(clef)-k*12}
+          stroke="#334155" strokeWidth={1.5} pointerEvents="none" />
+      ))}
     </svg>
   </div>;
 }
@@ -189,13 +195,16 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
   const addAnswer=useCallback((midi:number,input:PlayedInput)=>{
     const active=engine.current;
     if(!active||active.finished)return;
-    const index=active.index;
-    if(index<0||index>=active.events.length)return;
-    const expected=active.events[index];
+    const current=active.index;
+    if(current<0||current>=active.events.length)return;
+    let index=current;
     if(active.pref.clock==='metronome'){
-      const beats=(active.audio.currentTime-active.start)/ (60/active.pref.bpm);
-      if(beats<expected.startBeat||beats>=expected.startBeat+2)return;
+      const beat=(active.audio.currentTime-active.start)/(60/active.pref.bpm);
+      const chosen=assignRecallInput(active.events,current,beat,midi,active.hits.get(current)||[]);
+      if(chosen===null)return;
+      index=chosen;
     }
+    const expected=active.events[index];
     const recorded=active.hits.get(index)||[];
     if(recorded.length>=expected.notes.length)return;
     active.input=input;
@@ -343,7 +352,7 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
           </select>
         </label>
       </div>
-      <p className="text-xs text-muted-foreground">{prefs.clock==='elapsed'?'בלי מטרונום: השעון מודד את זמן התרגיל, וכל תגובה מקדמת לעמודה הבאה.':'עם מטרונום: אפשר לענות בכל רגע בתוך שתי הפעימות של העמודה.'} התווים מצוירים כראשי תווים בלבד, ללא רגל.</p>
+      <p className="text-xs text-muted-foreground">{prefs.clock==='elapsed'?'בלי מטרונום: השעון מודד את זמן התרגיל, וכל תגובה מקדמת לעמודה הבאה.':'עם מטרונום: אפשר לענות בכל רגע בתוך שתי הפעימות של העמודה. הקשה קרובה מעט לפני תחילת התו הבא (עד רבע פעימה) יכולה להיחשב עבורו.'} התווים מצוירים כראשי תווים בלבד, ללא רגל.</p>
       {!!events.length&&<RecallNotation events={events} index={cursor} profile={profile}/>}
       {!events.length&&<div className="rounded-xl border border-dashed p-7 text-center text-muted-foreground">בחרי הגדרות והתחילי את האימון.</div>}
       {countdown!==null&&<div role="status" className="text-3xl text-center font-bold text-amber-700">הכנה: {countdown}</div>}
@@ -377,7 +386,7 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
       </div>:<p className="text-sm">הקראה: בחרי את שם הצליל, או הפעילי זיהוי דיבור עברי.</p>}
       <p className="text-xs text-muted-foreground">לפני שימוש במקשי מחשב: העבירי את השפה לאנגלית (EN). נגינה: A S D F G H J K L; הקראה: הספרות 1–9.</p>
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-        {options.map((midi,i)=><button key={midi} type="button" disabled={!running||countdown!==null}
+        {options.map((midi,i)=><button key={midi} type="button" disabled={!running||(countdown!==null&&countdown>1)}
           onClick={()=>addAnswer(midi,'touch')} className="rounded-xl border-2 border-indigo-200 bg-white p-3 text-slate-900 min-h-14 hover:bg-indigo-100 active:bg-amber-100 disabled:opacity-50 touch-manipulation text-sm">
           <span className="block text-xs text-muted-foreground">{prefs.answer==='name'?i+1:i<9?'ASDFGHJKL'[i]:''}</span>
           {noteName(midi)}
