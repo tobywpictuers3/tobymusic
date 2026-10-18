@@ -482,6 +482,10 @@ class HybridSyncManager {
       'musicSystem_storeItems',
       'musicSystem_storePurchases',
       'musicSystem_integrationSettings',
+      // Note games: merged by id so results from a student's device are never overwritten.
+      'musicSystem_noteGameLevels',
+      'musicSystem_noteGameAssignments',
+      'musicSystem_noteGameResults',
     ];
 
     const directCopyKeys = ['musicSystem_studentStats', 'musicSystem_tithePaid'];
@@ -534,6 +538,9 @@ class HybridSyncManager {
       'musicSystem_perLessonPayments': 'perLessonPayments',
       'musicSystem_storeItems': 'storeItems',
       'musicSystem_storePurchases': 'storePurchases',
+      'musicSystem_noteGameLevels': 'noteGameLevels',
+      'musicSystem_noteGameAssignments': 'noteGameAssignments',
+      'musicSystem_noteGameResults': 'noteGameResults',
     };
 
     conflictKeys.forEach((key) => {
