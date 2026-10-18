@@ -47,12 +47,13 @@ export default function MusicPlaySettingsEditor({ student, onSaved }: Props) {
         <legend className="font-semibold px-1">מקצבים שהתלמידה למדה</legend>
         {([0.5,1,2,4] as const).map(v => (
           <label key={v} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={draft.rhythmValues.includes(v)} onChange={e => {
+            <input type="checkbox" disabled={v===1} checked={draft.rhythmValues.includes(v)} onChange={e => {
               const next = e.target.checked ? [...draft.rhythmValues, v] : draft.rhythmValues.filter(n=>n!==v);
               if (next.length) change({ rhythmValues: next });
             }} /> {v===0.5?'שמינית':v===1?'רבע':v===2?'חצי':'שלם'}
           </label>
         ))}
+      <p className="text-xs text-muted-foreground">ערך של רבע נשאר זמין תמיד לצורך תרגילי הבסיס.</p>
       </fieldset>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="space-y-1 text-sm">תנועת הצלילים

@@ -170,7 +170,7 @@ export default function MusicPlay({ student }: { student: Student }) {
   }, []);
   useEffect(() => {
     const map = ['a','s','d','f','g','h','j','k','l'];
-    const options = NATURAL_MIDI.filter(n=>n>=settings.trebleFrom && n<=settings.trebleTo);
+    const options = NATURAL_MIDI.filter(n=>level===4 ? n>=settings.bassFrom && n<=settings.bassTo : level>=5 ? (n>=settings.trebleFrom && n<=settings.trebleTo)||(n>=settings.bassFrom && n<=settings.bassTo) : n>=settings.trebleFrom && n<=settings.trebleTo);
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.ctrlKey || e.altKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName || '')) return;
       const index = map.indexOf(e.key.toLowerCase());
@@ -178,7 +178,7 @@ export default function MusicPlay({ student }: { student: Student }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settings.trebleFrom, settings.trebleTo, inputPitch]);
+  }, [settings.trebleFrom, settings.trebleTo, settings.bassFrom, settings.bassTo, level, inputPitch]);
   const connectMidi = async () => {
     const request = (navigator as Navigator & { requestMIDIAccess?: () => Promise<any> }).requestMIDIAccess;
     if (!request) { setMidiMessage('MIDI אינו נתמך בדפדפן זה. אפשר להשתמש במקלדת או במסך.'); return; }
@@ -279,6 +279,7 @@ export default function MusicPlay({ student }: { student: Student }) {
         </div>
         <div className="space-y-2">
           <div className="text-sm flex items-center gap-2"><Volume2 className="w-4 h-4"/> מקלדת נגינה על המסך · ניתן להקיש כמה צלילים באותה פעימה</div>
+          <p className="text-xs text-muted-foreground">במקלדת מחשב האותיות A, S, D, F, G, H, J, K, L מפעילות את תשעת הקלידים הראשונים המוצגים.</p>
           <div className="flex flex-wrap gap-1 justify-center">
             {keyboardNotes.map(n=><button type="button" key={n} onClick={()=>{currentInput.current='touch';inputPitch(n,true);}} className="rounded-md border bg-white text-slate-800 shadow-sm hover:bg-amber-100 active:bg-amber-200 min-w-12 min-h-14 p-2 font-semibold text-sm" aria-label={`נגן ${noteName(n)}`}>
               {noteName(n)}

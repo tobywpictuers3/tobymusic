@@ -195,7 +195,7 @@ const StudentDashboard = () => {
       <PaymentAlert studentId={student.id} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-11 gap-2 h-auto">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-12 gap-2 h-auto">
           <TabsTrigger value="practice">מעקב אימונים</TabsTrigger>
           <TabsTrigger value="music-play">🎹 TOBY PLAY</TabsTrigger>
           <TabsTrigger value="schedule" className="gap-2">

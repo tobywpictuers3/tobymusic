@@ -61,7 +61,7 @@ export function normalizeMusicSettings(raw?: Partial<MusicPlaySettings>): MusicP
   return {
     maxUnlockedLevel: cap(r.maxUnlockedLevel, 1, 1, MUSIC_LEVELS.length),
     trebleFrom, trebleTo, bassFrom, bassTo,
-    rhythmValues: rhythms.length ? rhythms : [1],
+    rhythmValues: [...new Set([1 as RhythmValue, ...rhythms])].sort((a,b)=>a-b),
     motion: r.motion === 'mixed' ? 'mixed' : 'steps',
     bpm: cap(r.bpm, 60, 40, 180),
     maxChordNotes: cap(r.maxChordNotes, 2, 2, 4),
@@ -106,8 +106,16 @@ export function generateMusicExercise(level: number, input: MusicPlaySettings, b
         notes.push({ clef, midi: root });
         if (level >= 6) {
           const rootIndex = allowed.indexOf(root);
-          const next = allowed[Math.min(allowed.length - 1, rootIndex + 2)];
-          if (next !== root && s.maxChordNotes >= 2) notes.push({ clef, midi: next });
+          // Build distinct, in-range stacked thirds; the configured chord size is per staff.
+          for (let voice = 1; voice < s.maxChordNotes; voice++) {
+            const offset = 2 * voice;
+            const candidate = rootIndex + offset < allowed.length
+              ? allowed[rootIndex + offset]
+              : rootIndex - offset >= 0 ? allowed[rootIndex - offset] : undefined;
+            if (candidate !== undefined && !notes.some(n => n.clef === clef && n.midi === candidate)) {
+              notes.push({ clef, midi: candidate });
+            }
+          }
         }
       });
       events.push({ id: `b${bar}-n${events.length}`, startBeat: beat, durationBeats: duration, notes });
