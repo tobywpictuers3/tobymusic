@@ -82,28 +82,9 @@ const asStorageRecord = (data: unknown): Record<string, unknown> | null => {
   return null;
 };
 
-// Read-only display sampling, in Israel-local half-day slots.
-const sampleHistory = (items: VersionInfo[]): VersionInfo[] => {
-  const seen = new Set<string>();
-  return [...items].filter(item => item.path && !Number.isNaN(Date.parse(item.server_modified)))
-    .sort((a,b) => Date.parse(b.server_modified) - Date.parse(a.server_modified))
-    .filter(item => {
-      const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem',
-        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' })
-        .formatToParts(new Date(item.server_modified));
-      const get = (type: string) => parts.find(p => p.type === type)?.value ?? '';
-      const slot = `${get('year')}-${get('month')}-${get('day')}:${Number(get('hour')) < 12 ? 'AM' : 'PM'}`;
-      if (seen.has(slot)) return false;
-      seen.add(slot);
-      return true;
-    });
-};
-
 const BackupHistory = () => {
   const [versions, setVersions] = useState<VersionInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(30);
-  const [historyIncomplete, setHistoryIncomplete] = useState(false);
 
   const [selectedVersion, setSelectedVersion] = useState<VersionInfo | null>(null);
 
@@ -228,8 +209,6 @@ const BackupHistory = () => {
 
 
       setVersions(sorted);
-      setVisibleCount(30);
-      setHistoryIncomplete(versionsArray.length >= 25);
       logger.info(`Loaded ${sorted.length} versions`);
     } else {
       logger.error('Failed to load versions:', result.error);
@@ -460,25 +439,21 @@ const BackupHistory = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const sampledVersions = sampleHistory(versions);
   const filteredVersions = (() => {
-    if (!dateFrom && !dateTo) return sampledVersions;
+    if (!dateFrom && !dateTo) return versions;
     const fromMs = dateFrom ? new Date(dateFrom + 'T00:00:00').getTime() : -Infinity;
     // If only "from" given, treat "to" as end of that same day for a single-date filter
     const toStr = dateTo || dateFrom;
     const toMs = toStr ? new Date(toStr + 'T23:59:59.999').getTime() : Infinity;
-    return sampledVersions.filter((v) => {
+    return versions.filter((v) => {
       const t = new Date(v.server_modified).getTime();
       return t >= fromMs && t <= toMs;
     });
   })();
 
-  const visibleVersions = filteredVersions.slice(0, visibleCount);
-
   const clearDateFilter = () => {
     setDateFrom('');
     setDateTo('');
-    setVisibleCount(30);
   };
 
   if (devMode) {
@@ -510,7 +485,7 @@ const BackupHistory = () => {
               <History className="h-5 w-5" />
               היסטוריית גיבויים
               {versions.length > 0 && (
-                <Badge variant="secondary">{sampledVersions.length} נקודות היסטוריות</Badge>
+                <Badge variant="secondary">{versions.length} גרסאות גיבוי</Badge>
               )}
             </CardTitle>
 
@@ -536,18 +511,16 @@ const BackupHistory = () => {
           <div className="space-y-4">
             <div className="p-4 bg-muted/50 rounded-lg">
               <p className="text-sm text-muted-foreground">
-                <strong>🔒 מקור האמת:</strong> הגיבויים נשמרים בדרופבוקס ללא שינוי. התצוגה מציגה לכל היותר גרסה אחת בכל 12 שעות (שעון ישראל).
+                <strong>🔒 מקור האמת:</strong> הגיבויים נשמרים בדרופבוקס ללא שינוי. המסך מציג עד 24 גרסאות גולמיות אחרונות כפי שהוחזרו מהשרת; אין בכך התחייבות לשני גיבויים ביום או ל־12 ימי היסטוריה.
                 <br />
                 לחצי על גרסה כדי לשחזר אותה.
               </p>
             </div>
 
-            {historyIncomplete && (
-              <div role="status" className="p-3 border rounded-lg text-sm">
-                רשימת השרת מוגבלת כרגע ל־25 גרסאות גולמיות. החיפוש פועל על הגרסאות שנטענו בלבד;
-                חיפוש ישן לפי תאריך וטעינה לאחור דורשים הרחבה של Dropbox Worker. הגיבויים אינם נמחקים.
-              </div>
-            )}
+            <div role="status" className="p-3 border rounded-lg text-sm">
+              סינון התאריך פועל רק על עד 24 הגרסאות האחרונות שנטענו. אין כרגע חיפוש בארכיון המלא לפי תאריך,
+              ואין שינוי בגיבויים השוטפים בדרופבוקס.
+            </div>
             {/* Date range filter */}
             <div className="p-4 border rounded-lg bg-card/50 space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium">
@@ -560,7 +533,7 @@ const BackupHistory = () => {
                   <input
                     type="date"
                     value={dateFrom}
-                    onChange={(e) => { setDateFrom(e.target.value); setVisibleCount(30); }}
+                    onChange={(e) => setDateFrom(e.target.value)}
                     className="px-3 py-2 rounded-md border bg-background text-sm"
                   />
                 </div>
@@ -569,7 +542,7 @@ const BackupHistory = () => {
                   <input
                     type="date"
                     value={dateTo}
-                    onChange={(e) => { setDateTo(e.target.value); setVisibleCount(30); }}
+                    onChange={(e) => setDateTo(e.target.value)}
                     className="px-3 py-2 rounded-md border bg-background text-sm"
                   />
                 </div>
@@ -581,8 +554,8 @@ const BackupHistory = () => {
                 )}
                 <div className="text-xs text-muted-foreground mr-auto">
                   {dateFrom || dateTo
-                    ? `מציג ${visibleVersions.length} מתוך ${filteredVersions.length} נקודות היסטוריות`
-                    : `מציג ${visibleVersions.length} מתוך ${sampledVersions.length} נקודות היסטוריות`}
+                    ? `מציג ${filteredVersions.length} מתוך ${versions.length} גרסאות שנטענו`
+                    : `סה״כ ${versions.length} גרסאות שנטענו`}
                   {' · '}
                   ניתן לשחזר הכל, רק אימונים, או הכל למעט אימונים מכל גרסה
                 </div>
@@ -621,7 +594,7 @@ const BackupHistory = () => {
                   </TableHeader>
 
                   <TableBody>
-                    {visibleVersions.map((version, index) => (
+                    {filteredVersions.map((version, index) => (
                       <TableRow
                         key={version.path}
                         className="cursor-pointer hover:bg-muted/50"
@@ -686,9 +659,6 @@ const BackupHistory = () => {
                 </Table>
               </div>
             )}
-          {filteredVersions.length > visibleCount && (
-            <Button variant="outline" onClick={() => setVisibleCount(current => current + 30)}>טען 30 נוספים</Button>
-          )}
           </div>
         </CardContent>
       </Card>
