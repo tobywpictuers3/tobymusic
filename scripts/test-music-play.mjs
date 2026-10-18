@@ -68,3 +68,29 @@ test('rhythm taps are judged at event onset independently of pitches', () => {
   assert.equal(exports.scoreRhythmEvent(ev,[3.38]).timely,false);
   assert.equal(exports.scoreRhythmEvent(ev,[3.1,3.2]).correct,false);
 });
+
+test('ear memory respects locked levels, treble and bass ranges', () => {
+  const earExports = {};
+  const earSource = readFileSync(new URL('../src/lib/musicEarGame.ts', import.meta.url), 'utf8');
+  const compiled = ts.transpileModule(earSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }, reportDiagnostics: true });
+  assert.equal(compiled.diagnostics?.length || 0, 0);
+  vm.runInNewContext(compiled.outputText, { exports: earExports, require: () => exports });
+  const { generateEarRound, scoreEarRound } = earExports;
+  const s = normalizeMusicSettings({ maxUnlockedLevel: 6, trebleFrom: 60, trebleTo: 64, bassFrom: 45, bassTo: 48, motion: 'steps' });
+  assert.throws(() => generateEarRound(7, s), /LEVEL_LOCKED/);
+  for (const level of [1,2,3,4,5,6]) {
+    for (const random of [() => 0, () => 0.999]) {
+      const r = generateEarRound(level, s, random);
+      assert.equal(new Set(r.choices).size, r.choices.length);
+      assert.ok(r.choices.length >= 2 && r.choices.length <= 4);
+      assert.ok(r.melody.every(m => r.choices.includes(m)));
+      assert.ok(r.melody.every(m => r.clef === 'bass' ? m >= 45 && m <= 48 : m >= 60 && m <= 64));
+      assert.equal(r.clef, level === 4 ? 'bass' : r.clef);
+      const exact = scoreEarRound(r.melody, r.melody);
+      assert.equal(exact.perfect, true);
+      assert.equal(exact.correct, exact.total);
+      assert.equal(scoreEarRound(r.melody, []).perfect, false);
+    }
+  }
+  assert.throws(() => generateEarRound(1, normalizeMusicSettings({ trebleFrom: 60, trebleTo: 60 })), /INSUFFICIENT_NOTES/);
+});
