@@ -22,6 +22,8 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: TOBY PLAY rules regression tests
         run: npm run test:music
+      - name: Closed-year reconciliation safety tests
+        run: node --test scripts/reconcile-closed-lessons.test.mjs
       - name: TypeScript diagnostic
         continue-on-error: true
         run: npx tsc --noEmit --pretty false
