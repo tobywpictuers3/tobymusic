@@ -71,7 +71,7 @@ function DateToggle() {
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const isStorybook = typeof window !== 'undefined' && window.location?.port === '6006';
-  const [activeTab, setActiveTab] = useState('journal');
+  const [activeTab, setActiveTab] = useState(() => typeof window !== 'undefined' && window.location.hash === '#music-play' ? 'music-play' : 'journal');
 
   const [user, setUser] = useState<any>(() => {
     const existing = getCurrentUser();
@@ -240,6 +240,8 @@ const AdminDashboard = () => {
                   תלמידות
                 </TabsTrigger>
 
+                <TabsTrigger value="music-play" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">🎹 TOBY PLAY · התנסות</TabsTrigger>
+
                 <TabsTrigger value="payments" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
                   <CreditCard className="h-4 w-4" />
                   תשלומים
@@ -249,8 +251,6 @@ const AdminDashboard = () => {
                   <Music className="h-4 w-4" />
                   הופעות
                 </TabsTrigger>
-
-                <TabsTrigger value="music-play" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">🎹 TOBY PLAY · התנסות</TabsTrigger>
 
                 <TabsTrigger value="practice" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">
                   <Trophy className="h-4 w-4" />

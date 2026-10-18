@@ -197,7 +197,7 @@ const StudentDashboard = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-12 gap-2 h-auto">
           <TabsTrigger value="practice">מעקב אימונים</TabsTrigger>
-          <TabsTrigger value="music-play">🎹 TOBY PLAY</TabsTrigger>
+          {student.musicPlaySettings && <TabsTrigger value="music-play">🎹 TOBY PLAY</TabsTrigger>}
           <TabsTrigger value="schedule" className="gap-2">
             <Calendar className="w-4 h-4" />
             מערכת
@@ -232,9 +232,9 @@ const StudentDashboard = () => {
           </BrandSection>
         </TabsContent>
 
-        <TabsContent value="music-play" className="fade-slide-in space-y-6">
+        {student.musicPlaySettings && <TabsContent value="music-play" className="fade-slide-in space-y-6">
           <MusicPlay student={student} />
-        </TabsContent>
+        </TabsContent>}
 
         <TabsContent value="schedule" className="fade-slide-in space-y-6">
           <Tabs defaultValue="weekly" className="space-y-6">

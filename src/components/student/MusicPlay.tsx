@@ -53,22 +53,23 @@ function staffY(note: MusicNote): number {
   const base = note.clef === 'treble' ? 64 : 43; // E4 or G2 = bottom staff line
   return bottom - (midiStep(note.midi) - midiStep(base)) * 6;
 }
-function Notation({ events, cursor, level, phase }: { events: MusicEvent[]; cursor: number; level: number; phase: number }) {
+function Notation({ events, cursor, level, phase, rhythmOnly }: { events: MusicEvent[]; cursor: number; level: number; phase: number; rhythmOnly?: boolean }) {
   const first = Math.max(0, cursor - 1);
   const displayed = events.slice(first, first + 8);
-  const clefs: Array<'treble'|'bass'> = level === 4 ? ['bass'] : level >= 5 ? ['treble','bass'] : ['treble'];
+  const doubleStaff = level >= 5 && !rhythmOnly;
+  const clefs: Array<'treble'|'bass'> = rhythmOnly ? ['treble'] : level === 4 ? ['bass'] : level >= 5 ? ['treble','bass'] : ['treble'];
   const width = 870;
   const lineStart = 54;
   const eventX = (i: number) => 125 + 94 * i;
   return (
     <div className="overflow-x-auto rounded-xl border bg-white p-1 shadow-inner" dir="ltr" aria-label="תווי המנגינה, התו הפעיל מסומן בזהב">
-      <svg viewBox={`0 0 ${width} ${level>=5 ? 282:180}`} className="w-full min-w-[590px] text-slate-900" role="img">
-        <rect x={0} y={0} width={width} height={level>=5 ? 282:180} fill="#fffefa" />
+      <svg viewBox={`0 0 ${width} ${doubleStaff ? 282:180}`} className="w-full min-w-[590px] text-slate-900" role="img">
+        <rect x={0} y={0} width={width} height={doubleStaff ? 282:180} fill="#fffefa" />
         {clefs.map(clef => {
           const bottom = clef === 'treble' ? 112 : 222;
           return <g key={clef}>
             {Array.from({length: 5}, (_,i) => <line key={i} x1={lineStart} x2={width-18} y1={bottom-i*12} y2={bottom-i*12} stroke="#475569" strokeWidth="1.2"/>)}
-            <text x="14" y={bottom-13} fontSize="22" fontWeight="600" fill="#1e293b">{clef==='treble'?'𝄞':'𝄢'}</text>
+            <text x="12" y={clef==='treble'?bottom+7:bottom-11} fontFamily="Noto Music, Segoe UI Symbol, serif" fontSize={clef==='treble'?55:48} fontWeight="600" fill="#1e293b">{clef==='treble'?'𝄞':'𝄢'}</text>
           </g>;
         })}
         <text x="62" y="35" fontSize="18" fontWeight="bold">4/4</text>
@@ -78,9 +79,9 @@ function Notation({ events, cursor, level, phase }: { events: MusicEvent[]; curs
           const active = actualIndex === cursor;
           const opacity = actualIndex < cursor ? 0.35 : 1;
           return <g key={ev.id} opacity={opacity}>
-            {active && <rect x={x-40} y={26} width={78} height={level>=5?238:125} rx={11} fill="#fef3c7" stroke="#f59e0b" strokeWidth="1.8" />}
-            {ev.notes.map((n,j) => {
-              const y = staffY(n);
+            {active && <rect x={x-40} y={26} width={78} height={doubleStaff?238:125} rx={11} fill="#fef3c7" stroke="#f59e0b" strokeWidth="1.8" />}
+            {(rhythmOnly ? [{ clef: 'treble' as const, midi: 69 }] : ev.notes).map((n,j) => {
+              const y = rhythmOnly ? 88 : staffY(n);
               const bottom = n.clef === 'treble' ? 112 : 222;
               const group = ev.notes.filter(e => e.clef===n.clef);
               const noteX = x + (group.length>1 && group.indexOf(n)%2===1 ? 7 : 0);
@@ -92,10 +93,11 @@ function Notation({ events, cursor, level, phase }: { events: MusicEvent[]; curs
                 {ev.durationBeats===0.5 && <path d={`M ${noteX+10} ${y-34} Q ${noteX+32} ${y-20} ${noteX+20} ${y-6}`} fill="none" stroke="#1e293b" strokeWidth="3"/>}
               </g>;
             })}
-            {active && <rect x={x-35} y={level>=5?258:151} width={Math.max(1,70*phase)} height="4" rx="2" fill="#f59e0b" />}
+            {Math.abs((ev.startBeat+ev.durationBeats)/4-Math.round((ev.startBeat+ev.durationBeats)/4)) < 0.0001 && <line x1={x+44} x2={x+44} y1="64" y2={doubleStaff?222:112} stroke="#334155" strokeWidth="1.6"/>}
+            {active && <rect x={x-35} y={doubleStaff?258:151} width={Math.max(1,70*phase)} height="4" rx="2" fill="#f59e0b" />}
           </g>;
         })}
-        <text x="10" y={level>=5?277:176} fontSize="12" fill="#475569">TOBY PLAY</text>
+        <text x="10" y={doubleStaff?277:176} fontSize="12" fill="#475569">TOBY PLAY</text>
       </svg>
     </div>
   );
@@ -304,7 +306,7 @@ export default function MusicPlay({ student, preview = false }: { student: Stude
         </div>
         {midiMessage && <p className="text-xs text-muted-foreground" role="status">{midiMessage}</p>}
         {audioError && <p className="text-sm text-destructive" role="alert">{audioError}</p>}
-        {events.length>0 && <Notation events={events} cursor={cursor} level={level} phase={phase}/>}
+        {events.length>0 && <Notation events={events} cursor={cursor} level={level} phase={phase} rhythmOnly={mode==='rhythm'}/>}
         {!events.length && <div className="min-h-48 rounded-xl border border-dashed flex items-center justify-center bg-muted/20 text-center p-5">
           <p>בחרי רמה ולחצי על התחלת אימון. המנגינה תופיע כשורת תווים, ותתקדם לפי משך כל צליל.</p>
         </div>}
