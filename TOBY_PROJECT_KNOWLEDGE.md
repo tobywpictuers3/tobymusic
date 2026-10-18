@@ -242,3 +242,13 @@ The payment data model already contains all 12 academic months, September throug
 - Names on buttons/reports use Israeli octave terminology: `C4=דו ראשון`, `A4=לה ראשון=440Hz`, `C5=דו שני`, `C3=דו קטן`, `C2=דו גדול`; MIDI values remain unmodified.
 - PC note-key instructions explicitly ask to switch keyboard layout to English (EN).
 - Continuous React notation state updates are rate-limited (~8 fps while audio timing is on the Web Audio clock), and the teacher sandbox no longer forces remount through `key={revision}`. No global app reload or sync behavior is changed. Browser-level reload, actual tablet input jitter, and student score persistence still require production/manual verification.
+
+
+## Audited correction after deletion of duplicated lessons (2026-10-18)
+
+- A completed lesson deleted after a year was closed changes the canonical live lesson count, **not** the frozen close automatically. Never silently overwrite prior-year settlements, receipts, payments or manual opening terms during reconciliation.
+- `scripts/reconcile-closed-lessons.mjs` produces a field-level correction **proposal** from the current JSON, identifying differences in completed lessons, remaining bank notes, sixths, final target and carried lesson numbering. It preserves the input and all other buckets; `--output` creates a separate file, never writes Dropbox or overwrites the source.
+- Next-year rollover starts are adjusted in a proposal only when they exactly match the historical previous-year carryover (a manual override is preserved). Student profile numbering is not automatically overwritten.
+- Prior-year-balance settlements remain untouched even when proposed financial balances differ. A `settlement_needs_manager_review` entry is mandatory; refund receipts or cash transfers must be verified before money is executed.
+- The full-year 2026 tuition rate and manually negotiated tuition changes must be independently verified per year; never infer a closed-year rate from a 2027 student card.
+- Run `node --test scripts/reconcile-closed-lessons.test.mjs` for safety and idempotency regression. The utility is not scheduled and does not run on app startup.
