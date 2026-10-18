@@ -210,13 +210,13 @@ The payment data model already contains all 12 academic months, September throug
 
 
 ## TOBY PLAY music training (feature branch, 2026-10-18)
-- Feature branch `feature/toby-play-music-training-20261018` introduces a first playable vertical slice, **not yet deployed**.
+- First TOBY PLAY slice was merged from `feature/toby-play-music-training-20261018` at student-repo commit `cbf07c2051d7e70994f2270d5280ffd9b04eae97` and deployed on 2026-10-18 via website-repo Actions run `39137512409`. The `deploy-students` job successfully verified the exact built asset on `students.tobymusic.club`; the unchanged public website deploy job was skipped.
 - Admin assigns `Student.musicPlaySettings` via the new "רמות אימון" control inside each student card; it uses the existing `updateStudent` storage/Dropbox synchronization mechanism. The highest opened level unlocks all lower levels; all higher levels are disabled for the student. An unconfigured student defaults to level 1.
 - The 6 initial tiers are: basic treble, continuous treble, extended treble, bass, grand staff, and grand staff with multiple noteheads. Each exercise is constrained by the student's treble/bass natural-note range, approved rhythmic durations and steps/mixed motion. Four 4/4 bars are generated as exact beat sums.
 - Student dashboard adds `TOBY PLAY` with a horizontal notation strip: current event highlighted, subsequent events visible, progress moves after the event's beat duration, and metronome offers four count-in beats. Touch, computer keys and supported Web MIDI are prototype inputs; microphone pitch recognition is **not implemented**.
 - Individual event evaluation compares expected and played pitches and onsets. Recent attempts (max 30) are stored additively in the student's data object; this is a preliminary client-side write, **not a verified multi-device append-only receipt protocol**. Don't claim cloud durability until actual production sync read-back is verified.
 - Current notation is a simple SVG prototype (individual eighth flags; no beaming, rests, accidentals or imported scores). Full engraving, polyphonic timing calibration and double-staff refinements still need quality checks and real-instrument tests.
-- Test in the isolated dev environment before any merge; require typecheck, build, multi-device sync verification, correct lower-level access, no leaks above assigned ranges, and accurate grand-staff/chord notation. Do not deploy from student main until verified and approved.
+- Initial GitHub checks (`npm run test:music`, `npx tsc --noEmit`, `npm run build`) passed before release. The teacher studio is now available for interactive product review, but real-instrument/browser tests, multi-device Dropbox read-back checks for recorded attempts, and professional engraving/notation checks are **still pending**. Do not describe these unverified capabilities as production-complete.
 
 - Music rules regression tests are available via `npm run test:music` and run in the PR validation workflow before the production build.
 
