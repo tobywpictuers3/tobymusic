@@ -220,15 +220,43 @@ test('notation repaints staff lines above hollow noteheads for unobscured G on a
   assert.ok(source.includes('strokeWidth={1.5} pointerEvents="none"'), 'foreground stave does not catch input');
 });
 
-test('personal recall displays computer-key pitch map immediately under answer pads', () => {
+test('recall keyboard shortcuts match real English and Hebrew physical keys and no shortcut for over 9 notes',()=> {
+  const recallExports={};
+  const src=readFileSync(new URL('../src/lib/musicRecall.ts',import.meta.url),'utf8');
+  const compiled=ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020},reportDiagnostics:true});
+  assert.equal(compiled.diagnostics?.length||0,0);
+  vm.runInNewContext(compiled.outputText,{exports:recallExports});
+  const {resolveRecallComputerPitch:resolve,RECALL_ENGLISH_KEYS:english,RECALL_HEBREW_KEYS:hebrew}=recallExports;
+  assert.deepEqual([...english],['A','S','D','F','G','H','J','K','L']);
+  assert.deepEqual([...hebrew],['ש','ד','ג','כ','ע','י','ח','ל','ך']);
+  const pitches=[60,62,64,65,67,69,71,72,74];
+  pitches.forEach((pitch,i)=>{
+    assert.equal(resolve({code:'Key'+english[i],key:english[i].toLowerCase()},pitches,'play'),pitch);
+    assert.equal(resolve({code:'Key'+english[i],key:hebrew[i]},pitches,'play'),pitch);
+    assert.equal(resolve({key:hebrew[i]},pitches,'play'),pitch);
+    assert.equal(resolve({code:'Digit'+(i+1),key:String(i+1)},pitches,'name'),pitch);
+    assert.equal(resolve({code:'Numpad'+(i+1),key:String(i+1)},pitches,'name'),pitch);
+  });
+  assert.equal(resolve({code:'KeyA',key:'ש'},pitches,'name'),null);
+  assert.equal(resolve({code:'Digit1',key:'1'},pitches,'play'),null);
+  assert.equal(resolve({key:'A'},[60,62,64],'play'),60);
+  assert.equal(resolve({key:'ש'},[60,62,64],'play'),60);
+  assert.equal(resolve({code:'KeyA',key:'ש'},[60,62,64,65,67,69,71,72,74,76],'play'),null);
+  assert.equal(resolve({code:'Digit1',key:'1'},[60,62,64,65,67,69,71,72,74,76],'name'),null);
+  assert.equal(resolve({key:'ש'},[],'play'),null);
+});
+
+test('recall stage presents pitch-height stepped touch buttons and hides computer keyboard during play',()=>{
   const component=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
-  assert.ok(component.includes("const keyboardKeys=prefs.answer==='name'?'123456789':'ASDFGHJKL';"));
-  assert.ok(component.includes("keyboardKeys.indexOf(e.key.toUpperCase())"), 'key input must use same mapping as legend');
-  assert.ok(component.includes('options.slice(0,keyboardKeys.length).map((midi,i)'), 'only genuinely bound pitches are labelled');
-  assert.ok(component.includes("{noteName(midi)}"), 'keyboard legend includes exact octave-specific pitch name');
-  const pads=component.indexOf('כפתורי תשובה על המסך');
-  const map=component.indexOf('מפת מקשי המחשב לתווים המשתתפים בתרגיל');
-  const piano=component.indexOf('מקשי הפסנתר המותרים');
-  assert.ok(pads>0&&pads<map&&map<piano, 'computer keyboard map appears after on-screen pads and before piano illustration');
-  assert.ok(component.includes('options.length>keyboardKeys.length'), 'unmapped notes are explicitly disclosed');
+  assert.ok(component.includes("const canUseComputerKeyboard=options.length>0&&options.length<=RECALL_ENGLISH_KEYS.length"));
+  assert.ok(component.includes("resolveRecallComputerPitch(e,options,prefs.answer)"));
+  assert.ok(component.includes("Math.round((diatonicHeight(midi)-lowPitchHeight)*pixelPerStep)"),'height must depend on musical pitch');
+  assert.ok(component.includes("role=\"group\" aria-label=\"סולם לחצני תווים עולה\""));
+  assert.ok(component.includes('!running&&canUseComputerKeyboard'),'computer keyboard disappears during a live exercise');
+  assert.ok(component.includes('!running&&options.length>RECALL_ENGLISH_KEYS.length'),'no computer key reference on >9 pitch range');
+  const touch=component.indexOf('לחצני תשובה — הצלילים עולים בגובה');
+  const keyboard=component.indexOf('מקלדת מחשב מוארת — הצלילים המשתתפים');
+  assert.ok(touch>0&&keyboard>touch,'keyboard reference lives directly below on-screen pads');
+  assert.ok(!component.includes('מקשי הפסנתר המותרים'),'organ piano illustration removed');
+  assert.ok(!component.includes('canShowPiano'),'legacy organ logic removed');
 });
