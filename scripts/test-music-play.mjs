@@ -260,3 +260,19 @@ test('recall stage presents pitch-height stepped touch buttons and hides compute
   assert.ok(!component.includes('מקשי הפסנתר המותרים'),'organ piano illustration removed');
   assert.ok(!component.includes('canShowPiano'),'legacy organ logic removed');
 });
+
+test('DIAGNOSTIC ONLY: compare live TOBY PLAY asset with released recall UI', {timeout:45000},async()=>{
+  const base='https://students.tobymusic.club';
+  const htmlResponse=await fetch(base+'/?asset-probe=20261019',{cache:'no-store',signal:AbortSignal.timeout(15000)});
+  assert.equal(htmlResponse.status,200,'Live students HTML HTTP status');
+  const html=await htmlResponse.text();
+  const match=html.match(/<script[^>]*src=["']([^"']*\/assets\/index-[^"']+\.js)["']/);
+  assert.ok(match,'Live Vite HTML should identify a hashed main JS asset');
+  const url=new URL(match[1],base);
+  const jsResponse=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(20000)});
+  assert.equal(jsResponse.status,200,'The referenced production asset is fetchable');
+  const js=await jsResponse.text();
+  const markers=['מקלדת מחשב מוארת','סולם לחצני תווים עולה','מעל תשעה צלילים אין קלט ממקלדת מחשב'];
+  console.log('LIVE_ASSET_PROBE',JSON.stringify({asset:url.pathname,bytes:js.length,markers:markers.map(text=>({name:text,found:js.includes(text)}))}));
+  assert.ok(markers.every(marker=>js.includes(marker)),'Production students JS asset is missing the 2026-10-19 personalized recall release');
+});
