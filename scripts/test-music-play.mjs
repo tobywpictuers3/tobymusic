@@ -246,17 +246,69 @@ test('recall keyboard shortcuts match real English and Hebrew physical keys and 
   assert.equal(resolve({key:'ש'},[],'play'),null);
 });
 
-test('recall stage presents pitch-height stepped touch buttons and hides computer keyboard during play',()=>{
-  const component=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
-  assert.ok(component.includes("const canUseComputerKeyboard=options.length>0&&options.length<=RECALL_ENGLISH_KEYS.length"));
-  assert.ok(component.includes("resolveRecallComputerPitch(e,options,prefs.answer)"));
-  assert.ok(component.includes("Math.round((diatonicHeight(midi)-lowPitchHeight)*pixelPerStep)"),'height must depend on musical pitch');
-  assert.ok(component.includes("role=\"group\" aria-label=\"סולם לחצני תווים עולה\""));
-  assert.ok(component.includes('!running&&canUseComputerKeyboard'),'computer keyboard disappears during a live exercise');
-  assert.ok(component.includes('!running&&options.length>RECALL_ENGLISH_KEYS.length'),'no computer key reference on >9 pitch range');
-  const touch=component.indexOf('לחצני תשובה — הצלילים עולים בגובה');
-  const keyboard=component.indexOf('מקלדת מחשב מוארת — הצלילים המשתתפים');
-  assert.ok(touch>0&&keyboard>touch,'keyboard reference lives directly below on-screen pads');
-  assert.ok(!component.includes('מקשי הפסנתר המותרים'),'organ piano illustration removed');
-  assert.ok(!component.includes('canShowPiano'),'legacy organ logic removed');
+test('voice name mode and played-pitch mode have separate onscreen interfaces',()=>{
+  const comp=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
+  assert.ok(comp.includes('שליפה בהקראה — לומר / לבחור שם תו'));
+  assert.ok(comp.includes('שליפה בנגינה — לזהות גובה הצליל'));
+  assert.ok(comp.includes("prefs.answer==='name'?<section"),'name-only touch controls');
+  assert.ok(comp.includes('לחצני שמות הצלילים'));
+  assert.ok(comp.includes('RecallScreenPiano allowed={options}'));
+  assert.ok(comp.includes('RecallScreenFlute allowed={options}'));
+  assert.ok(comp.includes('מקלדת MIDI'));
+  assert.ok(comp.includes('זיהוי גובה צליל מהמיקרופון'));
+  assert.ok(comp.includes('זיהוי שמות תווים במיקרופון'));
+  assert.ok(comp.includes("!running&&canUseComputerKeyboard"),'physical keyboard hints hidden while active');
+  assert.ok(comp.includes('resolveRecallComputerPitch(e,options,prefs.answer)'));
+  assert.ok(comp.includes('pitch!==input.lastFiredPitch'), 'held pitch should not spam multiple notes');
+  assert.ok(comp.includes('speechRetry.current=setTimeout'), 'speech restarts after browser recognition endpoint closes');
+  assert.ok(!comp.includes('canShowPiano'), 'legacy static organ illustration not restored');
+});
+
+test('virtual concert flute recognizes natural pitches only from valid fingering and chosen register',()=>{
+  const fluteExports={};
+  const source=readFileSync(new URL('../src/lib/recallFlute.ts',import.meta.url),'utf8');
+  const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020},reportDiagnostics:true});
+  assert.equal(compiled.diagnostics?.length||0,0);
+  vm.runInNewContext(compiled.outputText,{exports:fluteExports});
+  const {recognizeRecallFluteFingering:resolve,SUPPORTED_FLUTE_NOTES:notes}=fluteExports;
+  assert.equal(notes.length,15,'natural pitches C4 through C6');
+  const fingerings=[
+    [60,4,['T','L1','L2','L3','R1','R2','R3','C']],
+    [62,4,['T','L1','L2','L3','R1','R2','R3']],
+    [64,4,['T','L1','L2','L3','R1','R2','Eb']],
+    [65,4,['T','L1','L2','L3','R1','Eb']],
+    [67,4,['T','L1','L2','L3','Eb']],
+    [69,4,['T','L1','L2','Eb']],
+    [71,4,['T','L1','Eb']],
+    [72,5,['L1','Eb']],
+    [74,5,['T','L2','L3','R1','R2','R3']],
+    [76,5,['T','L1','L2','L3','R1','R2','Eb']],
+    [77,5,['T','L1','L2','L3','R1','Eb']],
+    [79,5,['T','L1','L2','L3','Eb']],
+    [81,5,['T','L1','L2','Eb']],
+    [83,5,['T','L1','Eb']],
+    [84,6,['L1','Eb']],
+  ];
+  const allowed=fingerings.map(x=>x[0]);
+  for(const [midi,register,fingers] of fingerings) {
+    assert.equal(resolve(fingers,register,allowed),midi);
+    assert.equal(resolve([...fingers,'unknown'],register,allowed),null);
+    assert.equal(resolve(fingers,register,[]),null);
+  }
+  assert.equal(resolve(['L1','Eb'],4,allowed),null);
+  assert.equal(resolve(['L1','Eb'],5,[84]),null,'cannot play C6 with fifth-octave selection');
+  assert.equal(resolve(['L1','Eb'],6,allowed),84);
+  assert.equal(resolve(['T'],4,allowed),null);
+});
+
+test('on-screen piano and flute controls deliver only permitted touch pitches',()=>{
+  const comp=readFileSync(new URL('../src/components/student/MusicRecallInstruments.tsx',import.meta.url),'utf8');
+  assert.ok(comp.includes('function RecallScreenPiano')||comp.includes('export function RecallScreenPiano'));
+  assert.ok(comp.includes('export function RecallScreenFlute'));
+  assert.ok(comp.includes('disabled={!active||!allowed.includes(midi)}'));
+  assert.ok(comp.includes('recognizeRecallFluteFingering(pressed,register,supported)'));
+  assert.ok(comp.includes('onAnswer(note)'));
+  assert.ok(comp.includes('aria-pressed={pressed.includes(finger)}'),'flute finger keys respond to touch');
+  assert.ok(comp.includes('אפשר לגלול לרוחב'));
+  assert.ok(comp.includes('אין צלילים בתחום החליל הווירטואלי'));
 });
