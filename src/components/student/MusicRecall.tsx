@@ -5,7 +5,9 @@ import { noteName, type MusicPlayAttempt } from '@/lib/musicPlay';
 import { detectRecallPitch } from '@/lib/recallMicrophone';
 import {
   getRecallLevels, getInitialRecallProfile, normalizeRecallPreferences, generateRecallExercise,
-  scoreRecallAnswers, assignRecallInput, type RecallEvent, type RecallPreferences, type RecallProfile,
+  scoreRecallAnswers, assignRecallInput, resolveRecallComputerPitch,
+  RECALL_ENGLISH_KEYS, RECALL_HEBREW_KEYS,
+  type RecallEvent, type RecallPreferences, type RecallProfile,
 } from '@/lib/musicRecall';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,11 +20,13 @@ type Running = {
   pref:RecallPreferences; input:PlayedInput; level:number; profileId:string;
 };
 const NATURAL_STEPS:Record<number,number>={0:0,2:1,4:2,5:3,7:4,9:5,11:6};
+function diatonicHeight(midi:number):number {
+  return Math.floor(midi/12)*7+NATURAL_STEPS[midi%12];
+}
 function staffPosition(midi:number,clef:'treble'|'bass') {
   const base=clef==='treble'?64:43;
   const bottom=clef==='treble'?122:244;
-  const step=(n:number)=>Math.floor(n/12)*7+NATURAL_STEPS[n%12];
-  return bottom-(step(midi)-step(base))*6;
+  return bottom-(diatonicHeight(midi)-diatonicHeight(base))*6;
 }
 function RecallNotation({events,index,profile}:{events:RecallEvent[];index:number;profile:RecallProfile}) {
   const from=Math.max(0,index-1);
@@ -117,12 +121,12 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
   const frame=useRef(0);
   const media=useRef<{stream:MediaStream;ctx:AudioContext;analyser:AnalyserNode;buffer:Float32Array<ArrayBuffer>;lastPitch:number|null;since:number;lastInputAt:number}|null>(null);
   const speech=useRef<BrowserSpeech|null>(null);
-  const keyInput=useRef<number[]>([]);
   const alive=useRef(true);
-  const currentEvent=events[cursor];
   const options=useMemo(()=>profile?[...new Set([...(profile.clefs!=='bass'?profile.trebleNotes:[]),...(profile.clefs!=='treble'?profile.bassNotes:[])])].sort((a,b)=>a-b):[],[profile]);
-  const keyboardKeys=prefs.answer==='name'?'123456789':'ASDFGHJKL';
-  const canShowPiano=options.length>0&&options.length<=9&&options.at(-1)!-options[0]<=14&&profile?.clefs!=='both';
+  const canUseComputerKeyboard=options.length>0&&options.length<=RECALL_ENGLISH_KEYS.length;
+  const lowPitchHeight=options.length?diatonicHeight(options[0]):0;
+  const pitchSpan=options.length?diatonicHeight(options[options.length-1])-lowPitchHeight:0;
+  const pixelPerStep=Math.min(12,188/Math.max(1,pitchSpan));
   const stopListening=useCallback(()=>{
     if(speech.current){try{speech.current.onend=null;speech.current.stop();}catch{}speech.current=null;}
     if(media.current){
@@ -306,25 +310,20 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
   };
   useEffect(()=>{
     const onKey=(e:KeyboardEvent)=>{
-      if(e.repeat||e.ctrlKey||e.altKey||e.metaKey||/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName||''))return;
+      if(e.repeat||e.isComposing||e.ctrlKey||e.altKey||e.metaKey)return;
+      const target=e.target as HTMLElement|null;
+      if(target&&(target.isContentEditable||/INPUT|TEXTAREA|SELECT/.test(target.tagName)))return;
       if(!engine.current||engine.current.finished)return;
-      const keyIndex=keyboardKeys.indexOf(e.key.toUpperCase());
-      if(keyIndex>=0&&options[keyIndex]!==undefined){
-        e.preventDefault();
-        addAnswer(options[keyIndex],'keyboard');
-      }
+      const pitch=resolveRecallComputerPitch(e,options,prefs.answer);
+      if(pitch!==null){e.preventDefault();addAnswer(pitch,'keyboard');}
     };
     window.addEventListener('keydown',onKey);
     return()=>window.removeEventListener('keydown',onKey);
-  },[keyboardKeys,options,addAnswer]);
+  },[prefs.answer,options,addAnswer]);
   if(!profile)return <div className="rounded-xl border p-5 text-sm" dir="rtl">
     <strong>המורה עדיין לא הגדירה לך רמת שליפה אישית.</strong>
     <p>יש להגדיר ולאשר את הרמה הראשונה דרך ״רמות אימון״ בכרטיס התלמידה.</p>
   </div>;
-  const whitePitchClasses=[0,2,4,5,7,9,11];
-  const startPiano=Math.floor(options[0]/12)*12;
-  const endPiano=Math.ceil((options.at(-1)!+1)/12)*12;
-  const whitePitches=Array.from({length:endPiano-startPiano},(_,i)=>startPiano+i).filter(n=>whitePitchClasses.includes(n%12));
   return <Card className="border-indigo-300" dir="rtl">
     <CardHeader><CardTitle>🎼 שליפת תווים — אימון אישי</CardTitle>
       <p className="text-sm text-muted-foreground">אין רמות קבועות: כל רמה נקבעת על ידי המורה עבור התלמידה הזאת בלבד.</p></CardHeader>
@@ -370,43 +369,40 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
       {running&&prefs.answer==='name'&&<p className="text-xs text-muted-foreground">זיהוי דיבור עברי תלוי בדפדפן, ועשוי להעביר שמע לשירות הזיהוי שלו. לחיצה על כפתורי התווים אינה דורשת מיקרופון.</p>}
       {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
       {speechMessage&&<p role="status" className="text-xs text-muted-foreground">{speechMessage}</p>}
-      <div className="space-y-2">
-        <p className="text-sm font-semibold">כפתורי תשובה על המסך</p>
-        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-          {options.map((midi,i)=><button key={midi} type="button" disabled={!running||(countdown!==null&&countdown>1)}
-            onClick={()=>addAnswer(midi,'touch')} className="rounded-xl border-2 border-indigo-200 bg-white p-2 text-slate-900 min-h-14 hover:bg-indigo-100 active:bg-amber-100 disabled:opacity-50 touch-manipulation text-sm">
-            <span className="block font-semibold">{noteName(midi)}</span>
-            <span className="block text-[11px] text-slate-600">{i<keyboardKeys.length?'מקש '+keyboardKeys[i]:'מסך / MIDI'}</span>
-          </button>)}
-        </div>
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 text-slate-900" aria-label="מפת מקשי המחשב לתווים המשתתפים בתרגיל">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-sm font-semibold">⌨️ מקלדת המחשב — מקש לכל צליל בתרגיל</p>
-            <p className="text-xs">{prefs.answer==='play'?'העבירי את שפת המקלדת לאנגלית (EN)':'להקראת שמות תווים השתמשי במקשי הספרות'}</p>
+      <div className="space-y-2" aria-label="לחצני התווים לפי הגובה המוזיקלי">
+        <p className="text-sm font-semibold">לחצני תשובה — הצלילים עולים בגובה משמאל לימין</p>
+        <div dir="ltr" className="rounded-xl border border-indigo-100 bg-slate-50/60 p-2 overflow-x-auto" role="group" aria-label="סולם לחצני תווים עולה">
+          <div className="flex min-w-max items-end gap-2 pt-2">
+            {options.map(midi=><button key={midi} type="button" disabled={!running||(countdown!==null&&countdown>1)}
+              onClick={()=>addAnswer(midi,'touch')}
+              style={{marginBottom:Math.round((diatonicHeight(midi)-lowPitchHeight)*pixelPerStep)}}
+              aria-label={noteName(midi)}
+              className="min-w-[84px] min-h-14 shrink-0 rounded-xl border-2 border-indigo-300 bg-white p-2 text-slate-900 shadow-sm hover:bg-indigo-100 active:bg-amber-100 disabled:opacity-55 touch-manipulation text-sm font-semibold">
+              <span dir="rtl" className="block">{noteName(midi)}</span>
+            </button>)}
           </div>
-          <div dir="rtl" className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1.5 mt-2">
-            {options.slice(0,keyboardKeys.length).map((midi,i)=><div key={midi} className="rounded-lg border border-indigo-200 bg-white p-1.5 text-center min-w-0">
-              <kbd dir="ltr" className="block mx-auto w-fit min-w-9 rounded border border-slate-300 bg-slate-100 px-2 py-1 font-mono font-bold text-base">{keyboardKeys[i]}</kbd>
-              <span dir="rtl" className="block mt-1 text-xs leading-tight">{noteName(midi)}</span>
-            </div>)}
-          </div>
-          {options.length>keyboardKeys.length&&<p className="mt-2 text-xs text-amber-900">מקלדת המחשב מפעילה את תשעת התווים הראשונים בלבד. לשאר התווים השתמשי בכפתורי המסך או ב־MIDI.</p>}
         </div>
-      </div>
-      {prefs.answer==='play'?<div className="space-y-2">
-        <p className="text-sm font-medium"><Volume2 className="inline w-4 h-4"/> נגינה: בחרי צלילים במסך, השתמשי ב־MIDI או במיקרופון (צליל בודד בלבד).</p>
-        {canShowPiano&&<div dir="ltr" className="rounded border bg-white p-2 overflow-x-auto" aria-label="מקשי הפסנתר המותרים מוארים">
-          <svg viewBox={'0 0 '+(whitePitches.length*42+4)+' 118'} width="100%" style={{maxWidth:Math.max(170,whitePitches.length*42+4)}}>
-            {whitePitches.map((midi,i)=><rect key={midi} x={i*42+2} y={2} width={40} height={112} stroke="#111827" fill={options.includes(midi)?'#bfdbfe':'#fff'}/>)}
-            {Array.from({length:endPiano-startPiano},(_,i)=>startPiano+i).filter(n=>[1,3,6,8,10].includes(n%12)).map(midi=>{
-              const count=whitePitches.filter(n=>n<midi).length;
-              return <rect key={midi} x={count*42-12} y={2} width={25} height={70} fill={options.includes(midi)?'#6366f1':'#111827'}/>;
-            })}
-          </svg>
-          <p className="text-center text-xs text-indigo-800">רק המקשים המשתתפים בתרגיל מודגשים בכחול.</p>
+        {!running&&canUseComputerKeyboard&&<div role="group" aria-label="מקלדת מחשב מוארת ושמות הצלילים" className="rounded-xl border border-sky-300 bg-sky-50 p-3 text-slate-900">
+          <div className="text-sm font-semibold mb-1">⌨️ מקלדת מחשב מוארת — הצלילים המשתתפים</div>
+          <p className="text-xs mb-3">{prefs.answer==='name'?'להקראת שמות תווים אפשר להשתמש במקשי 1–9.':'המקשים פועלים גם כשהמחשב על עברית וגם על אנגלית, באותם מקומות פיזיים.'} המקשים יוצגו רק לפני האימון.</p>
+          <div dir="ltr" className="overflow-x-auto pb-1">
+            <div className="grid gap-1.5" style={{gridTemplateColumns:`repeat(${options.length}, minmax(82px,1fr))`,minWidth:Math.max(0,options.length*82)}}>
+              {options.map((midi,i)=><div key={midi} className="flex flex-col items-center justify-between gap-1 min-w-0 rounded-lg border-2 border-sky-300 bg-gradient-to-b from-sky-100 via-white to-blue-50 px-1.5 py-2 shadow-[0_3px_0_#93c5fd]">
+                {prefs.answer==='play'?<kbd dir="ltr" className="text-xl font-bold text-blue-900 tracking-wide">
+                  {RECALL_ENGLISH_KEYS[i]} <span className="text-sm text-sky-600">/</span> <span className="text-lg">{RECALL_HEBREW_KEYS[i]}</span>
+                </kbd>:<kbd className="text-xl font-bold text-blue-900">{i+1}</kbd>}
+                <span dir="rtl" className="text-xs text-center text-slate-800 leading-tight">{noteName(midi)}</span>
+              </div>)}
+            </div>
+          </div>
         </div>}
-        {!canShowPiano&&<p className="text-xs text-muted-foreground">המנעד רחב או כולל שתי חמשות; לא מוצגת מקלדת מאירה לא מדויקת.</p>}
-      </div>:<p className="text-sm">הקראה: בחרי את שם הצליל, או הפעילי זיהוי דיבור עברי.</p>}
+        {!running&&options.length>RECALL_ENGLISH_KEYS.length&&<p role="status" className="text-sm rounded-lg bg-amber-50 border border-amber-200 p-2">
+          מעל תשעה צלילים אין קלט ממקלדת מחשב. אפשר לענות בלחצני המסך, בנגינה דרך MIDI או במיקרופון לפי מצב האימון.
+        </p>}
+      </div>
+      {prefs.answer==='play'
+        ?<p className="text-xs text-muted-foreground"><Volume2 className="inline w-4 h-4 ml-1"/> בחרי צליל בלחצני המסך, נגני ב־MIDI או הפעילי מיקרופון (צליל יחיד בלבד).</p>
+        :<p className="text-xs text-muted-foreground">הקראה: בחרי שם צליל בלחצני המסך או הפעילי זיהוי דיבור עברי.</p>}
       {score&&<div role="status" className="rounded-xl border-2 border-emerald-300 bg-emerald-50 text-slate-900 p-4 text-center">
         <div className="text-lg font-bold">האימון הסתיים!</div>
         <p>נכונות: {score.correct} מתוך {score.total} ({Math.round(score.correct/score.total*100)}%)</p>
