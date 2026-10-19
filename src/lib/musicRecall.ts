@@ -32,6 +32,30 @@ export interface RecallEvent {
  * Unlike strict performance, onsets inside the 2-beat window are otherwise unrestricted.
  */
 export const RECALL_EARLY_WINDOW_BEATS = 0.25;
+
+/** The letters occupy the same physical keys in English and Hebrew QWERTY layouts. */
+export const RECALL_ENGLISH_KEYS = ['A','S','D','F','G','H','J','K','L'] as const;
+export const RECALL_HEBREW_KEYS = ['ש','ד','ג','כ','ע','י','ח','ל','ך'] as const;
+
+/** Computer shortcuts are all-or-nothing: never silently bind only part of a >9-note range. */
+export function resolveRecallComputerPitch(
+  event: {key:string; code?:string}, allowedNotes:readonly number[], answer:RecallAnswer,
+):number|null {
+  if(!allowedNotes.length||allowedNotes.length>RECALL_ENGLISH_KEYS.length)return null;
+  const code=event.code||'';
+  const key=event.key||'';
+  let index=-1;
+  if(answer==='name'){
+    const digit=code.match(/^(?:Digit|Numpad)([1-9])$/)?.[1]||(/^[1-9]$/.test(key)?key:null);
+    if(digit)index=Number(digit)-1;
+  }else{
+    index=RECALL_ENGLISH_KEYS.findIndex(english=>code==='Key'+english);
+    if(index<0)index=RECALL_ENGLISH_KEYS.findIndex(english=>english===key.toUpperCase());
+    if(index<0)index=RECALL_HEBREW_KEYS.indexOf(key as typeof RECALL_HEBREW_KEYS[number]);
+  }
+  return index>=0?allowedNotes[index]??null:null;
+}
+
 /** Choose the intended column without stealing a still-needed note from the previous one. */
 export function assignRecallInput(
   events: readonly RecallEvent[], currentIndex: number, beat: number,
