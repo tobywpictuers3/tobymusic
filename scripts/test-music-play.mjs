@@ -261,18 +261,24 @@ test('recall stage presents pitch-height stepped touch buttons and hides compute
   assert.ok(!component.includes('canShowPiano'),'legacy organ logic removed');
 });
 
-test('DIAGNOSTIC ONLY: compare live TOBY PLAY asset with released recall UI', {timeout:45000},async()=>{
+test('DIAGNOSTIC ONLY: verify live personal recall has distinct voice and play surfaces', {timeout:190000},async()=>{
   const base='https://students.tobymusic.club';
-  const htmlResponse=await fetch(base+'/?asset-probe=20261019',{cache:'no-store',signal:AbortSignal.timeout(15000)});
-  assert.equal(htmlResponse.status,200,'Live students HTML HTTP status');
-  const html=await htmlResponse.text();
-  const match=html.match(/<script[^>]*src=["']([^"']*\/assets\/index-[^"']+\.js)["']/);
-  assert.ok(match,'Live Vite HTML should identify a hashed main JS asset');
-  const url=new URL(match[1],base);
-  const jsResponse=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(20000)});
-  assert.equal(jsResponse.status,200,'The referenced production asset is fetchable');
-  const js=await jsResponse.text();
-  const markers=['מקלדת מחשב מוארת','סולם לחצני תווים עולה','מעל תשעה צלילים אין קלט ממקלדת מחשב'];
-  console.log('LIVE_ASSET_PROBE',JSON.stringify({asset:url.pathname,bytes:js.length,markers:markers.map(text=>({name:text,found:js.includes(text)}))}));
-  assert.ok(markers.every(marker=>js.includes(marker)),'Production students JS asset is missing the 2026-10-19 personalized recall release');
+  const markers=['שליפה בהקראה — לומר / לבחור שם תו','שליפה בנגינה — לזהות גובה הצליל','חליל צד על המסך','פסנתר על המסך','אישור האצבוע'];
+  let latest='';
+  for(let attempt=1;attempt<=18;attempt++){
+    const response=await fetch(base+'/?asset-probe=20261019-voice-'+attempt,{cache:'no-store',signal:AbortSignal.timeout(15000)});
+    assert.equal(response.status,200,'Production HTML status');
+    const html=await response.text();
+    const match=html.match(/<script[^>]*src=["']([^"']*\/assets\/index-[^"']+\.js)["']/);
+    assert.ok(match,'Production HTML must reference Vite main JS');
+    const url=new URL(match[1],base);latest=url.pathname;
+    const jsResponse=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(20000)});
+    assert.equal(jsResponse.status,200,'Production JS asset status');
+    const bundle=await jsResponse.text();
+    const found=markers.map(value=>({marker:value,found:bundle.includes(value)}));
+    console.log('LIVE_RECALL_CHECK',JSON.stringify({attempt,asset:url.pathname,length:bundle.length,found}));
+    if(found.every(v=>v.found))return;
+    if(attempt<18)await new Promise(resolve=>setTimeout(resolve,6000));
+  }
+  assert.fail('Live students bundle '+latest+' does not contain the merged spoken/play recall release');
 });
