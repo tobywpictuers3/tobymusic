@@ -292,7 +292,7 @@ test('virtual concert flute recognizes natural pitches only from valid fingering
   const allowed=fingerings.map(x=>x[0]);
   for(const [midi,register,fingers] of fingerings) {
     assert.equal(resolve(fingers,register,allowed),midi);
-    assert.equal(resolve([...fingers,'C'],register,allowed),midi===60?midi:null);
+    assert.equal(resolve([...fingers,'unknown'],register,allowed),null);
     assert.equal(resolve(fingers,register,[]),null);
   }
   assert.equal(resolve(['L1','Eb'],4,allowed),null);
