@@ -121,6 +121,7 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
   const alive=useRef(true);
   const currentEvent=events[cursor];
   const options=useMemo(()=>profile?[...new Set([...(profile.clefs!=='bass'?profile.trebleNotes:[]),...(profile.clefs!=='treble'?profile.bassNotes:[])])].sort((a,b)=>a-b):[],[profile]);
+  const keyboardKeys=prefs.answer==='name'?'123456789':'ASDFGHJKL';
   const canShowPiano=options.length>0&&options.length<=9&&options.at(-1)!-options[0]<=14&&profile?.clefs!=='both';
   const stopListening=useCallback(()=>{
     if(speech.current){try{speech.current.onend=null;speech.current.stop();}catch{}speech.current=null;}
@@ -304,19 +305,18 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
     }catch{setError('החיבור למקלדת MIDI לא אושר.');}
   };
   useEffect(()=>{
-    const keys='asdfghjkl';
     const onKey=(e:KeyboardEvent)=>{
       if(e.repeat||e.ctrlKey||e.altKey||e.metaKey||/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName||''))return;
-      const key=keys.indexOf(e.key.toLowerCase());
-      if(key>=0&&prefs.answer==='play'&&options[key]!==undefined){e.preventDefault();addAnswer(options[key],'keyboard');}
-      if(e.key>='1'&&e.key<='9'&&prefs.answer==='name'){
-        const n=Number(e.key)-1;
-        if(options[n]!==undefined){e.preventDefault();addAnswer(options[n],'keyboard');}
+      if(!engine.current||engine.current.finished)return;
+      const keyIndex=keyboardKeys.indexOf(e.key.toUpperCase());
+      if(keyIndex>=0&&options[keyIndex]!==undefined){
+        e.preventDefault();
+        addAnswer(options[keyIndex],'keyboard');
       }
     };
     window.addEventListener('keydown',onKey);
     return()=>window.removeEventListener('keydown',onKey);
-  },[prefs.answer,options,addAnswer]);
+  },[keyboardKeys,options,addAnswer]);
   if(!profile)return <div className="rounded-xl border p-5 text-sm" dir="rtl">
     <strong>המורה עדיין לא הגדירה לך רמת שליפה אישית.</strong>
     <p>יש להגדיר ולאשר את הרמה הראשונה דרך ״רמות אימון״ בכרטיס התלמידה.</p>
@@ -370,6 +370,29 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
       {running&&prefs.answer==='name'&&<p className="text-xs text-muted-foreground">זיהוי דיבור עברי תלוי בדפדפן, ועשוי להעביר שמע לשירות הזיהוי שלו. לחיצה על כפתורי התווים אינה דורשת מיקרופון.</p>}
       {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
       {speechMessage&&<p role="status" className="text-xs text-muted-foreground">{speechMessage}</p>}
+      <div className="space-y-2">
+        <p className="text-sm font-semibold">כפתורי תשובה על המסך</p>
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+          {options.map((midi,i)=><button key={midi} type="button" disabled={!running||(countdown!==null&&countdown>1)}
+            onClick={()=>addAnswer(midi,'touch')} className="rounded-xl border-2 border-indigo-200 bg-white p-2 text-slate-900 min-h-14 hover:bg-indigo-100 active:bg-amber-100 disabled:opacity-50 touch-manipulation text-sm">
+            <span className="block font-semibold">{noteName(midi)}</span>
+            <span className="block text-[11px] text-slate-600">{i<keyboardKeys.length?'מקש '+keyboardKeys[i]:'מסך / MIDI'}</span>
+          </button>)}
+        </div>
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 text-slate-900" aria-label="מפת מקשי המחשב לתווים המשתתפים בתרגיל">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold">⌨️ מקלדת המחשב — מקש לכל צליל בתרגיל</p>
+            <p className="text-xs">{prefs.answer==='play'?'העבירי את שפת המקלדת לאנגלית (EN)':'להקראת שמות תווים השתמשי במקשי הספרות'}</p>
+          </div>
+          <div dir="rtl" className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1.5 mt-2">
+            {options.slice(0,keyboardKeys.length).map((midi,i)=><div key={midi} className="rounded-lg border border-indigo-200 bg-white p-1.5 text-center min-w-0">
+              <kbd dir="ltr" className="block mx-auto w-fit min-w-9 rounded border border-slate-300 bg-slate-100 px-2 py-1 font-mono font-bold text-base">{keyboardKeys[i]}</kbd>
+              <span dir="rtl" className="block mt-1 text-xs leading-tight">{noteName(midi)}</span>
+            </div>)}
+          </div>
+          {options.length>keyboardKeys.length&&<p className="mt-2 text-xs text-amber-900">מקלדת המחשב מפעילה את תשעת התווים הראשונים בלבד. לשאר התווים השתמשי בכפתורי המסך או ב־MIDI.</p>}
+        </div>
+      </div>
       {prefs.answer==='play'?<div className="space-y-2">
         <p className="text-sm font-medium"><Volume2 className="inline w-4 h-4"/> נגינה: בחרי צלילים במסך, השתמשי ב־MIDI או במיקרופון (צליל בודד בלבד).</p>
         {canShowPiano&&<div dir="ltr" className="rounded border bg-white p-2 overflow-x-auto" aria-label="מקשי הפסנתר המותרים מוארים">
@@ -384,14 +407,6 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
         </div>}
         {!canShowPiano&&<p className="text-xs text-muted-foreground">המנעד רחב או כולל שתי חמשות; לא מוצגת מקלדת מאירה לא מדויקת.</p>}
       </div>:<p className="text-sm">הקראה: בחרי את שם הצליל, או הפעילי זיהוי דיבור עברי.</p>}
-      <p className="text-xs text-muted-foreground">לפני שימוש במקשי מחשב: העבירי את השפה לאנגלית (EN). נגינה: A S D F G H J K L; הקראה: הספרות 1–9.</p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-        {options.map((midi,i)=><button key={midi} type="button" disabled={!running||(countdown!==null&&countdown>1)}
-          onClick={()=>addAnswer(midi,'touch')} className="rounded-xl border-2 border-indigo-200 bg-white p-3 text-slate-900 min-h-14 hover:bg-indigo-100 active:bg-amber-100 disabled:opacity-50 touch-manipulation text-sm">
-          <span className="block text-xs text-muted-foreground">{prefs.answer==='name'?i+1:i<9?'ASDFGHJKL'[i]:''}</span>
-          {noteName(midi)}
-        </button>)}
-      </div>
       {score&&<div role="status" className="rounded-xl border-2 border-emerald-300 bg-emerald-50 text-slate-900 p-4 text-center">
         <div className="text-lg font-bold">האימון הסתיים!</div>
         <p>נכונות: {score.correct} מתוך {score.total} ({Math.round(score.correct/score.total*100)}%)</p>

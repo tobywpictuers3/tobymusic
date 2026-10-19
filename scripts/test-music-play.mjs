@@ -219,3 +219,16 @@ test('notation repaints staff lines above hollow noteheads for unobscured G on a
   assert.ok(front>source.indexOf('<ellipse cx={noteX}'), 'foreground stave is painted after noteheads');
   assert.ok(source.includes('strokeWidth={1.5} pointerEvents="none"'), 'foreground stave does not catch input');
 });
+
+test('personal recall displays computer-key pitch map immediately under answer pads', () => {
+  const component=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
+  assert.ok(component.includes("const keyboardKeys=prefs.answer==='name'?'123456789':'ASDFGHJKL';"));
+  assert.ok(component.includes("keyboardKeys.indexOf(e.key.toUpperCase())"), 'key input must use same mapping as legend');
+  assert.ok(component.includes('options.slice(0,keyboardKeys.length).map((midi,i)'), 'only genuinely bound pitches are labelled');
+  assert.ok(component.includes("{noteName(midi)}"), 'keyboard legend includes exact octave-specific pitch name');
+  const pads=component.indexOf('כפתורי תשובה על המסך');
+  const map=component.indexOf('מפת מקשי המחשב לתווים המשתתפים בתרגיל');
+  const piano=component.indexOf('מקשי הפסנתר המותרים');
+  assert.ok(pads>0&&pads<map&&map<piano, 'computer keyboard map appears after on-screen pads and before piano illustration');
+  assert.ok(component.includes('options.length>keyboardKeys.length'), 'unmapped notes are explicitly disclosed');
+});
