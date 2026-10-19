@@ -271,3 +271,9 @@ The payment data model already contains all 12 academic months, September throug
 - A recall note entered up to **0.25 beat before** its target window may be accepted; routing prefers an unfinished current note when appropriate and otherwise assigns to the next note if its pitch matches. A note entered earlier than the configured pickup is not treated as a correctly timed next note. This is deliberately a forgiving recall rule; strict timed-playing still uses individual reaction calibration and must not borrow the recall tolerance.
 - SVG staff lines are painted again **above hollow noteheads**, preserving a visible continuous line through line-based pitches such as G. Active state does not mask stave lines, even with multiple staves.
 - Verify on a real touchscreen, computer keyboard and microphone before claiming device-level completion; these code changes are not clinical reaction-time calibration.
+
+## TOBY PLAY — accessible computer key map for recall (2026-10-19)
+- Personal recall shows a pitch-to-computer-key legend **directly below the on-screen answer pads**, between the score staff and the optional piano illustration. It stays visible in both note-playing and spoken-note-name answer modes, including before starting and while exercising.
+- Key letters A/S/D/F/G/H/J/K/L (with English keyboard layout) map in displayed allowed-note order for pitch-playing; keys 1–9 map the same order for note-name mode. Each keycap displays the precise Hebrew pitch and octave. On-screen pads mirror the same labels.
+- Only the first nine notes have computer-key shortcuts; any additional allowed pitches are explicitly labelled as screen/MIDI-only, with no misleading keyboard mapping. Changes are presentation/keyboard routing only; no changes to student records, score persistence, Dropbox or timing/scoring rules.
+- Real browser/tablet keyboard and screen-height validation remain pending until end-to-end device review.
