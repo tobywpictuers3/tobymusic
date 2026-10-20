@@ -50,10 +50,10 @@ export default function SightReadingWorkspace() {
   const generate=()=>{
     try {
       if(!allowed.length||low>high) throw new Error('יש לבחור תווים ומנעד תקין');
-      const pitchChoices=[] as {step:string;octave:number}[];
-      for(let oct=low;oct<=high;oct++) for(const i of allowed) pitchChoices.push({step:STEPS[i],octave:oct});
+      const pitchChoices=[] as {step:string;octave:number;degree:number}[];
+      for(let oct=low;oct<=high;oct++) for(const i of allowed) pitchChoices.push({step:STEPS[i],octave:oct,degree:oct*7+i});
       if(!pitchChoices.length) throw new Error('אין תווים בטווח הנבחר');
-      let last=0, consecutiveLeaps=0;
+      let last: number | null=null, consecutiveLeaps=0;
       const result:Note[][][]=[];
       for(let row=0;row<16;row++){
         const newRow:Note[][]=[];
@@ -61,16 +61,16 @@ export default function SightReadingWorkspace() {
           const events=buildRhythmBar(beats,approved);
           const notes=events.map(e=>{
             if(e.rest) return {...e};
-            const candidates=pitchChoices.map((pitch,index)=>({pitch,index})).filter(({index})=>{
-              const delta=Math.abs(index-last);
+            const candidates=pitchChoices.filter(pitch=>{
+              const delta=last===null?0:Math.abs(pitch.degree-last);
               return delta<=4&&(delta<=1||consecutiveLeaps<2);
             });
             if(!candidates.length) throw new Error('המנעד אינו מאפשר את המרווחים שבחרת');
             const chosen=candidates[Math.floor(Math.random()*candidates.length)];
-            const delta=Math.abs(chosen.index-last);
+            const delta=last===null?0:Math.abs(chosen.degree-last);
             consecutiveLeaps=delta>1?consecutiveLeaps+1:0;
-            last=chosen.index;
-            return {...e,...chosen.pitch};
+            last=chosen.degree;
+            return {...e,step:chosen.step,octave:chosen.octave};
           });
           if(notes.reduce((n,e)=>n+e.units,0)!==beats*4) throw new Error('שגיאת סכום תיבה');
           newRow.push(notes);
