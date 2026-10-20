@@ -295,7 +295,7 @@ export default function SightReadingWorkspace() {
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void assignPdf(selectedArchive)}>העלה PDF ושייך לתלמידות שנבחרו</button>
       <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>הכנת מייל והורדת PDF לצירוף</button></div>
       <p className="text-xs text-muted-foreground">השליחה האוטומטית עם צרופה עדיין אינה פעילה; הכנת המייל פותחת טיוטה, ואת הקובץ יש לצרף ידנית.</p>
-      {mailStatus&&<p role="status">{mailStatus}</p>
+      {mailStatus&&<p role="status">{mailStatus}</p>}
       {deliveryStatus&&<p role="status">{deliveryStatus}</p>}
       </fieldset>
       <EngravedScore xml={selectedArchive.xml}/></div>}
