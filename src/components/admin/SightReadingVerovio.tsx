@@ -20,7 +20,7 @@ function verovioClass() {
 }
 /** Render trusted Verovio output as an isolated SVG image.\n * HTML sanitizers can strip SMuFL symbol definitions or <use href> references,\n * leaving beams/stems visible but hiding heads, rests and clefs.\n * The browser image context does not execute SVG scripts. Never inject this SVG into HTML. */
 function svgImageUrl(svg:string) {
-  if (typeof svg !== 'string' || !/<svg(?:\\s|>)/i.test(svg)) throw new Error('Verovio did not return SVG');
+  if (typeof svg !== 'string' || !svg.includes('<svg')) throw new Error('Verovio did not return SVG');
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 const baseOptions = {
