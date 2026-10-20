@@ -4,7 +4,7 @@ import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightRe
 type Note = RhythmEvent & { step?: string; octave?: number; alter?: number };
 const STEPS = ['C','D','E','F','G','A','B'];
 const LABELS = ['דו','רה','מי','פה','סול','לה','סי'];
-const TYPE: Record<number,string> = { 1:'16th',2:'eighth',3:'16th',4:'quarter',6:'quarter',8:'half' };
+const TYPE: Record<number,string> = { 1:'16th',2:'eighth',3:'eighth',4:'quarter',6:'quarter',8:'half' };
 const DOTS = new Set([3,6]);
 function xmlEscape(s:string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function downloadXml(value:string) {
@@ -82,7 +82,7 @@ export default function SightReadingWorkspace() {
   };
   return <div className="rounded-xl border bg-background p-5 space-y-5" dir="rtl">
     <h2 className="text-xl font-bold">מחולל קריאה מהדף — סביבת פיתוח</h2>
-    <p className="text-sm text-muted-foreground">74 תבניות המקצב נלקחו מקובץ המקור. התצוגה המקצועית ויצוא PDF יופעלו רק לאחר השלמת אריזת מנוע התיווי המקומי; כרגע אפשר לייצא MusicXML.</p>
+    <p className="text-sm text-muted-foreground">74 תבניות המקצב נלקחו מקובץ המקור. זוהי גרסת בדיקה של הגדרות ומנוע המקצבים. ניתן ליצור 16 שורות ולהוריד MusicXML; צפייה בדף התווים והדפסה ל־PDF יתווספו לאחר השלמת התיווי המקצועי.</p>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <label>כותרת<input className="block w-full border rounded p-2" value={title} onChange={e=>setTitle(e.target.value)}/></label>
       <label>משקל<select className="block w-full border rounded p-2" value={beats} onChange={e=>setBeats(Number(e.target.value) as 2|3|4|5)}>{[2,3,4,5].map(n=><option key={n} value={n}>{n}/4</option>)}</select></label>
