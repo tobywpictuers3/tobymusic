@@ -27,6 +27,8 @@ jobs:
       - name: TypeScript diagnostic
         continue-on-error: true
         run: npx tsc --noEmit --pretty false
+      - name: Sight-reading source and Bravura rendering regression
+        run: node scripts/test-sight-reading-engraving.mjs
       - name: Production build
         timeout-minutes: 5
         run: npm run build
