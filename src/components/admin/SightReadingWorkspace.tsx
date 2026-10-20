@@ -27,6 +27,10 @@ function makeXML(lines: Note[][][], title:string, beats:number, clef:string, fif
       if(n.rest) xml+='<rest/>'; else xml+='<pitch><step>'+n.step+'</step>'+(n.alter?'<alter>'+n.alter+'</alter>':'')+'<octave>'+n.octave+'</octave></pitch>';
       xml+='<duration>'+n.units+'</duration><type>'+TYPE[n.units]+'</type>';
       if(DOTS.has(n.units)) xml+='<dot/>';
+      if (!n.rest && n.beams) for (const level of [1,2] as const) {
+        const beam=n.beams[level];
+        if(beam) xml+='<beam number="'+level+'">'+beam+'</beam>';
+      }
       xml+='</note>';
     }
     if(b===line.length-1&&doubleBar) xml+='<barline location="right"><bar-style>light-light</bar-style></barline>';
