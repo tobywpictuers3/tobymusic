@@ -315,3 +315,9 @@ The payment data model already contains all 12 academic months, September throug
 - New `SightReadingVerovio.tsx` uses locally bundled npm `verovio@6.3.0` and the included SMuFL Bravura font to render on-page SVG scores and pattern previews. Avoid any external CDN at runtime. The previous hand-drawn SVG notation in `SightReadingNotation.tsx` must not be used as a musical engraving source.
 - Regression script `scripts/test-sight-reading-engraving.mjs` verifies the 74 rhythm/beam alignments and native Verovio SVG output; PR CI includes it.
 - **Not yet production-verified**: filtered-browser module loading, on-screen SVG sanitization, visual alignment and print layout, graphical catalog rest-beams and hidden staff settings. Do not deploy or claim Finale-identical glyphs without browser inspection; Finale Maestro is not distributed by this project.
+
+## Verovio SVG glyph preservation — 2026-10-20
+
+- The teacher observed staves and beams with missing noteheads, clefs and time-signature glyphs. Earlier component `SightReadingVerovio.tsx` passed SVG through DOMPurify before injecting with `dangerouslySetInnerHTML`; this can strip Verovio SMuFL symbol definitions/references. Exact browser-side cause still needs visual confirmation.
+- New rendering uses full trusted Verovio SVG as an isolated `data:image/svg+xml` image, preserving glyph definitions without injecting arbitrary SVG markup into the DOM. Keep teacher-controlled text XML-escaped and do not reintroduce SVG HTML sanitization/injection for this renderer.
+- `scripts/test-sight-reading-engraving.mjs` checks source beams, native Verovio SVG output and isolated image presentation. Browser verification of all glyphs, title, key and time signature is required after deploy.
