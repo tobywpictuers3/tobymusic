@@ -197,7 +197,7 @@ export default function SightReadingWorkspace() {
         id:randomId(),serial:nextSerial,createdAt:new Date().toISOString(),title:nextTitle,
         xml:makeXML(result,nextTitle,beats,clef,fifths,doubleBar),
         metadata:{meter:beats+'/4',barsPerLine:bars,clef,low,high,
-          allowedSteps:allowed.map(i=>STEPS[i]),patternIds:[...approved],
+          allowedSteps:allowed.map(i=>STEPS[i]),patternIds:[...new Set(result.flat(2).map(event=>event.sourceId))],
           intervalMode,repeatedShortNotes:repeatShort}
       };
       addSightReadingArchiveItem(item);
