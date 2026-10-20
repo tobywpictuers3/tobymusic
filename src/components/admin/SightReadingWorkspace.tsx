@@ -3,6 +3,7 @@ import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightRe
 import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightReadingVerovio';
 import { addSightReadingArchiveItem, getSightReadingArchive, getStudents, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
 import { workerApi } from '@/lib/workerApi';
+import { RHYTHM_GROUPS, updatePatternSelection } from '@/lib/sightReadingRhythmGroups';
 
 type Note = RhythmEvent & { step?: string; octave?: number; alter?: number };
 const STEPS = ['C','D','E','F','G','A','B'];
@@ -12,11 +13,6 @@ const NOTE_OPTIONS=Array.from({length:35},(_,index)=>{
   const register=octave===2?'גדול':octave===3?'קטן':octave===4?'ראשון':octave===5?'שני':'שלישי';
   return {degree:octave*7+index%7,step,octave,label:LABELS[index%7]+' '+register,value:step+octave};
 });
-const rhythmGroup=(events:RhythmEvent[]):number=>{
-  const minimum=Math.min(...events.map(e=>e.units));
-  return minimum<=1?1:minimum<=2?2:minimum<=4?4:8;
-};
-const RHYTHM_GROUPS=[{units:8,label:'חצאים'},{units:4,label:'רבעים'},{units:2,label:'שמיניות'},{units:1,label:'שש־עשריות'}];
 const randomId=()=>globalThis.crypto?.randomUUID?.()||String(Date.now())+'-'+Math.random().toString(36).slice(2);
 
 const TYPE: Record<number,string> = { 1:'16th',2:'eighth',3:'eighth',4:'quarter',6:'quarter',8:'half' };
@@ -72,11 +68,14 @@ export default function SightReadingWorkspace() {
   const [busy,setBusy]=useState(false);
   const [deliveryStatus,setDeliveryStatus]=useState('');
   const [documentTitle,setDocumentTitle]=useState('');
+  const [mailStatus,setMailStatus]=useState('');
 
   const [doubleBar,setDoubleBar]=useState(true);
   const [lines,setLines]=useState<Note[][][]|null>(null);
   const [error,setError]=useState('');
   const selected=useMemo(()=>new Set(approved),[approved]);
+  const setGroupSelection=(ids:string[],checked:boolean)=>setApproved(prev=>updatePatternSelection(prev,ids,checked));
+  const groupIds=(group:typeof RHYTHM_GROUPS[number])=>group.sections.flatMap(section=>section.patterns.map(p=>p.id));
 
 
   const filteredArchive=archive.filter(item=>{
@@ -94,6 +93,40 @@ export default function SightReadingWorkspace() {
       window.setTimeout(()=>URL.revokeObjectURL(url),1000);
     } catch(e){setDeliveryStatus('שגיאה בהפקת PDF: '+String(e instanceof Error?e.message:e));}
     finally{setBusy(false);}
+  };
+  const printPdf=async(item:SightReadingArchiveItem)=>{
+    // The window is opened synchronously to avoid browser popup blockers.
+    const popup=window.open('','_blank');
+    if(!popup){setDeliveryStatus('הדפדפן חסם חלון הדפסה. הורידי PDF והדפיסי אותו מהמחשב.');return;}
+    popup.document.title='הדפסת תרגיל '+item.serial;
+    popup.document.body.textContent='מכין PDF להדפסה...';
+    setBusy(true);setDeliveryStatus('');
+    try {
+      const pdf=await makeSightReadingPdf(item.xml);
+      const url=URL.createObjectURL(pdf);
+      popup.location.href=url;
+      // Browser PDF viewers expose their own Print button / Ctrl+P.
+      // Calling popup.print() on a PDF URL is unreliable across browsers.
+      setDeliveryStatus('חלון ה-PDF נפתח. לחצי על סמל המדפסת בחלון, או Ctrl+P.');
+      window.setTimeout(()=>URL.revokeObjectURL(url),120000);
+    }catch(e){
+      popup.close();
+      setDeliveryStatus('שגיאה בהכנת הדפסה: '+String(e instanceof Error?e.message:e));
+    }finally{setBusy(false);}
+  };
+  const prepareEmail=async(item:SightReadingArchiveItem)=>{
+    const students=getStudents().filter(s=>studentIds.includes(s.id));
+    const emails=[...new Set(students.map(s=>s.email?.trim()).filter((value):value is string=>Boolean(value)))];
+    if(!students.length||emails.length!==students.length){
+      setMailStatus('בחרי תלמידות שלכולן כתובת מייל תקינה לפני הכנת הטיוטה.');return;
+    }
+    await downloadPdf(item);
+    const subject='תרגיל קריאה מהדף: '+item.title;
+    const body='שלום,\nמצורף תרגיל הקריאה מהדף '+item.title+'.\n';
+    // mailto cannot attach binary files. Explicitly require manual attachment.
+    const link='mailto:'+emails.map(encodeURIComponent).join(',')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    window.location.href=link;
+    setMailStatus('הורד PDF ונפתחה טיוטת מייל. יש לצרף אליה את הקובץ שהורד וללחוץ שליחה. לא נשלח מייל אוטומטי.');
   };
   const assignPdf=async(item:SightReadingArchiveItem)=>{
     if(isDevMode()){setDeliveryStatus('לא ניתן לשלוח מתוך סביבת פיתוח');return;}
@@ -203,9 +236,41 @@ export default function SightReadingWorkspace() {
     </fieldset>
     <fieldset className="border rounded p-3"><legend>תבניות מקצב מותרות — {approved.length}/74</legend>
       <div className="flex gap-2 mb-3"><button className="border rounded p-2" onClick={()=>setApproved(RHYTHM_PATTERNS.map(p=>p.id))}>בחרי הכול</button><button className="border rounded p-2" onClick={()=>setApproved([])}>בטלי הכול</button></div>
-      <div className="max-h-[520px] overflow-y-auto space-y-4">{RHYTHM_GROUPS.map(group=><section key={group.units}>
-      <h3 className="font-semibold mb-2">{group.label}</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{RHYTHM_PATTERNS.filter(p=>rhythmGroup(p.events)===group.units).map(p=><label key={p.id} className="border rounded-lg p-2 bg-white text-slate-900 flex flex-col gap-1 cursor-pointer"><span className="flex items-center justify-between"><span className="font-medium">{p.id}</span><input type="checkbox" checked={selected.has(p.id)} onChange={e=>setApproved(prev=>e.target.checked?[...prev,p.id]:prev.filter(x=>x!==p.id))}/></span><EngravedPattern id={p.id} events={p.events}/></label>)}</div></section>)}</div>
+      <div className="max-h-[520px] overflow-y-auto space-y-5">
+        {RHYTHM_GROUPS.map(group=>{
+          const allIds=groupIds(group);
+          return <section key={group.key} className="border rounded-lg p-3 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-bold">{group.label} ({allIds.filter(id=>selected.has(id)).length}/{allIds.length})</h3>
+              <div className="flex gap-2">
+                <button type="button" className="border rounded px-3 py-1 text-sm" onClick={()=>setGroupSelection(allIds,true)}>סמני קבוצה שלמה</button>
+                <button type="button" className="border rounded px-3 py-1 text-sm" onClick={()=>setGroupSelection(allIds,false)}>בטלי קבוצה</button>
+              </div>
+            </div>
+            {group.sections.map(section=>{
+              const ids=section.patterns.map(p=>p.id);
+              const count=ids.filter(id=>selected.has(id)).length;
+              return <div key={section.key} className="border-t pt-3">
+                <div className="flex flex-wrap gap-2 items-center justify-between mb-2">
+                  <h4 className="font-medium">{section.label} ({count}/{ids.length})</h4>
+                  <div className="flex gap-2">
+                    <button type="button" className="border rounded px-2 py-1 text-xs" onClick={()=>setGroupSelection(ids,true)}>סמני תת־קבוצה</button>
+                    <button type="button" className="border rounded px-2 py-1 text-xs" onClick={()=>setGroupSelection(ids,false)}>בטלי תת־קבוצה</button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {section.patterns.map(p=><label key={p.id} className="border rounded-lg p-2 bg-white text-slate-900 flex flex-col gap-1 cursor-pointer">
+                    <span className="flex items-center justify-between"><span className="font-medium">{p.id}</span>
+                    <input type="checkbox" checked={selected.has(p.id)}
+                      onChange={e=>setGroupSelection([p.id],e.target.checked)}/></span>
+                    <EngravedPattern id={p.id} events={p.events}/>
+                  </label>)}
+                </div>
+              </div>;
+            })}
+          </section>;
+        })}
+      </div>
       <p className="text-xs text-muted-foreground mt-2">המקצבים מוצגים ללא חמשה או משקל. התווים, הדמימות והקורות מבוססים על ההוראות המקוריות בקובץ שסיפקת.</p>
     </fieldset>
     <div className="flex flex-wrap gap-2">
@@ -223,11 +288,14 @@ export default function SightReadingWorkspace() {
       </button>)}</div>
       {selectedArchive&&<div className="border rounded p-2 space-y-2"><p>נבחר: {selectedArchive.title}</p>
       <div className="flex gap-2 flex-wrap"><button className="border rounded p-2" onClick={()=>downloadXml(selectedArchive.xml)}>הורדת MusicXML מהמאגר</button>
-      <button className="border rounded p-2" disabled={busy} onClick={()=>void downloadPdf(selectedArchive)}>הורדת PDF</button></div>
+      <button className="border rounded p-2" disabled={busy} onClick={()=>void downloadPdf(selectedArchive)}>הורדת PDF למחשב</button>
+      <button className="border rounded p-2" disabled={busy} onClick={()=>void printPdf(selectedArchive)}>הדפסת התרגיל</button></div>
       <fieldset className="border rounded p-2"><legend>שיוך PDF לאזור האישי של תלמידות</legend>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">{getStudents().map(student=><label key={student.id} className="flex gap-2 items-center"><input type="checkbox" checked={studentIds.includes(student.id)} onChange={e=>setStudentIds(ids=>e.target.checked?[...ids,student.id]:ids.filter(id=>id!==student.id))}/>{student.firstName} {student.lastName}</label>)}</div>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void assignPdf(selectedArchive)}>העלה PDF ושייך לתלמידות שנבחרו</button>
-      <p className="text-xs text-muted-foreground">שליחת PDF כקובץ מצורף למייל טרם חוברה למנגנון שליחה מאובטח.</p>
+      <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>הכנת מייל והורדת PDF לצירוף</button></div>
+      <p className="text-xs text-muted-foreground">השליחה האוטומטית עם צרופה עדיין אינה פעילה; הכנת המייל פותחת טיוטה, ואת הקובץ יש לצרף ידנית.</p>
+      {mailStatus&&<p role="status">{mailStatus}</p>}
       {deliveryStatus&&<p role="status">{deliveryStatus}</p>}
       </fieldset>
       <EngravedScore xml={selectedArchive.xml}/></div>}
