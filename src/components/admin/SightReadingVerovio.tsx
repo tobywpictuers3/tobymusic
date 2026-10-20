@@ -105,3 +105,36 @@ export function EngravedPattern({id,events}:{id:string;events:RhythmEvent[]}) {
     {svg?<img className="block w-full h-full object-contain" src={svg} alt={'תבנית '+id}/>:error?<span className="text-xs text-red-600">תצוגה לא זמינה</span>:<span className="text-xs text-slate-500">מכין תיווי…</span>}
   </div>;
 }
+
+/** Create a shareable A4 PDF from the same local engraving used by the preview.
+ * All SVG pages are rasterized within the isolated image context to preserve
+ * Bravura glyphs, avoiding the HTML sanitizer and any network/CDN dependency. */
+export async function makeSightReadingPdf(xml:string):Promise<Blob>{
+  const C=await verovioClass();
+  const t=makeToolkit(C,xml,{pageWidth:2250,pageHeight:3050,scale:42,breaks:'encoded',adjustPageHeight:false,svgViewBox:true});
+  const count=t.getPageCount();
+  if(!count||count>30)throw new Error('לא ניתן להפיק PDF: מספר עמודים לא תקין');
+  const {jsPDF}=await import('jspdf');
+  const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
+  for(let i=1;i<=count;i++){
+    const svg=t.renderToSVG(i);
+    const image=new Image();
+    image.src=svgImageUrl(svg);
+    await new Promise<void>((resolve,reject)=>{
+      image.onload=()=>resolve();
+      image.onerror=()=>reject(new Error('טעינת דף תווים ל-PDF נכשלה'));
+    });
+    const canvas=document.createElement('canvas');
+    const ratio=image.naturalHeight/image.naturalWidth;
+    canvas.width=1400;canvas.height=Math.max(300,Math.round(canvas.width*ratio));
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw new Error('אין אפשרות להפיק PDF בדפדפן זה');
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(image,0,0,canvas.width,canvas.height);
+    const jpeg=canvas.toDataURL('image/jpeg',0.93);
+    if(i>1)pdf.addPage();
+    const targetW=190,targetH=Math.min(277,targetW*ratio);
+    pdf.addImage(jpeg,'JPEG',10,10,targetW,targetH,undefined,'FAST');
+  }
+  return pdf.output('blob');
+}
