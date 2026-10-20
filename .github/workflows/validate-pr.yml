@@ -33,6 +33,8 @@ jobs:
         run: node scripts/test-sight-reading-rhythm-filters.mjs
       - name: Sight-reading A4 print paging regression
         run: node scripts/test-sight-reading-print-pages.mjs
+      - name: Sight-reading branded PDF and Gmail ordering
+        run: node scripts/test-sight-reading-pdf-mail-flow.mjs
       - name: Production build
         timeout-minutes: 5
         run: npm run build
