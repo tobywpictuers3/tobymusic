@@ -652,6 +652,30 @@ const calculateEndTime = (startTime: string, duration: number): string => {
 };
 
 // Files
+
+// Sight-reading archive is a first-class bucket in the canonical Dropbox JSON.
+// Never use browser localStorage for exercise content or student assignments.
+export type SightReadingArchiveItem = {
+  id: string;
+  serial: number;
+  createdAt: string;
+  title: string;
+  xml: string;
+  metadata: {
+    meter: string; barsPerLine: number; clef: 'G' | 'F';
+    low: string; high: string; allowedSteps: string[];
+    patternIds: string[]; intervalMode: string; repeatedShortNotes: boolean;
+  };
+};
+export const getSightReadingArchive = (): SightReadingArchiveItem[] =>
+  (isDevMode() ? devData['sightReadingArchive'] : inMemoryStorage['sightReadingArchive']) || [];
+export const addSightReadingArchiveItem = (item: SightReadingArchiveItem): void => {
+  if (getSightReadingArchive().some(entry => entry.id === item.id)) return;
+  const items = [...getSightReadingArchive(), item];
+  if (isDevMode()) devData['sightReadingArchive'] = items;
+  else { inMemoryStorage['sightReadingArchive'] = items; hybridSync.onDataChange(); }
+};
+
 export const getFiles = (): FileEntry[] => {
   if (isDevMode()) return devData['files'] || [];
   return inMemoryStorage['files'] || [];
