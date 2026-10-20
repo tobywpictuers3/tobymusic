@@ -158,7 +158,7 @@ export default function SightReadingWorkspace() {
       setMailStatus('השמירה לאזור האישי בוצעה מקומית. שולח באמצעות Gmail…');
       for(const student of recipients){
         const address=(student.email||'').trim();
-        if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(address))throw new Error('לתלמידה שנבחרה אין כתובת מייל תקינה');
+        if(!address.includes('@')||!address.split('@')[1]?.includes('.'))throw new Error('לתלמידה שנבחרה אין כתובת מייל תקינה');
         const subject=`תרגיל קריאה מהדף #${item.serial}: ${item.title}`;
         // This must be the actual student-specific assignment, not the master PDF.
         const attached=getFiles().find(file=>file.studentId===student.id&&file.description?.includes('sight-reading:'+item.id));
