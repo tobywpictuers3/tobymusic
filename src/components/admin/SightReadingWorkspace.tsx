@@ -146,7 +146,7 @@ export default function SightReadingWorkspace() {
           continue;
         }
         const link=attached.webViewLink;
-        if(!/^https:\\/\\//i.test(link))throw new Error('קישור קובץ לא מאובטח');
+        if(!link.startsWith('https://'))throw new Error('קישור קובץ לא מאובטח');
         const body=`שלום,\\nקיבלת תרגיל קריאה מהדף: ${item.title}.\\nהתרגיל נמצא באזור האישי שלך בפלטפורמת TOBY Music.\\nלצפייה ב-PDF: ${link}`;
         const escapedLink=link.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
         const result=await sendMessageViaGmail({
