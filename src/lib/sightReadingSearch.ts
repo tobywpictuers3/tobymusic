@@ -1,10 +1,9 @@
 import type { SightReadingArchiveItem } from './storage';
-import { RHYTHM_PATTERNS } from './sightReadingPatterns';
 import { RHYTHM_GROUPS } from './sightReadingRhythmGroups';
 
 const NOTE_NAMES: Record<string,string>={דו:'C',רה:'D',מי:'E',פה:'F',סול:'G',לה:'A',סי:'B'};
 const NOTES=['C','D','E','F','G','A','B'];
-const GROUP_WORDS:Record<string,string>={חצאים:'half',חצי:'half',רבעים:'quarter',רבע:'quarter',שמיניות:'eighth',שמינית:'eighth',ששעשריות:'sixteenth',שש־עשריות:'sixteenth',ששעשרית:'sixteenth',שש־עשרית:'sixteenth'};
+const GROUP_WORDS:Record<string,string>={חצאים:'half',חצי:'half',רבעים:'quarter',רבע:'quarter',שמיניות:'eighth',שמינית:'eighth',ששעשריות:'sixteenth','שש־עשריות':'sixteenth',ששעשרית:'sixteenth','שש־עשרית':'sixteenth'};
 const NORMALIZE=(value:string)=>value.toLocaleLowerCase('he').replace(/[״"'׳.,:;!?()]/g,' ').replace(/[־-]/g,'').replace(/\s+/g,' ').trim();
 const patternsByGroup=new Map(RHYTHM_GROUPS.map(group=>[group.key,new Set(group.sections.flatMap(section=>section.patterns.map(pattern=>pattern.id)))]));
 function noteRangeMatch(item:SightReadingArchiveItem,first:string,last:string):boolean {
