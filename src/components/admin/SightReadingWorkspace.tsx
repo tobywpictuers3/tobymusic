@@ -3,6 +3,7 @@ import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightRe
 import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightReadingVerovio';
 import { addSightReadingArchiveItem, getSightReadingArchive, getStudents, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
 import { workerApi } from '@/lib/workerApi';
+import { sendMessageViaGmail, getMessages } from '@/lib/messages';
 import { RHYTHM_GROUPS, updatePatternSelection } from '@/lib/sightReadingRhythmGroups';
 import { searchSightReadingArchive } from '@/lib/sightReadingSearch';
 
@@ -124,6 +125,41 @@ export default function SightReadingWorkspace() {
     const link='mailto:'+emails.map(encodeURIComponent).join(',')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
     window.location.href=link;
     setMailStatus('הורד PDF ונפתחה טיוטת מייל. יש לצרף אליה את הקובץ שהורד וללחוץ שליחה. לא נשלח מייל אוטומטי.');
+  };
+  const sendReadingEmail=async(item:SightReadingArchiveItem)=>{
+    if(isDevMode()){setMailStatus('שליחת Gmail חסומה במצב פיתוח');return;}
+    const recipients=getStudents().filter(student=>studentIds.includes(student.id));
+    if(!recipients.length || recipients.length!==studentIds.length){setMailStatus('בחרי תלמידות תקינות');return;}
+    if(!window.confirm(`לשלוח מייל עם קישור ל-PDF ל-${recipients.length} תלמידות? ההודעה תישמר גם בתיבת הדואר בפלטפורמה.`))return;
+    setBusy(true);setMailStatus('');
+    let sent=0;
+    try{
+      for(const student of recipients){
+        const address=(student.email||'').trim();
+        if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(address))throw new Error('לתלמידה שנבחרה אין כתובת מייל תקינה');
+        const subject=`תרגיל קריאה מהדף #${item.serial}: ${item.title}`;
+        // This must be the actual student-specific assignment, not the master PDF.
+        const attached=getFiles().find(file=>file.studentId===student.id&&file.description?.includes('sight-reading:'+item.id));
+        if(!attached?.webViewLink)throw new Error('יש לשייך את התרגיל לאזור האישי של כל תלמידה לפני שליחת מייל');
+        // Existing sent messages are receipts. Never send again by a repeated click.
+        if(getMessages().some(m=>m.senderId==='admin'&&m.recipientIds.includes(student.id)&&m.subject===subject)){
+          continue;
+        }
+        const link=attached.webViewLink;
+        if(!link.startsWith('https://'))throw new Error('קישור קובץ לא מאובטח');
+        const body=`שלום,\\nקיבלת תרגיל קריאה מהדף: ${item.title}.\\nהתרגיל נמצא באזור האישי שלך בפלטפורמת TOBY Music.\\nלצפייה ב-PDF: ${link}`;
+        const escapedLink=link.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+        const result=await sendMessageViaGmail({
+          senderId:'admin',senderName:'TOBY Music',recipientIds:[student.id],
+          subject,content:body,contentHtml:`<p>קיבלת תרגיל קריאה מהדף: ${item.serial}</p><p>התרגיל זמין באזור האישי שלך.</p><p><a href="${escapedLink}">לצפייה ב-PDF</a></p>`,
+          type:'general',
+        },[address]);
+        if(!result)throw new Error('שירות Gmail לא אישר משלוח; עצרתי כדי למנוע שליחה כפולה');
+        sent++;
+      }
+      setMailStatus(`Gmail אישר ${sent} הודעות חדשות; הודעות שכבר נשלחו לא נשלחו שוב. הודעת הדואר כוללת קישור לקובץ (לא צרופה בינארית).`);
+    }catch(e){setMailStatus(`נשלחו ${sent} הודעות לפני עצירה. `+String(e instanceof Error?e.message:e)+' — בדקי את הדואר היוצא לפני ניסיון חוזר.');}
+    finally{setBusy(false);}
   };
   const assignPdf=async(item:SightReadingArchiveItem)=>{
     if(isDevMode()){setDeliveryStatus('לא ניתן לשלוח מתוך סביבת פיתוח');return;}
@@ -295,8 +331,9 @@ export default function SightReadingWorkspace() {
       <fieldset id="sightreading-delivery" className="border rounded p-2"><legend>שיוך PDF לאזור האישי ושליחה</legend>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">{getStudents().map(student=><label key={student.id} className="flex gap-2 items-center"><input type="checkbox" checked={studentIds.includes(student.id)} onChange={e=>setStudentIds(ids=>e.target.checked?[...ids,student.id]:ids.filter(id=>id!==student.id))}/>{student.firstName} {student.lastName}</label>)}</div>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void assignPdf(selectedArchive)}>העלה PDF ושייך לתלמידות שנבחרו</button>
-      <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>הכנת מייל והורדת PDF לצירוף</button></div>
-      <p className="text-xs text-muted-foreground">השליחה האוטומטית עם צרופה עדיין אינה פעילה; הכנת המייל פותחת טיוטה, ואת הקובץ יש לצרף ידנית.</p>
+      <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void sendReadingEmail(selectedArchive)}>שליחת מייל דרך Gmail + הדואר הפנימי</button>
+      <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>טיוטת מייל ידנית</button></div>
+      <p className="text-xs text-muted-foreground">שליחת Gmail שולחת קישור לקובץ המשויך באזור האישי, ולא צרופה בינארית. קודם יש ללחוץ על שיוך PDF לתלמידות.</p>
       {mailStatus&&<p role="status">{mailStatus}</p>}
       {deliveryStatus&&<p role="status">{deliveryStatus}</p>}
       </fieldset>

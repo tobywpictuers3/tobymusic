@@ -127,6 +127,8 @@ export async function makeSightReadingPdf(xml:string):Promise<Blob>{
         pageWidth:2100,pageHeight:2970,scale,breaks:'encoded',
         pageMarginLeft:145,pageMarginRight:145,pageMarginTop:130,pageMarginBottom:130,
         adjustPageHeight:false,svgViewBox:true,
+        justifyVertically:true,justificationMaxVertical:1.0,justificationSystem:1.0,
+        systemMaxPerPage:8,
       });
       const count=toolkit.getPageCount();
       if(!count||count>10)throw new Error('לא ניתן לעמד PDF: מספר דפים לא תקין');

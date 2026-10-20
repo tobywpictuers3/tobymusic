@@ -55,6 +55,7 @@ async function fetchBlob(url: string): Promise<Blob> {
 
 export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [refreshTick, setRefreshTick] = useState(0);
+  const [visibleReadingId,setVisibleReadingId] = useState<string | null>(null);
 
   const files = useMemo(() => {
     const all = getFiles();
@@ -318,32 +319,27 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
           <div className="text-sm opacity-70">אין קבצים שמורים לתלמידה</div>
         ) : (
           <div className="grid gap-2">
-            {files.map((f) => (
-              <div
-                key={f.id}
-                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-3"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{f.name}</div>
-                  <div className="text-xs opacity-70">
-                    {new Date(f.uploadDate).toLocaleString("he-IL")} {f.mimeType ? `• ${f.mimeType}` : ""}
+            {files.map((f) => {
+              const isReading = f.description?.includes('sight-reading:') && (f.mimeType === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+              const isOpen = visibleReadingId === f.id;
+              return <div key={f.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{f.name}</div>
+                    <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} {f.mimeType ? `• ${f.mimeType}` : ""}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {isReading && <Button variant="secondary" onClick={() => setVisibleReadingId(isOpen ? null : f.id)}>{isOpen ? 'סגירת תווים' : 'הצגת התווים כאן'}</Button>}
+                    <Button variant="secondary" onClick={() => window.open(f.webViewLink, "_blank", "noopener,noreferrer")}>פתיחה / הורדה</Button>
+                    <Button variant="destructive" onClick={() => void handleDelete(f)}>מחיקה</Button>
                   </div>
                 </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => window.open(f.webViewLink, "_blank", "noopener,noreferrer")}
-                  >
-                    צפייה
-                  </Button>
-                  <Button variant="destructive" onClick={() => void handleDelete(f)}>
-                    מחיקה
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+                {isReading && isOpen && <div className="rounded-md border bg-white p-2" dir="ltr">
+                  <iframe title={`תווים — ${f.name}`} src={f.webViewLink} className="w-full h-[72vh] min-h-[500px] border-0" loading="lazy" />
+                  <p className="text-xs text-slate-600 text-center" dir="rtl">אם הדפדפן אינו מציג את PDF בתוך הדף, לחצי על פתיחה / הורדה.</p>
+                </div>}
+              </div>;
+            })}          </div>
         )}
       </CardContent>
 
