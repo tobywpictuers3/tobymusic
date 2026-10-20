@@ -301,3 +301,9 @@ The payment data model already contains all 12 academic months, September throug
 - **Unfinished**: exact graphic rhythm selector reproducing source beaming, per-pitch temporary accidentals, local Verovio/Bravura bundling, professional live score preview, PDF, exercises archive/search, assignment/email sending, and visual verification. Do not claim these are implemented.
 - Next integration should bundle the Verovio WASM via Vite and a lockfile-pinned package, run local and filtered-browser checks, ensure notation rendering on every staff including system clef/time/key, and preserve the source MXL beaming metadata (the currently stored canonical patterns retain durations and rests only).
 - Student assignments should reuse the existing master/assignment mechanism and canonical Dropbox JSON merge path, never use unverified parallel persistence.
+
+## Inline sight-reading preview (2026-10-20)
+
+- Teacher admin `קריאה מהדף` now includes a self-contained SVG renderer (`src/components/admin/SightReadingNotation.tsx`) for all 74 rhythm choices **without staves** and for generated 16-line scores **on staves** within the admin tab; it does not need to load external libraries at runtime.
+- This is an operational first-pass notation preview, not a verified Finale/MuseScore-equivalent engraving engine. Visual spacing, detailed beams, accidentals, layout and print/PDF require further expert QA. MusicXML export remains available.
+- Do not claim the renderer reproduces all original MXL beam groupings: the library currently preserves event order, rests and note lengths, not MXL beam metadata.
