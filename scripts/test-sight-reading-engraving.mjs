@@ -33,7 +33,7 @@ assert.ok(component.includes('data:image/svg+xml;charset=utf-8,'),'SVG displayed
 // Exercise the ACTUAL production image conversion function with real Verovio output,
 // not merely a substring search. Verovio may include XML declarations and DOCTYPEs.
 const fnStart=component.indexOf('function svgImageUrl(svg:string) {');
-const fnEnd=component.indexOf('\\n}',fnStart);
+const fnEnd=component.indexOf(String.fromCharCode(10)+'}',fnStart);
 const fnBody=fnStart>=0 && fnEnd>fnStart ? component.slice(fnStart+'function svgImageUrl(svg:string) {'.length,fnEnd) : null;
 assert.ok(fnBody,'production SVG converter exists');
 const makeUrl=new Function('svg',fnBody);
