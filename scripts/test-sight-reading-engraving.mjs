@@ -32,7 +32,9 @@ const component=fs.readFileSync(new URL('../src/components/admin/SightReadingVer
 assert.ok(component.includes('data:image/svg+xml;charset=utf-8,'),'SVG displayed via isolated image');
 // Exercise the ACTUAL production image conversion function with real Verovio output,
 // not merely a substring search. Verovio may include XML declarations and DOCTYPEs.
-const fnBody=component.match(/function svgImageUrl\\(svg:string\\) \\{([\\s\\S]*?)\\n\\}/)?.[1];
+const fnStart=component.indexOf('function svgImageUrl(svg:string) {');
+const fnEnd=component.indexOf('\\n}',fnStart);
+const fnBody=fnStart>=0 && fnEnd>fnStart ? component.slice(fnStart+'function svgImageUrl(svg:string) {'.length,fnEnd) : null;
 assert.ok(fnBody,'production SVG converter exists');
 const makeUrl=new Function('svg',fnBody);
 const originalUrl=makeUrl(svg);
