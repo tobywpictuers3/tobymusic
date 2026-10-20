@@ -116,7 +116,7 @@ export default function SightReadingWorkspace() {
     const students=getStudents().filter(s=>studentIds.includes(s.id));
     const emails=[...new Set(students.map(s=>s.email?.trim()).filter((value):value is string=>Boolean(value)))];
     if(!students.length||emails.length!==students.length){
-        if(!address.includes('@')||!address.split('@')[1]?.includes('.'))throw new Error('לתלמידה שנבחרה אין כתובת מייל תקינה');
+      setMailStatus('בחרי תלמידות שלכולן כתובת מייל תקינה לפני הכנת הטיוטה.');return;
     }
     await downloadPdf(item);
     const subject='תרגיל קריאה מהדף: '+item.title;
