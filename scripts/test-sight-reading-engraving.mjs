@@ -22,4 +22,13 @@ assert.ok(toolkit.loadData(xml),'musicxml loaded');
 const svg=toolkit.renderToSVG(1);
 assert.ok(svg.startsWith('<svg')||svg.includes('<svg'),'SVG output');
 assert.ok(svg.length>1000,'rendered SVG is substantial');
-console.log('PASS: 74 original rhythms & beams, and Verovio Bravura SVG render');
+// Regression: Verovio's SVG uses symbol references for notation glyphs.
+// Sanitizing or injecting HTML must not silently remove their definitions.
+const glyphRefs=[...svg.matchAll(/<(?:use)\\b[^>]*(?:href|xlink:href)=["']#([^"']+)["']/g)].map(m=>m[1]);
+const defs=[...svg.matchAll(/<[^>]+\\bid=["']([^"']+)["']/g)].map(m=>m[1]);
+console.log('SVG glyph references: '+glyphRefs.length+', definitions: '+defs.length);
+assert.ok(svg.includes('<svg'),'source SVG present');
+const component=fs.readFileSync(new URL('../src/components/admin/SightReadingVerovio.tsx',import.meta.url),'utf8');
+assert.ok(component.includes('data:image/svg+xml;charset=utf-8,'),'SVG displayed via isolated image');
+assert.ok(!component.includes('dangerouslySetInnerHTML'),'Do not inject sanitized SVG into the page');
+console.log('PASS: 74 source rhythms/beams and isolated Verovio SVG image rendering');

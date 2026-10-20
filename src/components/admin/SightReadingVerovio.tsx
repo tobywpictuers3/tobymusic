@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RhythmEvent } from '@/lib/sightReadingPatterns';
-import DOMPurify from 'dompurify';
 
 type Toolkit = {
   setOptions: (options: Record<string, unknown>) => void;
@@ -19,8 +18,10 @@ function verovioClass() {
     }).catch(error => { loader=null; throw error; });
   return loader;
 }
-function safe(svg:string) {
-  return DOMPurify.sanitize(svg,{USE_PROFILES:{svg:true,svgFilters:true}}) as string;
+/** Render trusted Verovio output as an isolated SVG image.\n * HTML sanitizers can strip SMuFL symbol definitions or <use href> references,\n * leaving beams/stems visible but hiding heads, rests and clefs.\n * The browser image context does not execute SVG scripts. Never inject this SVG into HTML. */
+function svgImageUrl(svg:string) {
+  if (!/^\\s*(?:<\\?xml[^>]*>\\s*)?<svg\\b/i.test(svg)) throw new Error('Verovio did not return SVG');
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 const baseOptions = {
   inputFrom:'xml', breaks:'encoded', header:'none', footer:'none',
@@ -62,7 +63,7 @@ export function EngravedScore({xml}:{xml:string}) {
       const t=makeToolkit(C,xml,{pageWidth:2250,pageHeight:3050,scale:42,breaks:'encoded',adjustPageHeight:false,svgViewBox:true});
       const count=t.getPageCount();
       if(!count||count>30)throw new Error('לא התקבלו דפי תיווי תקינים');
-      const imgs=Array.from({length:count},(_,i)=>safe(t.renderToSVG(i+1)));
+      const imgs=Array.from({length:count},(_,i)=>svgImageUrl(t.renderToSVG(i+1)));
       if(active)setPages(imgs);
     }).catch(e=>{if(active)setError(String(e?.message||e));});
     return()=>{active=false;};
@@ -70,7 +71,7 @@ export function EngravedScore({xml}:{xml:string}) {
   if(error)return <p role="alert" className="text-red-700">תצוגת התווים לא נטענה: {error}. אפשר לייצא MusicXML.</p>;
   if(!pages.length)return <p role="status" className="p-3">מעבדת תיווי מקצועי נטענת מתוך האתר…</p>;
   return <div dir="ltr" className="space-y-4 overflow-x-auto" aria-label="דפי תווים">
-    {pages.map((svg,i)=><div key={i} className="bg-white border rounded shadow-sm mx-auto max-w-5xl" style={{color:'#151515'}} dangerouslySetInnerHTML={{__html:svg}}/>)}
+    {pages.map((src,i)=><img key={i} src={src} alt={'דף תווים '+(i+1)} className="block bg-white border rounded shadow-sm mx-auto w-full max-w-5xl"/>)}
   </div>;
 }
 
@@ -91,7 +92,7 @@ export function EngravedPattern({id,events}:{id:string;events:RhythmEvent[]}) {
           breaks:'none',adjustPageHeight:true,adjustPageWidth:true,
           noJustification:true,
         });
-        const result=safe(toolkit.renderToSVG(1));
+        const result=svgImageUrl(toolkit.renderToSVG(1));
         patternCache.set(id,result);
         if(active)setSvg(result);
       }).catch(()=>{if(active)setError(true);});
@@ -101,6 +102,6 @@ export function EngravedPattern({id,events}:{id:string;events:RhythmEvent[]}) {
     return()=>{active=false;observer.disconnect();};
   },[id,events]);
   return <div ref={anchor} className="h-24 flex items-center justify-center overflow-hidden bg-white" dir="ltr">
-    {svg?<div className="w-full" dangerouslySetInnerHTML={{__html:svg}}/>:error?<span className="text-xs text-red-600">תצוגה לא זמינה</span>:<span className="text-xs text-slate-500">מכין תיווי…</span>}
+    {svg?<img className="block w-full h-full object-contain" src={svg} alt={'תבנית '+id}/>:error?<span className="text-xs text-red-600">תצוגה לא זמינה</span>:<span className="text-xs text-slate-500">מכין תיווי…</span>}
   </div>;
 }
