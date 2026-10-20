@@ -307,3 +307,11 @@ The payment data model already contains all 12 academic months, September throug
 - Teacher admin `קריאה מהדף` now includes a self-contained SVG renderer (`src/components/admin/SightReadingNotation.tsx`) for all 74 rhythm choices **without staves** and for generated 16-line scores **on staves** within the admin tab; it does not need to load external libraries at runtime.
 - This is an operational first-pass notation preview, not a verified Finale/MuseScore-equivalent engraving engine. Visual spacing, detailed beams, accidentals, layout and print/PDF require further expert QA. MusicXML export remains available.
 - Do not claim the renderer reproduces all original MXL beam groupings: the library currently preserves event order, rests and note lengths, not MXL beam metadata.
+
+## Exact source-beam and local professional engraving (October 2026, feature PR #57)
+
+- Teacher's original 74-measure MXL and corresponding `מקצבים.pdf` are authoritative for rhythmic grouping. Every measure has source-specific primary/secondary `<beam>` instructions, including partial-beam hooks. These are encoded as `SOURCE_BEAMS` alongside durations in `src/lib/sightReadingPatterns.ts`; do not recalculate beam groupings based on beat boundaries or note values.
+- Source beam directives are included in each generated MusicXML note in `SightReadingWorkspace.tsx`. Preserve originals even when concatenating two patterns per 4/4 bar. Half-pattern slices need special caution regarding beams crossing the slicing point.
+- New `SightReadingVerovio.tsx` uses locally bundled npm `verovio@6.3.0` and the included SMuFL Bravura font to render on-page SVG scores and pattern previews. Avoid any external CDN at runtime. The previous hand-drawn SVG notation in `SightReadingNotation.tsx` must not be used as a musical engraving source.
+- Regression script `scripts/test-sight-reading-engraving.mjs` verifies the 74 rhythm/beam alignments and native Verovio SVG output; PR CI includes it.
+- **Not yet production-verified**: filtered-browser module loading, on-screen SVG sanitization, visual alignment and print layout, graphical catalog rest-beams and hidden staff settings. Do not deploy or claim Finale-identical glyphs without browser inspection; Finale Maestro is not distributed by this project.
