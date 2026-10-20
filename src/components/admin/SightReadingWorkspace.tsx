@@ -129,7 +129,7 @@ export default function SightReadingWorkspace() {
   const sendReadingEmail=async(item:SightReadingArchiveItem)=>{
     if(isDevMode()){setMailStatus('שליחת Gmail חסומה במצב פיתוח');return;}
     const recipients=getStudents().filter(student=>studentIds.includes(student.id));
-    if(!recipients.length || recipients.length!==studentIds.length){setMailStatus('בחרי תלמידות תקינות');return;}
+    if(!recipients.length || recipients.length!==studentIds.length){setMailStatus('לא נשלח דבר: יש לסמן לפחות תלמידה אחת ברשימה שלמעלה.');return;}
     if(!window.confirm(`לשייך PDF לאזור האישי ולשלוח מייל עם קישור ל-PDF ל-${recipients.length} תלמידות? ההודעה תישמר גם בתיבת הדואר בפלטפורמה.`))return;
     setBusy(true);setMailStatus('');
     let sent=0;
@@ -353,7 +353,7 @@ export default function SightReadingWorkspace() {
       <fieldset id="sightreading-delivery" className="border rounded p-2"><legend>שיוך PDF לאזור האישי ושליחה</legend>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">{getStudents().map(student=><label key={student.id} className="flex gap-2 items-center"><input type="checkbox" checked={studentIds.includes(student.id)} onChange={e=>setStudentIds(ids=>e.target.checked?[...ids,student.id]:ids.filter(id=>id!==student.id))}/>{student.firstName} {student.lastName}</label>)}</div>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void assignPdf(selectedArchive)}>העלה PDF ושייך לתלמידות שנבחרו</button>
-      <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void sendReadingEmail(selectedArchive)}>שיוך PDF + שליחת מייל והודעה</button>
+      <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy} onClick={()=>void sendReadingEmail(selectedArchive)}>שיוך PDF + שליחת מייל והודעה</button>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>טיוטת מייל ידנית</button></div>
       <p className="text-xs text-muted-foreground">כפתור השליחה משייך תחילה PDF לאזור האישי ואז שולח קישור דרך Gmail. אין צורך בשיוך מוקדם. המייל אינו מכיל צרופה בינארית.</p>
       {mailStatus&&<p role="status">{mailStatus}</p>}
