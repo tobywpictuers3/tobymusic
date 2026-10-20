@@ -110,58 +110,87 @@ export function EngravedPattern({id,events}:{id:string;events:RhythmEvent[]}) {
 /** Create a shareable A4 PDF from the same local engraving used by the preview.
  * All SVG pages are rasterized within the isolated image context to preserve
  * Bravura glyphs, avoiding the HTML sanitizer and any network/CDN dependency. */
+async function renderOfficialBlank():Promise<string>{
+  // The TOBY colored stationery layout approved 2026-10-19:
+  // gold perimeter lines, small upper-right inscription, black logo at
+  // bottom-left, gold footer rule and contact panel on lower right.
+  const canvas=document.createElement('canvas');
+  canvas.width=1240;canvas.height=1754;
+  const c=canvas.getContext('2d');
+  if(!c)throw new Error('Canvas is not supported for letterhead');
+  const k=canvas.width/210;
+  const X=(mm:number)=>mm*k;
+  const gold='#D5A146';
+  c.fillStyle='#fff';c.fillRect(0,0,canvas.width,canvas.height);
+  c.strokeStyle=gold;c.lineWidth=X(0.32);
+  c.beginPath();c.moveTo(X(8),X(6.6));c.lineTo(X(202),X(6.6));
+  c.moveTo(X(8),X(6.6));c.lineTo(X(8),X(284.8));
+  c.lineTo(X(119),X(284.8));c.stroke();
+  c.fillStyle='#793D43';c.font=`${X(3.5)}px serif`;
+  c.textAlign='right';c.fillText('בס״ד',X(185),X(3.7));
+  c.strokeStyle=gold;c.beginPath();c.moveTo(X(120),X(270.3));c.lineTo(X(202),X(270.3));
+  c.moveTo(X(120),X(270.3));c.lineTo(X(120),X(285.2));c.stroke();
+  c.fillStyle='#74303B';c.textAlign='right';c.font=`bold ${X(5)}px sans-serif`;
+  c.fillText('TOBY music | טובי וינברג',X(198),X(277));
+  c.textAlign='center';c.font=`${X(2.65)}px sans-serif`;c.fillStyle='#333';
+  c.fillText('tobymusic.club  |  TOBY.musicartist@gmail.com',X(160),X(283.3));
+  c.fillText('0504124161',X(160),X(288.2));
+  const image=new Image();
+  image.src='/lovable-uploads/toby-music-logo.png';
+  await new Promise<void>((resolve,reject)=>{
+    image.onload=()=>resolve();image.onerror=()=>reject(new Error('הלוגו של TOBY Music לא נטען'));
+  });
+  // Preserve the source logo's aspect ratio.
+  const logoW=42,logoH=logoW*image.naturalHeight/image.naturalWidth;
+  c.drawImage(image,X(35),X(290-logoH),X(logoW),X(logoH));
+  return canvas.toDataURL('image/png');
+}
+
+/** A4 with native-size music, eight evenly-spaced systems per page.
+ * Rendering a separate system avoids Verovio squeezing eight rows into
+ * the top of a large mostly blank SVG canvas.
+ */
 export async function makeSightReadingPdf(xml:string):Promise<Blob>{
   const C=await verovioClass();
-  // A4 portrait, standard 15 mm print margins; enforce at most eight
-  // actual music systems in each PDF page, independently of page auto-breaks.
-  const chunks=paginateSightReadingXml(xml,8);
+  const chunks=paginateSightReadingXml(xml,1);
+  if(!chunks.length||chunks.length>120)throw new Error('מספר שורות תווים לא תקין');
   const {jsPDF}=await import('jspdf');
   const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
-  const renderedPages:string[]=[];
-  for (const chunk of chunks) {
-    // Prefer an enlarged staff. Reduce scale only if eight full systems
-    // cannot fit on one A4 page with standard margins.
-    let pageSvgs:string[]=[];
-    for(const scale of [65,60,55,50,45]){
-      const toolkit=makeToolkit(C,chunk,{
-        pageWidth:2100,pageHeight:2970,scale,breaks:'encoded',
-        pageMarginLeft:145,pageMarginRight:145,pageMarginTop:130,pageMarginBottom:130,
-        adjustPageHeight:false,svgViewBox:true,
-        justifyVertically:true,justificationMaxVertical:1.0,justificationSystem:1.0,
-        systemMaxPerPage:8,
-      });
-      const count=toolkit.getPageCount();
-      if(!count||count>10)throw new Error('לא ניתן לעמד PDF: מספר דפים לא תקין');
-      pageSvgs=Array.from({length:count},(_,i)=>toolkit.renderToSVG(i+1));
-      if(count===1)break;
-    }
-    renderedPages.push(...pageSvgs);
-  }
-  if(!renderedPages.length||renderedPages.length>30)throw new Error('לא נוצרו דפי PDF');
-  for(let i=0;i<renderedPages.length;i++){
-    const image=new Image();
-    image.src=svgImageUrl(renderedPages[i]);
-    await new Promise<void>((resolve,reject)=>{
-      image.onload=()=>resolve();
-      image.onerror=()=>reject(new Error('טעינת דף תווים ל-PDF נכשלה'));
+  const blank=await renderOfficialBlank();
+  const rowsPerPage=8;
+  const topY=26,bottomY=254;
+  const slot=(bottomY-topY)/rowsPerPage;
+  for(let i=0;i<chunks.length;i++){
+    if(i>0&&i%rowsPerPage===0)pdf.addPage();
+    if(i%rowsPerPage===0)pdf.addImage(blank,'PNG',0,0,210,297,'toby-letterhead-'+(i/rowsPerPage),'FAST');
+    const toolkit=makeToolkit(C,chunks[i],{
+      pageWidth:2100,pageHeight:420,scale:82,breaks:'encoded',
+      adjustPageHeight:true,svgViewBox:true,
+      pageMarginLeft:125,pageMarginRight:125,pageMarginTop:15,pageMarginBottom:15,
+      noJustification:true,header:'none',footer:'none',
     });
-    const canvas=document.createElement('canvas');
+    const count=toolkit.getPageCount();
+    if(count!==1)throw new Error('שורת תווים חרגה מעמוד תיווי יחיד');
+    const svg=toolkit.renderToSVG(1);
+    const image=new Image();
+    image.src=svgImageUrl(svg);
+    await new Promise<void>((resolve,reject)=>{
+      image.onload=()=>resolve();image.onerror=()=>reject(new Error('הצגת תווים ב-PDF נכשלה'));
+    });
     const ratio=image.naturalHeight/image.naturalWidth;
-    canvas.width=1750;
-    canvas.height=Math.max(300,Math.round(canvas.width*ratio));
-    const ctx=canvas.getContext('2d');
-    if(!ctx)throw new Error('אין אפשרות להפיק PDF בדפדפן זה');
-    ctx.fillStyle='#ffffff';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(image,0,0,canvas.width,canvas.height);
-    const jpeg=canvas.toDataURL('image/jpeg',0.96);
-    if(i>0)pdf.addPage();
-    const maxWidth=180,maxHeight=267;
-    const targetW=Math.min(maxWidth,maxHeight/ratio);
-    const targetH=targetW*ratio;
-    // Center the entire engraved A4 canvas; do not shrink a full score
-    // of sixteen systems onto one sheet.
-    pdf.addImage(jpeg,'JPEG',(210-targetW)/2,(297-targetH)/2,targetW,targetH,undefined,'FAST');
+    if(!(ratio>0))throw new Error('יחס גדלים לא תקין בדף התווים');
+    const canvas=document.createElement('canvas');
+    canvas.width=1950;canvas.height=Math.max(140,Math.round(canvas.width*ratio));
+    const context=canvas.getContext('2d');
+    if(!context)throw new Error('לא ניתן לייצר דף תווים');
+    context.clearRect(0,0,canvas.width,canvas.height);
+    context.drawImage(image,0,0,canvas.width,canvas.height);
+    const png=canvas.toDataURL('image/png');
+    // Uniform scale: do not distort noteheads, clefs, stems or beams.
+    const width=Math.min(181,(slot-2)/ratio);
+    const height=width*ratio;
+    const y=topY+(i%rowsPerPage)*slot+(slot-height)/2;
+    pdf.addImage(png,'PNG',(210-width)/2,y,width,height,undefined,'FAST');
   }
   return pdf.output('blob');
 }

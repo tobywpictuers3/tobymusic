@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const pdf=fs.readFileSync('src/components/admin/SightReadingVerovio.tsx','utf8');
+const workspace=fs.readFileSync('src/components/admin/SightReadingWorkspace.tsx','utf8');
+assert.match(pdf,/paginateSightReadingXml\(xml,1\)/,'one musical system per render');
+assert.match(pdf,/const rowsPerPage=8/,'eight systems per A4');
+assert.match(pdf,/const slot=\(bottomY-topY\)\/rowsPerPage/,'distribute systems vertically');
+assert.match(pdf,/Math\.min\(181,\(slot-2\)\/ratio\)/,'uniformly scale music into each slot');
+assert.match(pdf,/pdf\.addImage\(blank,'PNG'/,'letterhead on every sheet');
+assert.match(pdf,/toby-music-logo\.png/,'use in-repository logo');
+const mail=workspace.slice(workspace.indexOf('const sendReadingEmail='),workspace.indexOf('const assignPdf='));
+assert.ok(mail.indexOf('workerApi.uploadAttachment')>=0,'send action automatically uploads missing PDF');
+assert.ok(mail.indexOf('addFile(')>mail.indexOf('workerApi.uploadAttachment'),'student assignment follows upload');
+assert.ok(mail.indexOf('sendMessageViaGmail(')>mail.indexOf('addFile('),'mail is sent only after file assignment');
+assert.ok(mail.includes('window.confirm('),'explicit recipient send confirmation required');
+console.log('PASS A4 print slots, TOBY stationery and one-action assign-then-mail ordering');
