@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightReadingPatterns';
-import { EngravedPattern, EngravedScore } from './SightReadingVerovio';
-import { addSightReadingArchiveItem, getSightReadingArchive, type SightReadingArchiveItem } from '@/lib/storage';
+import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightReadingVerovio';
+import { addSightReadingArchiveItem, getSightReadingArchive, getStudents, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
+import { workerApi } from '@/lib/workerApi';
 
 type Note = RhythmEvent & { step?: string; octave?: number; alter?: number };
 const STEPS = ['C','D','E','F','G','A','B'];
@@ -67,6 +68,9 @@ export default function SightReadingWorkspace() {
   const [selectedArchive,setSelectedArchive]=useState<SightReadingArchiveItem|null>(null);
   const [archiveSearch,setArchiveSearch]=useState('');
   const [archiveStatus,setArchiveStatus]=useState('');
+  const [studentIds,setStudentIds]=useState<string[]>([]);
+  const [busy,setBusy]=useState(false);
+  const [deliveryStatus,setDeliveryStatus]=useState('');
   const [documentTitle,setDocumentTitle]=useState('');
 
   const [doubleBar,setDoubleBar]=useState(true);
@@ -80,6 +84,47 @@ export default function SightReadingWorkspace() {
     return !term||[item.title,item.id,item.metadata.meter,item.metadata.low,item.metadata.high,
       item.metadata.clef,item.metadata.intervalMode,...item.metadata.patternIds].some(v=>v.toLocaleLowerCase().includes(term));
   });
+
+  const downloadPdf=async(item:SightReadingArchiveItem)=>{
+    setBusy(true);setDeliveryStatus('');
+    try {
+      const pdf=await makeSightReadingPdf(item.xml);
+      const url=URL.createObjectURL(pdf),a=document.createElement('a');
+      a.href=url;a.download='TOBY-reading-'+item.serial+'.pdf';a.click();
+      window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+    } catch(e){setDeliveryStatus('שגיאה בהפקת PDF: '+String(e instanceof Error?e.message:e));}
+    finally{setBusy(false);}
+  };
+  const assignPdf=async(item:SightReadingArchiveItem)=>{
+    if(isDevMode()){setDeliveryStatus('לא ניתן לשלוח מתוך סביבת פיתוח');return;}
+    if(!studentIds.length){setDeliveryStatus('בחרי לפחות תלמידה אחת');return;}
+    setBusy(true);setDeliveryStatus('');
+    try{
+      const targetStudents=getStudents().filter(student=>studentIds.includes(student.id));
+      if(targetStudents.length!==studentIds.length)throw new Error('יש בחירה שאינה תואמת לתלמידה פעילה במערכת');
+      const pdf=await makeSightReadingPdf(item.xml);
+      const upload=await workerApi.uploadAttachment(new File([pdf],'TOBY-reading-'+item.serial+'.pdf',{type:'application/pdf'}));
+      if(!upload.success||!upload.data?.webViewLink)throw new Error(upload.error||'Dropbox לא אישר את העלאת הקובץ');
+      let added=0;
+      for(const student of targetStudents){
+        const marker='sight-reading:'+item.id;
+        if(getFiles().some(file=>file.studentId===student.id&&file.description?.includes(marker)))continue;
+        addFile({
+          studentId:student.id,
+          name:item.title+'.pdf',
+          description:'תרגיל קריאה מהדף · '+marker,
+          webViewLink:upload.data.webViewLink,
+          dropboxPath:upload.data.path,
+          kind:'pdf',
+          mimeType:'application/pdf',
+          size:upload.data.size??pdf.size,
+        });
+        added++;
+      }
+      setDeliveryStatus('קובץ PDF הועלה, '+added+' שיוכים נוספו לאזור האישי והועברו לסנכרון. אימות התצוגה בחשבונות התלמידות וקריאה חוזרת מ-Dropbox עדיין נדרשים.');
+    }catch(e){setDeliveryStatus('לא ניתן להשלים שיתוף: '+String(e instanceof Error?e.message:e));}
+    finally{setBusy(false);}
+  };
   const generate=()=>{
     try {
       const lowNote=NOTE_OPTIONS.find(n=>n.value===low),highNote=NOTE_OPTIONS.find(n=>n.value===high);
@@ -174,10 +219,17 @@ export default function SightReadingWorkspace() {
         <strong>{item.title}</strong> · {item.metadata.meter} · {item.metadata.low}–{item.metadata.high} · {item.createdAt.slice(0,10)}
       </button>)}</div>
       {selectedArchive&&<div className="border rounded p-2 space-y-2"><p>נבחר: {selectedArchive.title}</p>
-      <button className="border rounded p-2" onClick={()=>downloadXml(selectedArchive.xml)}>הורדת MusicXML מהמאגר</button>
+      <div className="flex gap-2 flex-wrap"><button className="border rounded p-2" onClick={()=>downloadXml(selectedArchive.xml)}>הורדת MusicXML מהמאגר</button>
+      <button className="border rounded p-2" disabled={busy} onClick={()=>void downloadPdf(selectedArchive)}>הורדת PDF</button></div>
+      <fieldset className="border rounded p-2"><legend>שיוך PDF לאזור האישי של תלמידות</legend>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">{getStudents().map(student=><label key={student.id} className="flex gap-2 items-center"><input type="checkbox" checked={studentIds.includes(student.id)} onChange={e=>setStudentIds(ids=>e.target.checked?[...ids,student.id]:ids.filter(id=>id!==student.id))}/>{student.firstName} {student.lastName}</label>)}</div>
+      <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void assignPdf(selectedArchive)}>העלה PDF ושייך לתלמידות שנבחרו</button>
+      <p className="text-xs text-muted-foreground">שליחת PDF כקובץ מצורף למייל טרם חוברה למנגנון שליחה מאובטח.</p>
+      {deliveryStatus&&<p role="status">{deliveryStatus}</p>}
+      </fieldset>
       <EngravedScore xml={selectedArchive.xml}/></div>}
       {archiveStatus&&<p role="status">{archiveStatus}</p>}
-      <p className="text-xs text-muted-foreground">שיוך משימות לתלמידות, שליחת PDF במייל, ואימות ענן: עדיין בפיתוח. אין לשלוח לפני חיבור למנגנון המשימות המאומת.</p>
+      <p className="text-xs text-muted-foreground">שיוך PDF משתמש במנגנון הקבצים הקיים; שליחה כצרופה במייל ואימות סנכרון בענן טרם הושלמו.</p>
     </section>
     <section className="border rounded p-3 text-sm"><strong>תרגול פסנתר — שתי חמשות</strong><p>מתוכנן לשלב מתקדם לאחר הגדרת כללי שתי הידיים, המפתחות והקצב. עדיין אינו פעיל.</p></section>
   </div>;
