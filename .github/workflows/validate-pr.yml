@@ -31,6 +31,8 @@ jobs:
         run: node scripts/test-sight-reading-engraving.mjs
       - name: Sight-reading rhythm selection taxonomy
         run: node scripts/test-sight-reading-rhythm-filters.mjs
+      - name: Sight-reading A4 print paging regression
+        run: node scripts/test-sight-reading-print-pages.mjs
       - name: Production build
         timeout-minutes: 5
         run: npm run build

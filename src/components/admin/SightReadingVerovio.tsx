@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RhythmEvent } from '@/lib/sightReadingPatterns';
+import { paginateSightReadingXml } from '@/lib/sightReadingPrintLayout';
 
 type Toolkit = {
   setOptions: (options: Record<string, unknown>) => void;
@@ -111,30 +112,54 @@ export function EngravedPattern({id,events}:{id:string;events:RhythmEvent[]}) {
  * Bravura glyphs, avoiding the HTML sanitizer and any network/CDN dependency. */
 export async function makeSightReadingPdf(xml:string):Promise<Blob>{
   const C=await verovioClass();
-  const t=makeToolkit(C,xml,{pageWidth:2250,pageHeight:3050,scale:42,breaks:'encoded',adjustPageHeight:false,svgViewBox:true});
-  const count=t.getPageCount();
-  if(!count||count>30)throw new Error('לא ניתן להפיק PDF: מספר עמודים לא תקין');
+  // A4 portrait, standard 15 mm print margins; enforce at most eight
+  // actual music systems in each PDF page, independently of page auto-breaks.
+  const chunks=paginateSightReadingXml(xml,8);
   const {jsPDF}=await import('jspdf');
   const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
-  for(let i=1;i<=count;i++){
-    const svg=t.renderToSVG(i);
+  const renderedPages:string[]=[];
+  for (const chunk of chunks) {
+    // Prefer an enlarged staff. Reduce scale only if eight full systems
+    // cannot fit on one A4 page with standard margins.
+    let pageSvgs:string[]=[];
+    for(const scale of [65,60,55,50,45]){
+      const toolkit=makeToolkit(C,chunk,{
+        pageWidth:2100,pageHeight:2970,scale,breaks:'encoded',
+        pageMarginLeft:145,pageMarginRight:145,pageMarginTop:130,pageMarginBottom:130,
+        adjustPageHeight:false,svgViewBox:true,
+      });
+      const count=toolkit.getPageCount();
+      if(!count||count>10)throw new Error('לא ניתן לעמד PDF: מספר דפים לא תקין');
+      pageSvgs=Array.from({length:count},(_,i)=>toolkit.renderToSVG(i+1));
+      if(count===1)break;
+    }
+    renderedPages.push(...pageSvgs);
+  }
+  if(!renderedPages.length||renderedPages.length>30)throw new Error('לא נוצרו דפי PDF');
+  for(let i=0;i<renderedPages.length;i++){
     const image=new Image();
-    image.src=svgImageUrl(svg);
+    image.src=svgImageUrl(renderedPages[i]);
     await new Promise<void>((resolve,reject)=>{
       image.onload=()=>resolve();
       image.onerror=()=>reject(new Error('טעינת דף תווים ל-PDF נכשלה'));
     });
     const canvas=document.createElement('canvas');
     const ratio=image.naturalHeight/image.naturalWidth;
-    canvas.width=1400;canvas.height=Math.max(300,Math.round(canvas.width*ratio));
+    canvas.width=1750;
+    canvas.height=Math.max(300,Math.round(canvas.width*ratio));
     const ctx=canvas.getContext('2d');
     if(!ctx)throw new Error('אין אפשרות להפיק PDF בדפדפן זה');
-    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#ffffff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(image,0,0,canvas.width,canvas.height);
-    const jpeg=canvas.toDataURL('image/jpeg',0.93);
-    if(i>1)pdf.addPage();
-    const targetW=190,targetH=Math.min(277,targetW*ratio);
-    pdf.addImage(jpeg,'JPEG',10,10,targetW,targetH,undefined,'FAST');
+    const jpeg=canvas.toDataURL('image/jpeg',0.96);
+    if(i>0)pdf.addPage();
+    const maxWidth=180,maxHeight=267;
+    const targetW=Math.min(maxWidth,maxHeight/ratio);
+    const targetH=targetW*ratio;
+    // Center the entire engraved A4 canvas; do not shrink a full score
+    // of sixteen systems onto one sheet.
+    pdf.addImage(jpeg,'JPEG',(210-targetW)/2,(297-targetH)/2,targetW,targetH,undefined,'FAST');
   }
   return pdf.output('blob');
 }
