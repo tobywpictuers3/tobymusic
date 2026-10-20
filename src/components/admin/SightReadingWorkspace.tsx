@@ -4,6 +4,7 @@ import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightRead
 import { addSightReadingArchiveItem, getSightReadingArchive, getStudents, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
 import { workerApi } from '@/lib/workerApi';
 import { RHYTHM_GROUPS, updatePatternSelection } from '@/lib/sightReadingRhythmGroups';
+import { searchSightReadingArchive } from '@/lib/sightReadingSearch';
 
 type Note = RhythmEvent & { step?: string; octave?: number; alter?: number };
 const STEPS = ['C','D','E','F','G','A','B'];
@@ -78,12 +79,8 @@ export default function SightReadingWorkspace() {
   const groupIds=(group:typeof RHYTHM_GROUPS[number])=>group.sections.flatMap(section=>section.patterns.map(p=>p.id));
 
 
-  const filteredArchive=archive.filter(item=>{
-    const term=archiveSearch.trim().toLocaleLowerCase('he');
-    return !term||[item.title,item.id,item.metadata.meter,item.metadata.low,item.metadata.high,
-      item.metadata.clef,item.metadata.intervalMode,...item.metadata.patternIds].some(v=>v.toLocaleLowerCase().includes(term));
-  });
-
+  const filteredArchive=archive.filter(item=>searchSightReadingArchive(item,archiveSearch));
+  const currentItem=selectedArchive|| (lines ? archive.find(x=>x.title===documentTitle&&x.xml===makeXML(lines,documentTitle,beats,clef,fifths,doubleBar))||null : null);
   const downloadPdf=async(item:SightReadingArchiveItem)=>{
     setBusy(true);setDeliveryStatus('');
     try {
@@ -200,19 +197,19 @@ export default function SightReadingWorkspace() {
         id:randomId(),serial:nextSerial,createdAt:new Date().toISOString(),title:nextTitle,
         xml:makeXML(result,nextTitle,beats,clef,fifths,doubleBar),
         metadata:{meter:beats+'/4',barsPerLine:bars,clef,low,high,
-          allowedSteps:allowed.map(i=>STEPS[i]),patternIds:[...approved],
+          allowedSteps:allowed.map(i=>STEPS[i]),patternIds:[...new Set(result.flat(2).map(event=>event.sourceId))],
           intervalMode,repeatedShortNotes:repeatShort}
       };
       addSightReadingArchiveItem(item);
-      setArchive(getSightReadingArchive());setSelectedArchive(null);
+      setArchive(getSightReadingArchive());setSelectedArchive(item);
       setArchiveStatus('התרגיל נוסף למאגר והועבר לסנכרון Dropbox. נדרש אימות שמירה בענן.');
       setLines(result);setDocumentTitle(nextTitle);setError('');
     } catch(e){setError(e instanceof Error?e.message:String(e));setLines(null);}
   };
-  return <div className="rounded-xl border bg-background p-5 space-y-5" dir="rtl">
-    <h2 className="text-xl font-bold">מחולל קריאה מהדף — סביבת פיתוח</h2>
-    <p className="text-sm text-muted-foreground">74 תבניות המקצב נלקחו מקובץ המקור, כולל הוראות הקורות המדויקות. הצגת המקצבים והתרגיל מתבצעת במנוע Verovio עם גופני תיווי Bravura המובנים באתר. אין צורך לפתוח תוכנה אחרת.</p>
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+  return <div className="rounded-xl border bg-background p-3 sm:p-4 space-y-3" dir="rtl">
+    <h2 className="font-bold text-lg">מחולל קריאה מהדף</h2>
+    
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-sm [&_select]:py-1 [&_input]:py-1">
       <label>כותרת<input className="block w-full border rounded p-2" value={title} onChange={e=>setTitle(e.target.value)}/></label>
       <label>משקל<select className="block w-full border rounded p-2" value={beats} onChange={e=>setBeats(Number(e.target.value) as 2|3|4|5)}>{[2,3,4,5].map(n=><option key={n} value={n}>{n}/4</option>)}</select></label>
       <label>תיבות בשורה<select className="block w-full border rounded p-2" value={bars} onChange={e=>setBars(Number(e.target.value))}>{[2,3,4,5,6].map(n=><option key={n}>{n}</option>)}</select></label>
@@ -222,9 +219,9 @@ export default function SightReadingWorkspace() {
       <label>הצליל הגבוה ביותר<select className="block w-full border rounded p-2" value={high} onChange={e=>setHigh(e.target.value)}>{NOTE_OPTIONS.map(n=><option key={n.value} value={n.value}>{n.label} ({n.value})</option>)}</select></label>
       <label className="flex items-center gap-2"><input type="checkbox" checked={doubleBar} onChange={e=>setDoubleBar(e.target.checked)}/>קו כפול בסוף שורה</label>
     </div>
-    <p className="text-xs text-muted-foreground">לה ראשון (A4) = 440Hz. סול קטן = G3, דו שני = C5. ברירת המחדל: סול קטן עד דו שני.</p>
-    <fieldset className="border rounded p-3"><legend>צלילים מותרים</legend><div className="flex flex-wrap gap-3">{LABELS.map((label,i)=><label key={label} className="flex items-center gap-1"><input type="checkbox" checked={allowed.includes(i)} onChange={e=>setAllowed(prev=>e.target.checked?[...prev,i].sort():prev.filter(n=>n!==i))}/>{label}</label>)}</div></fieldset>
-    <fieldset className="border rounded p-3 space-y-2"><legend>הגבלות מלודיות</legend>
+    
+    <fieldset className="border rounded px-2 py-1 text-sm"><legend>צלילים מותרים</legend><div className="flex flex-wrap gap-3">{LABELS.map((label,i)=><label key={label} className="flex items-center gap-1"><input type="checkbox" checked={allowed.includes(i)} onChange={e=>setAllowed(prev=>e.target.checked?[...prev,i].sort():prev.filter(n=>n!==i))}/>{label}</label>)}</div></fieldset>
+    <fieldset className="border rounded px-2 py-1 text-sm"><legend>הגבלות מלודיות</legend>
       <label>מרווחים מותרים<select className="block w-full border rounded p-2" value={intervalMode} onChange={e=>setIntervalMode(e.target.value as typeof intervalMode)}>
         <option value="steps">צעדים בלבד (עד סקונדה)</option>
         <option value="thirds">צעדים וטרצות בלבד</option>
@@ -232,65 +229,70 @@ export default function SightReadingWorkspace() {
         <option value="wide">מאפשר גם קפיצות מעל קווינטה (עד אוקטבה)</option>
       </select></label>
       <label className="flex gap-2 items-center"><input type="checkbox" checked={repeatShort} onChange={e=>setRepeatShort(e.target.checked)}/>שמיניות ושש־עשריות רצופות באותו צליל בלבד</label>
-      <p className="text-xs text-muted-foreground">לא יותר משתי קפיצות רצופות נשמר גם במצב המורחב.</p>
+      
     </fieldset>
-    <fieldset className="border rounded p-3"><legend>תבניות מקצב מותרות — {approved.length}/74</legend>
-      <div className="flex gap-2 mb-3"><button className="border rounded p-2" onClick={()=>setApproved(RHYTHM_PATTERNS.map(p=>p.id))}>בחרי הכול</button><button className="border rounded p-2" onClick={()=>setApproved([])}>בטלי הכול</button></div>
-      <div className="max-h-[520px] overflow-y-auto space-y-5">
+    <section className="border rounded px-2 py-1">
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <strong>תבניות מקצב: {approved.length}/74</strong>
+        <div className="flex gap-2">
+          <button className="underline" onClick={()=>setApproved(RHYTHM_PATTERNS.map(p=>p.id))}>בחרי הכול</button>
+          <button className="underline" onClick={()=>setApproved([])}>בטלי הכול</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
         {RHYTHM_GROUPS.map(group=>{
-          const allIds=groupIds(group);
-          return <section key={group.key} className="border rounded-lg p-3 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-bold">{group.label} ({allIds.filter(id=>selected.has(id)).length}/{allIds.length})</h3>
-              <div className="flex gap-2">
-                <button type="button" className="border rounded px-3 py-1 text-sm" onClick={()=>setGroupSelection(allIds,true)}>סמני קבוצה שלמה</button>
-                <button type="button" className="border rounded px-3 py-1 text-sm" onClick={()=>setGroupSelection(allIds,false)}>בטלי קבוצה</button>
-              </div>
+          const ids=groupIds(group),selectedCount=ids.filter(id=>selected.has(id)).length;
+          return <details key={group.key} className="border rounded-md p-2 text-sm min-w-0">
+            <summary className="cursor-pointer font-semibold select-none">{group.label} <span className="text-muted-foreground font-normal">({selectedCount}/{ids.length})</span></summary>
+            <div className="flex gap-2 mt-2">
+              <button type="button" className="underline" onClick={()=>setGroupSelection(ids,true)}>סמני הכול</button>
+              <button type="button" className="underline" onClick={()=>setGroupSelection(ids,false)}>בטלי הכול</button>
             </div>
             {group.sections.map(section=>{
-              const ids=section.patterns.map(p=>p.id);
-              const count=ids.filter(id=>selected.has(id)).length;
-              return <div key={section.key} className="border-t pt-3">
-                <div className="flex flex-wrap gap-2 items-center justify-between mb-2">
-                  <h4 className="font-medium">{section.label} ({count}/{ids.length})</h4>
-                  <div className="flex gap-2">
-                    <button type="button" className="border rounded px-2 py-1 text-xs" onClick={()=>setGroupSelection(ids,true)}>סמני תת־קבוצה</button>
-                    <button type="button" className="border rounded px-2 py-1 text-xs" onClick={()=>setGroupSelection(ids,false)}>בטלי תת־קבוצה</button>
-                  </div>
+              const subset=section.patterns.map(p=>p.id);
+              return <details key={section.key} className="border-t mt-2 pt-1">
+                <summary className="cursor-pointer">{section.label} ({subset.filter(id=>selected.has(id)).length}/{subset.length})</summary>
+                <div className="flex gap-2 my-1">
+                  <button className="underline" onClick={()=>setGroupSelection(subset,true)}>סמני</button>
+                  <button className="underline" onClick={()=>setGroupSelection(subset,false)}>בטלי</button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {section.patterns.map(p=><label key={p.id} className="border rounded-lg p-2 bg-white text-slate-900 flex flex-col gap-1 cursor-pointer">
-                    <span className="flex items-center justify-between"><span className="font-medium">{p.id}</span>
-                    <input type="checkbox" checked={selected.has(p.id)}
-                      onChange={e=>setGroupSelection([p.id],e.target.checked)}/></span>
+                <div className="grid grid-cols-1 gap-1 max-h-64 overflow-auto">
+                  {section.patterns.map(p=><label key={p.id} className="border rounded px-1 py-1 bg-white text-slate-900">
+                    <span className="flex justify-between"><span>{p.id}</span><input type="checkbox" checked={selected.has(p.id)} onChange={e=>setGroupSelection([p.id],e.target.checked)}/></span>
                     <EngravedPattern id={p.id} events={p.events}/>
                   </label>)}
                 </div>
-              </div>;
+              </details>;
             })}
-          </section>;
+          </details>;
         })}
       </div>
-      <p className="text-xs text-muted-foreground mt-2">המקצבים מוצגים ללא חמשה או משקל. התווים, הדמימות והקורות מבוססים על ההוראות המקוריות בקובץ שסיפקת.</p>
-    </fieldset>
+    </section>
     <div className="flex flex-wrap gap-2">
       <button className="bg-primary text-primary-foreground rounded px-4 py-2" onClick={generate}>צרי 16 שורות</button>
-      <button className="border rounded px-4 py-2" disabled={!lines} onClick={()=>lines&&downloadXml(makeXML(lines,documentTitle,beats,clef,fifths,doubleBar))}>הורדת MusicXML</button>
+      <button className="border rounded px-3 py-1.5" disabled={!currentItem} onClick={()=>currentItem&&downloadXml(currentItem.xml)}>XML</button>
+      <button className="border rounded px-3 py-1.5" disabled={!currentItem||busy} onClick={()=>currentItem&&void downloadPdf(currentItem)}>הורדת PDF</button>
+      <button className="border rounded px-3 py-1.5" disabled={!currentItem||busy} onClick={()=>currentItem&&void printPdf(currentItem)}>הדפסה</button>
+      <button className="border rounded px-3 py-1.5" disabled={!currentItem} onClick={()=>document.getElementById('sightreading-delivery')?.scrollIntoView({behavior:'smooth',block:'start'})}>שליחה לתלמידות</button>
+      <span className="text-xs text-muted-foreground self-center">{currentItem?'נשמר במאגר: '+currentItem.title:'צרי תרגיל כדי להפעיל שמירה והפצה'}</span>
       
     </div>
     {error&&<p className="text-red-600" role="alert">{error}</p>}
-    {lines&&<div className="space-y-3" id="sight-reading-preview"><p role="status">נוצרו 16 שורות, {16*bars} תיבות, והתבניות בכל תיבה אומתו. התרגיל מוצג כאן למטה.</p><EngravedScore xml={makeXML(lines,documentTitle,beats,clef,fifths,doubleBar)}/></div>}
-    <section className="border rounded p-3 space-y-3">
-      <h3 className="font-bold">מאגר תרגילי קריאה מהדף ({archive.length})</h3>
-      <input className="border rounded p-2 w-full" value={archiveSearch} onChange={e=>setArchiveSearch(e.target.value)} placeholder="חיפוש לפי כותרת, משקל, מנעד, מפתח או מזהה תבנית"/>
-      <div className="max-h-72 overflow-auto space-y-2">{filteredArchive.map(item=><button key={item.id} className="block w-full text-right border rounded p-2 hover:bg-muted" onClick={()=>setSelectedArchive(item)}>
+    {lines&&<details className="border rounded p-2" id="sight-reading-preview">
+       <summary className="cursor-pointer font-medium">הצגת התרגיל החדש — {documentTitle} (16 שורות)</summary>
+       <EngravedScore xml={makeXML(lines,documentTitle,beats,clef,fifths,doubleBar)}/>
+     </details>}
+    <section className="border rounded p-2 space-y-2">
+      <h3 className="font-bold text-sm">מאגר התרגילים ({archive.length})</h3>
+      <input className="border rounded p-2 w-full" value={archiveSearch} onChange={e=>setArchiveSearch(e.target.value)} placeholder="חיפוש חופשי: שמיניות, רבעים, מדו עד סול, 4/4..."/>
+      <div className="max-h-40 overflow-auto space-y-1">{filteredArchive.map(item=><button key={item.id} className="block w-full text-right border rounded p-2 hover:bg-muted" onClick={()=>setSelectedArchive(item)}>
         <strong>{item.title}</strong> · {item.metadata.meter} · {item.metadata.low}–{item.metadata.high} · {item.createdAt.slice(0,10)}
       </button>)}</div>
       {selectedArchive&&<div className="border rounded p-2 space-y-2"><p>נבחר: {selectedArchive.title}</p>
       <div className="flex gap-2 flex-wrap"><button className="border rounded p-2" onClick={()=>downloadXml(selectedArchive.xml)}>הורדת MusicXML מהמאגר</button>
       <button className="border rounded p-2" disabled={busy} onClick={()=>void downloadPdf(selectedArchive)}>הורדת PDF למחשב</button>
       <button className="border rounded p-2" disabled={busy} onClick={()=>void printPdf(selectedArchive)}>הדפסת התרגיל</button></div>
-      <fieldset className="border rounded p-2"><legend>שיוך PDF לאזור האישי של תלמידות</legend>
+      <fieldset id="sightreading-delivery" className="border rounded p-2"><legend>שיוך PDF לאזור האישי ושליחה</legend>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">{getStudents().map(student=><label key={student.id} className="flex gap-2 items-center"><input type="checkbox" checked={studentIds.includes(student.id)} onChange={e=>setStudentIds(ids=>e.target.checked?[...ids,student.id]:ids.filter(id=>id!==student.id))}/>{student.firstName} {student.lastName}</label>)}</div>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void assignPdf(selectedArchive)}>העלה PDF ושייך לתלמידות שנבחרו</button>
       <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>הכנת מייל והורדת PDF לצירוף</button></div>
@@ -298,10 +300,10 @@ export default function SightReadingWorkspace() {
       {mailStatus&&<p role="status">{mailStatus}</p>}
       {deliveryStatus&&<p role="status">{deliveryStatus}</p>}
       </fieldset>
-      <EngravedScore xml={selectedArchive.xml}/></div>}
+      <details className="border rounded p-2"><summary className="cursor-pointer">תצוגת התרגיל השמור</summary><EngravedScore xml={selectedArchive.xml}/></details></div>}
       {archiveStatus&&<p role="status">{archiveStatus}</p>}
       <p className="text-xs text-muted-foreground">שיוך PDF משתמש במנגנון הקבצים הקיים; שליחה כצרופה במייל ואימות סנכרון בענן טרם הושלמו.</p>
     </section>
-    <section className="border rounded p-3 text-sm"><strong>תרגול פסנתר — שתי חמשות</strong><p>מתוכנן לשלב מתקדם לאחר הגדרת כללי שתי הידיים, המפתחות והקצב. עדיין אינו פעיל.</p></section>
+    <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">תרגול פסנתר בשתי חמשות (בפיתוח)</summary>בהמשך, לאחר הגדרת כללי שתי הידיים והמקצב.</details>
   </div>;
 }
