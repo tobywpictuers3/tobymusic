@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "@/hooks/use-toast";
 
 import type { FileEntry } from "@/lib/types";
-import { addFile, deleteFile, getFiles } from "@/lib/storage";
+import { addFile, deleteFile, getFiles, getSightReadingArchive } from "@/lib/storage";
+import { EngravedScore } from "@/components/admin/SightReadingVerovio";
 import { workerApi } from "@/lib/workerApi";
 
 import DocumentEditor, { editorSourceFromFile } from "./DocumentEditor";
@@ -322,6 +323,8 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
             {files.map((f) => {
               const isReading = f.description?.includes('sight-reading:') && (f.mimeType === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
               const isOpen = visibleReadingId === f.id;
+              const sourceExerciseId = f.description?.match(/sight-reading:([a-zA-Z0-9-]+)/)?.[1];
+              const archivedExercise = isReading && sourceExerciseId ? getSightReadingArchive().find(item => item.id === sourceExerciseId) : undefined;
               return <div key={f.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
@@ -335,8 +338,12 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
                   </div>
                 </div>
                 {isReading && isOpen && <div className="rounded-md border bg-white p-2" dir="ltr">
-                  <iframe title={`תווים — ${f.name}`} src={f.webViewLink} className="w-full h-[72vh] min-h-[500px] border-0" loading="lazy" />
-                  <p className="text-xs text-slate-600 text-center" dir="rtl">אם הדפדפן אינו מציג את PDF בתוך הדף, לחצי על פתיחה / הורדה.</p>
+                  {archivedExercise?.xml ? (
+                    <EngravedScore xml={archivedExercise.xml} />
+                  ) : (
+                    <iframe title={`תווים — ${f.name}`} src={f.webViewLink} className="w-full h-[72vh] min-h-[500px] border-0" loading="lazy" />
+                  )}
+                  <p className="text-xs text-slate-600 text-center" dir="rtl">תיווי ישיר בדף, ללא תוכנה חיצונית. אם התרגיל אינו זמין בתצוגה הפנימית, לחצי על פתיחה / הורדה.</p>
                 </div>}
               </div>;
             })}          </div>
