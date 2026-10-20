@@ -73,30 +73,13 @@ export default function SightReadingWorkspace() {
   const [lines,setLines]=useState<Note[][][]|null>(null);
   const [error,setError]=useState('');
   const selected=useMemo(()=>new Set(approved),[approved]);
-  const serial=useMemo(()=>Math.max(0,...archive.map(x=>x.serial))+1,[archive]);
-  const activeTitle=title.trim()||'תרגיל מספר '+serial;
+
+
   const filteredArchive=archive.filter(item=>{
     const term=archiveSearch.trim().toLocaleLowerCase('he');
     return !term||[item.title,item.id,item.metadata.meter,item.metadata.low,item.metadata.high,
       item.metadata.clef,item.metadata.intervalMode,...item.metadata.patternIds].some(v=>v.toLocaleLowerCase().includes(term));
   });
-  const saveExercise=()=>{
-    if(!lines)return;
-    const lowNote=NOTE_OPTIONS.find(n=>n.value===low),highNote=NOTE_OPTIONS.find(n=>n.value===high);
-    if(!lowNote||!highNote)return;
-    const item:SightReadingArchiveItem={
-      id:randomId(),serial,createdAt:new Date().toISOString(),title:activeTitle,
-      xml:makeXML(lines,activeTitle,beats,clef,fifths,doubleBar),
-      metadata:{meter:beats+'/4',barsPerLine:bars,clef,low,high,
-        allowedSteps:allowed.map(i=>STEPS[i]),patternIds:[...approved],
-        intervalMode,repeatedShortNotes:repeatShort}
-    };
-    addSightReadingArchiveItem(item);
-    setArchive(getSightReadingArchive());setSelectedArchive(item);
-    setDocumentTitle(item.title);
-    setArchiveStatus('התרגיל נוסף למאגר המקומי והועבר לתור הסנכרון. אימות שמירה בענן עדיין נדרש.');
-  };
-
   const generate=()=>{
     try {
       const lowNote=NOTE_OPTIONS.find(n=>n.value===low),highNote=NOTE_OPTIONS.find(n=>n.value===high);
@@ -130,7 +113,19 @@ export default function SightReadingWorkspace() {
         }
         result.push(newRow);
       }
-      setLines(result); setSelectedArchive(null); setArchiveStatus('');setDocumentTitle(activeTitle); setError('');
+      const nextSerial=Math.max(0,...getSightReadingArchive().map(item=>item.serial))+1;
+      const nextTitle=title.trim()||'תרגיל מספר '+nextSerial;
+      const item:SightReadingArchiveItem={
+        id:randomId(),serial:nextSerial,createdAt:new Date().toISOString(),title:nextTitle,
+        xml:makeXML(result,nextTitle,beats,clef,fifths,doubleBar),
+        metadata:{meter:beats+'/4',barsPerLine:bars,clef,low,high,
+          allowedSteps:allowed.map(i=>STEPS[i]),patternIds:[...approved],
+          intervalMode,repeatedShortNotes:repeatShort}
+      };
+      addSightReadingArchiveItem(item);
+      setArchive(getSightReadingArchive());setSelectedArchive(null);
+      setArchiveStatus('התרגיל נוסף למאגר והועבר לסנכרון Dropbox. נדרש אימות שמירה בענן.');
+      setLines(result);setDocumentTitle(nextTitle);setError('');
     } catch(e){setError(e instanceof Error?e.message:String(e));setLines(null);}
   };
   return <div className="rounded-xl border bg-background p-5 space-y-5" dir="rtl">
@@ -168,7 +163,7 @@ export default function SightReadingWorkspace() {
     <div className="flex flex-wrap gap-2">
       <button className="bg-primary text-primary-foreground rounded px-4 py-2" onClick={generate}>צרי 16 שורות</button>
       <button className="border rounded px-4 py-2" disabled={!lines} onClick={()=>lines&&downloadXml(makeXML(lines,documentTitle,beats,clef,fifths,doubleBar))}>הורדת MusicXML</button>
-      <button className="border rounded px-4 py-2" disabled={!lines} onClick={saveExercise}>שמירת התרגיל במאגר</button>
+      
     </div>
     {error&&<p className="text-red-600" role="alert">{error}</p>}
     {lines&&<div className="space-y-3" id="sight-reading-preview"><p role="status">נוצרו 16 שורות, {16*bars} תיבות, והתבניות בכל תיבה אומתו. התרגיל מוצג כאן למטה.</p><EngravedScore xml={makeXML(lines,documentTitle,beats,clef,fifths,doubleBar)}/></div>}
