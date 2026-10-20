@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightReadingPatterns';
+import { RhythmPreview, ScorePreview } from './SightReadingNotation';
 
 type Note = RhythmEvent & { step?: string; octave?: number; alter?: number };
 const STEPS = ['C','D','E','F','G','A','B'];
@@ -82,7 +83,7 @@ export default function SightReadingWorkspace() {
   };
   return <div className="rounded-xl border bg-background p-5 space-y-5" dir="rtl">
     <h2 className="text-xl font-bold">מחולל קריאה מהדף — סביבת פיתוח</h2>
-    <p className="text-sm text-muted-foreground">74 תבניות המקצב נלקחו מקובץ המקור. זוהי גרסת בדיקה של הגדרות ומנוע המקצבים. ניתן ליצור 16 שורות ולהוריד MusicXML; צפייה בדף התווים והדפסה ל־PDF יתווספו לאחר השלמת התיווי המקצועי.</p>
+    <p className="text-sm text-muted-foreground">74 תבניות המקצב נלקחו מקובץ המקור. ניתן לצפות בתבניות וב־16 שורות התרגול ישירות כאן, ולהוריד MusicXML. תצוגת התווים היא גרסת בדיקה מקומית, ולא תחליף עדיין לעימוד מקצועי ב־Finale או MuseScore.</p>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <label>כותרת<input className="block w-full border rounded p-2" value={title} onChange={e=>setTitle(e.target.value)}/></label>
       <label>משקל<select className="block w-full border rounded p-2" value={beats} onChange={e=>setBeats(Number(e.target.value) as 2|3|4|5)}>{[2,3,4,5].map(n=><option key={n} value={n}>{n}/4</option>)}</select></label>
@@ -96,14 +97,14 @@ export default function SightReadingWorkspace() {
     <fieldset className="border rounded p-3"><legend>צלילים מותרים</legend><div className="flex flex-wrap gap-3">{LABELS.map((label,i)=><label key={label} className="flex items-center gap-1"><input type="checkbox" checked={allowed.includes(i)} onChange={e=>setAllowed(prev=>e.target.checked?[...prev,i].sort():prev.filter(n=>n!==i))}/>{label}</label>)}</div></fieldset>
     <fieldset className="border rounded p-3"><legend>תבניות מקצב מותרות — {approved.length}/74</legend>
       <div className="flex gap-2 mb-3"><button className="border rounded p-2" onClick={()=>setApproved(RHYTHM_PATTERNS.map(p=>p.id))}>בחרי הכול</button><button className="border rounded p-2" onClick={()=>setApproved([])}>בטלי הכול</button></div>
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2 max-h-56 overflow-auto">{RHYTHM_PATTERNS.map(p=><label key={p.id} className="border rounded p-2 flex items-center gap-2"><input type="checkbox" checked={selected.has(p.id)} onChange={e=>setApproved(prev=>e.target.checked?[...prev,p.id]:prev.filter(x=>x!==p.id))}/>{p.id}</label>)}</div>
-      <p className="text-xs text-muted-foreground mt-2">הצגת תבניות בתיווי גרפי מדויק תתווסף עם מנוע התיווי המקומי.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[520px] overflow-auto">{RHYTHM_PATTERNS.map(p=><label key={p.id} className="border rounded-lg p-2 bg-white text-slate-900 flex flex-col gap-1 cursor-pointer"><span className="flex items-center justify-between"><span className="font-medium">{p.id}</span><input type="checkbox" checked={selected.has(p.id)} onChange={e=>setApproved(prev=>e.target.checked?[...prev,p.id]:prev.filter(x=>x!==p.id))}/></span><RhythmPreview events={p.events}/></label>)}</div>
+      <p className="text-xs text-muted-foreground mt-2">המקצבים מוצגים ללא חמשה או משקל. התווים והדמימות מבוססים על התבניות שסיפקת.</p>
     </fieldset>
     <div className="flex flex-wrap gap-2">
       <button className="bg-primary text-primary-foreground rounded px-4 py-2" onClick={generate}>צרי 16 שורות</button>
       <button className="border rounded px-4 py-2" disabled={!lines} onClick={()=>lines&&downloadXml(makeXML(lines,title,beats,clef,fifths,doubleBar))}>הורדת MusicXML</button>
     </div>
     {error&&<p className="text-red-600" role="alert">{error}</p>}
-    {lines&&<p role="status">נוצרו 16 שורות, {16*bars} תיבות, והתבניות בכל תיבה אומתו. הורידי MusicXML לפתיחה ב־MuseScore או Finale.</p>}
+    {lines&&<div className="space-y-3" id="sight-reading-preview"><p role="status">נוצרו 16 שורות, {16*bars} תיבות, והתבניות בכל תיבה אומתו. התרגיל מוצג כאן למטה.</p><ScorePreview lines={lines} title={title} clef={clef} beats={beats} fifths={fifths} doubleBar={doubleBar}/></div>}
   </div>;
 }
