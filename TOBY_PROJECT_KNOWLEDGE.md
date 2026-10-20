@@ -321,3 +321,11 @@ The payment data model already contains all 12 academic months, September throug
 - The teacher observed staves and beams with missing noteheads, clefs and time-signature glyphs. Earlier component `SightReadingVerovio.tsx` passed SVG through DOMPurify before injecting with `dangerouslySetInnerHTML`; this can strip Verovio SMuFL symbol definitions/references. Exact browser-side cause still needs visual confirmation.
 - New rendering uses full trusted Verovio SVG as an isolated `data:image/svg+xml` image, preserving glyph definitions without injecting arbitrary SVG markup into the DOM. Keep teacher-controlled text XML-escaped and do not reintroduce SVG HTML sanitization/injection for this renderer.
 - `scripts/test-sight-reading-engraving.mjs` checks source beams, native Verovio SVG output and isolated image presentation. Browser verification of all glyphs, title, key and time signature is required after deploy.
+
+## Sight-reading extensions — 2026-10-20
+- Work branch: `feature/sightreading-pitch-rhythm-catalog-20261020`. Teacher sets exact named pitch endpoints, e.g. G3 (small octave)–C5 (second octave); reference A4=440 Hz. Selected pitch letters additionally filter notes inside the exact endpoints.
+- The 74 source patterns are grouped for selection by the shortest value appearing in a template (half, quarter, eighth, sixteenth), keeping original MXL beaming.
+- Melodic restrictions: steps only (diatonic difference <=1), steps/thirds (<=2), default max fifth (<=4), optional max octave (<=7), with max 2 successive leaps. Optional consecutive short notes (eighth/sixteenth) on same pitch.
+- Every newly generated exercise is given a unique ID, sequence number and automatic title if blank, and appended to the `musicSystem_sightReadingArchive` canonical sync bucket with XML and searchable metadata. The user is explicitly informed that read-back verification of Dropbox durability is not yet implemented, so queueing a sync is not proven cloud persistence.
+- Previously generated exercises from earlier versions were not archived; cannot recover them from this new bucket retroactively.
+- Future work **not implemented**: verified attachment/assignment to a student's private area, PDF export/send via email, two-staff piano authoring and editor; do not claim these features are complete.
