@@ -30,5 +30,15 @@ console.log('SVG glyph references: '+glyphRefs.length+', definitions: '+defs.len
 assert.ok(svg.includes('<svg'),'source SVG present');
 const component=fs.readFileSync(new URL('../src/components/admin/SightReadingVerovio.tsx',import.meta.url),'utf8');
 assert.ok(component.includes('data:image/svg+xml;charset=utf-8,'),'SVG displayed via isolated image');
+// Exercise the ACTUAL production image conversion function with real Verovio output,
+// not merely a substring search. Verovio may include XML declarations and DOCTYPEs.
+const fnBody=component.match(/function svgImageUrl\\(svg:string\\) \\{([\\s\\S]*?)\\n\\}/)?.[1];
+assert.ok(fnBody,'production SVG converter exists');
+const makeUrl=new Function('svg',fnBody);
+const originalUrl=makeUrl(svg);
+assert.ok(originalUrl.startsWith('data:image/svg+xml;charset=utf-8,'),'real Verovio SVG is accepted');
+assert.ok(decodeURIComponent(originalUrl.split(',').slice(1).join(','))===svg,'no music symbol markup is lost');
+assert.ok(makeUrl('<?xml version="1.0"?><!DOCTYPE svg><svg xmlns="http://www.w3.org/2000/svg"></svg>').startsWith('data:image/svg+xml'),'XML prologue and DOCTYPE do not break the display');
+assert.throws(()=>makeUrl('<html>not svg</html>'),'non-SVG is rejected');
 assert.ok(!component.includes('dangerouslySetInnerHTML'),'Do not inject sanitized SVG into the page');
 console.log('PASS: 74 source rhythms/beams and isolated Verovio SVG image rendering');
