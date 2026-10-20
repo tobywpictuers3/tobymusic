@@ -103,12 +103,15 @@ export default function SightReadingWorkspace() {
       const targetStudents=getStudents().filter(student=>studentIds.includes(student.id));
       if(targetStudents.length!==studentIds.length)throw new Error('יש בחירה שאינה תואמת לתלמידה פעילה במערכת');
       const pdf=await makeSightReadingPdf(item.xml);
-      const upload=await workerApi.uploadAttachment(new File([pdf],'TOBY-reading-'+item.serial+'.pdf',{type:'application/pdf'}));
-      if(!upload.success||!upload.data?.webViewLink)throw new Error(upload.error||'Dropbox לא אישר את העלאת הקובץ');
       let added=0;
       for(const student of targetStudents){
         const marker='sight-reading:'+item.id;
         if(getFiles().some(file=>file.studentId===student.id&&file.description?.includes(marker)))continue;
+        // Use a distinct Dropbox attachment per student: deleting a student's file
+        // must not delete a shared master or other students' assignments.
+        const fileName='TOBY-reading-'+item.serial+'-'+randomId()+'.pdf';
+        const upload=await workerApi.uploadAttachment(new File([pdf],fileName,{type:'application/pdf'}));
+        if(!upload.success||!upload.data?.webViewLink)throw new Error(upload.error||'Dropbox לא אישר העלאת קובץ לאחת התלמידות');
         addFile({
           studentId:student.id,
           name:item.title+'.pdf',
@@ -121,7 +124,7 @@ export default function SightReadingWorkspace() {
         });
         added++;
       }
-      setDeliveryStatus('קובץ PDF הועלה, '+added+' שיוכים נוספו לאזור האישי והועברו לסנכרון. אימות התצוגה בחשבונות התלמידות וקריאה חוזרת מ-Dropbox עדיין נדרשים.');
+      setDeliveryStatus('קובצי PDF הועלו, '+added+' שיוכים נוספו לאזור האישי והועברו לסנכרון. אימות התצוגה בחשבונות התלמידות וקריאה חוזרת מ-Dropbox עדיין נדרשים.');
     }catch(e){setDeliveryStatus('לא ניתן להשלים שיתוף: '+String(e instanceof Error?e.message:e));}
     finally{setBusy(false);}
   };
