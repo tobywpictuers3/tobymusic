@@ -18,7 +18,7 @@ xml+='</part></score-partwise>';
 const chunks=paginateSightReadingXml(xml,8);
 assert.equal(chunks.length,2,'16 musical systems must split into two A4 chunks');
 for(let i=0;i<chunks.length;i++){
-  assert.equal((chunks[i].match(/<measure\\b/g)||[]).length,32,'8 rows with 4 bars');
+  assert.equal((chunks[i].match(/<measure\b/g)||[]).length,32,'8 rows with 4 bars');
   assert.ok(chunks[i].includes('<attributes>'),'all pages must retain clef, key and meter');
   assert.ok(chunks[i].includes('<fifths>1</fifths>'));
 }
