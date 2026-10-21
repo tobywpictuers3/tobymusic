@@ -642,7 +642,8 @@ export const syncMailboxFromGmail = async (params?: { max?: number; q?: string }
 // Send message via Gmail (for admin sending to students with email)
 export const sendMessageViaGmail = async (
   message: Omit<Message, 'id' | 'createdAt'>,
-  recipientEmails: string[]
+  recipientEmails: string[],
+  options?: { throwOnFailure?: boolean }
 ): Promise<Message | null> => {
   if (recipientEmails.length === 0) {
     console.warn('sendMessageViaGmail: No recipient emails provided');
@@ -689,10 +690,12 @@ export const sendMessageViaGmail = async (
       return appMessage;
     }
     
-    console.error('sendMessageViaGmail: Worker returned error', result.error);
+    if (options?.throwOnFailure) throw new Error(result.error || 'שרת Gmail לא החזיר אישור שליחה');
+    console.error('sendMessageViaGmail: Worker returned error');
     return null;
   } catch (err) {
-    console.error('sendMessageViaGmail error:', err);
+    if (options?.throwOnFailure) throw err;
+    console.error('sendMessageViaGmail error');
     return null;
   }
 };
