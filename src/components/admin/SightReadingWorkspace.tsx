@@ -127,6 +127,22 @@ export default function SightReadingWorkspace() {
     window.location.href=link;
     setMailStatus('הורד PDF ונפתחה טיוטת מייל. יש לצרף אליה את הקובץ שהורד וללחוץ שליחה. לא נשלח מייל אוטומטי.');
   };
+  const [connectionStatus,setConnectionStatus]=useState('');
+  const checkDropboxConnection=async()=>{
+    setConnectionStatus('בודק גישה לשרת הנתונים…');
+    try{
+      const response=await workerApi.downloadLatest();
+      setConnectionStatus(response.success
+        ? 'שרת הנתונים נגיש. בדיקה זו אינה מאמתת עדיין הרשאות העלאה או Gmail.'
+        : 'בדיקת שרת הנתונים נכשלה: '+String(response.error||'שגיאה לא ידועה'));
+    }catch(e){setConnectionStatus('הדפדפן לא הצליח להגיע לשרת הנתונים: '+String(e instanceof Error?e.message:e));}
+  };
+  const explainNetworkFailure=(error:unknown,stage:string)=>{
+    const value=error instanceof Error?error.message:String(error);
+    return /failed to fetch|networkerror|load failed|network request failed/i.test(value)
+      ? 'כשל תקשורת בשלב '+stage+'. ייתכן שכתובת ה-Worker חסומה ברשת או שהשרת אינו נגיש. לא ניתן לאשר השלמה. בדקי חיבור לשרת לפני ניסיון נוסף.'
+      : 'כשל בשלב '+stage+': '+value;
+  };
   const sendReadingEmail=async(item:SightReadingArchiveItem)=>{
     if(isDevMode()){setMailStatus('שליחת Gmail חסומה במצב פיתוח');return;}
     const recipients=getStudents().filter(student=>studentIds.includes(student.id));
@@ -134,6 +150,7 @@ export default function SightReadingWorkspace() {
     if(!window.confirm(`לשייך PDF לאזור האישי ולשלוח מייל עם קישור ל-PDF ל-${recipients.length} תלמידות? ההודעה תישמר גם בתיבת הדואר בפלטפורמה.`))return;
     setBusy(true);setMailStatus('');
     let sent=0;
+    let stage='בדיקת נמענות';
     try{
       // One click must complete assignment *before* attempting Gmail delivery.
       // Reuse existing student-specific assignment for safe retries.
@@ -141,12 +158,14 @@ export default function SightReadingWorkspace() {
         file.studentId===student.id&&file.description?.includes('sight-reading:'+item.id)));
       if(missing.length){
         setMailStatus('מכין ושומר PDF באזור האישי של '+missing.length+' תלמידות…');
+        stage='יצירת PDF';
         const pdf=await makeSightReadingPdf(item.xml);
         for(const student of missing){
           const fileName='TOBY-reading-'+item.serial+'-'+randomId()+'.pdf';
+          stage='העלאת PDF ל-Dropbox';
           const upload=await workerApi.uploadAttachment(new File([pdf],fileName,{type:'application/pdf'}));
           if(!upload.success||!upload.data?.webViewLink)
-            throw new Error(upload.error||'העלאת PDF לאזור האישי נכשלה');
+            throw new Error(explainNetworkFailure(upload.error||'העלאה נכשלה',stage));
           addFile({
             studentId:student.id,name:item.title+'.pdf',
             description:'תרגיל קריאה מהדף · sight-reading:'+item.id,
@@ -157,6 +176,7 @@ export default function SightReadingWorkspace() {
         }
       }
       setMailStatus('מאמת סנכרון של השיוכים ל-Dropbox לפני שליחת Gmail…');
+      stage='סנכרון רשומות לאזור האישי';
       const synced=await hybridSync.manualSync();
       if(!synced)throw new Error('רישום הקבצים לא סונכרן ל-Dropbox — לא נשלח מייל כדי למנוע קישור שבור');
       setMailStatus('השיוכים סונכרנו ל-Dropbox. שולח באמצעות Gmail…');
@@ -175,6 +195,7 @@ export default function SightReadingWorkspace() {
         if(!link.startsWith('https://'))throw new Error('קישור קובץ לא מאובטח');
         const body=`שלום,\\nקיבלת תרגיל קריאה מהדף: ${item.title}.\\nהתרגיל נמצא באזור האישי שלך בפלטפורמת TOBY Music.\\nלצפייה ב-PDF: ${link}`;
         const escapedLink=link.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+        stage='Gmail';
         const result=await sendMessageViaGmail({
           senderId:'admin',senderName:'TOBY Music',recipientIds:[student.id],
           subject,content:body,contentHtml:`<p>קיבלת תרגיל קריאה מהדף: ${item.serial}</p><p>התרגיל זמין באזור האישי שלך.</p><p><a href="${escapedLink}">לצפייה ב-PDF</a></p>`,
@@ -184,7 +205,7 @@ export default function SightReadingWorkspace() {
         sent++;
       }
       setMailStatus(`Gmail אישר ${sent} הודעות חדשות מתוך ${recipients.length} נמענות; הודעות שכבר נשלחו לא נשלחו שוב. הודעת הדואר כוללת קישור לקובץ (לא צרופה בינארית).`);
-    }catch(e){setMailStatus(`נשלחו ${sent} הודעות לפני עצירה. `+String(e instanceof Error?e.message:e)+' — בדקי את הדואר היוצא לפני ניסיון חוזר.');}
+    }catch(e){setMailStatus('אושרו '+sent+' הודעות לפני עצירה. '+explainNetworkFailure(e,stage)+' יש לבדוק את הדואר היוצא ואת שיוכי התלמידות לפני ניסיון חוזר.');}
     finally{setBusy(false);}
   };
   const assignPdf=async(item:SightReadingArchiveItem)=>{
@@ -363,6 +384,7 @@ export default function SightReadingWorkspace() {
       <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy} onClick={()=>void sendReadingEmail(selectedArchive)}>שיוך PDF + שליחת מייל והודעה</button>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>טיוטת מייל ידנית</button></div>
       <p className="text-xs text-muted-foreground">כפתור השליחה משייך תחילה PDF לאזור האישי ואז שולח קישור דרך Gmail. אין צורך בשיוך מוקדם. המייל אינו מכיל צרופה בינארית.</p>
+      <div className="flex items-center gap-2 text-xs"><button type="button" className="border rounded px-2 py-1" onClick={()=>void checkDropboxConnection()}>בדיקת חיבור לשרת</button><span role="status">{connectionStatus}</span></div>
       {mailStatus&&<p role="status">{mailStatus}</p>}
       {deliveryStatus&&<p role="status">{deliveryStatus}</p>}
       </fieldset>
