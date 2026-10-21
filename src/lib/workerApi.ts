@@ -129,10 +129,19 @@ async function callWorkerGmail<T>(
 
   const url = `${WORKER_BASE_URL}/?${queryString}`;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "X-Sonata-Manager-Code": managerCode,
-  };
+  // Gmail sending from the filtered student site must be a CORS-simple
+  // request. application/json + X-Sonata-Manager-Code triggers a preflight
+  // OPTIONS that some filtered browsers cannot reach. The existing manager
+  // credential continues to be passed in the request URL as it was before.
+  // Do NOT retry automatically after a network failure: the send may have
+  // completed even if its response could not reach the browser.
+  const simpleSend = action === "gmail_send_and_add" && method === "POST";
+  const headers: Record<string, string> = simpleSend
+    ? { "Content-Type": "text/plain;charset=UTF-8" }
+    : {
+        "Content-Type": "application/json",
+        "X-Sonata-Manager-Code": managerCode,
+      };
 
   const response = await fetch(url, {
     method,

@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const api=fs.readFileSync('src/lib/workerApi.ts','utf8');
+const start=api.indexOf('async function callWorkerGmail<T>');
+const end=api.indexOf('/* ===========================================================\n   EXPORT: Worker API',start);
+assert.ok(start>=0&&end>start);
+const fn=api.slice(start,end);
+assert.match(fn,/action === "gmail_send_and_add" && method === "POST"/);
+assert.match(fn,/"Content-Type": "text\/plain;charset=UTF-8"/);
+assert.match(fn,/JSON\.stringify\(opts\.body \|\| \{\}\)/);
+assert.match(fn,/managerCode/);
+assert.match(fn,/X-Sonata-Manager-Code/);
+assert.ok(fn.indexOf('simpleSend') < fn.indexOf('fetch(url'));
+assert.equal(fn.split('await fetch(url,').length-1,1,'Gmail helper must make a single request');
+console.log('PASS Gmail send uses one CORS-simple POST, preserves existing query-based authorization and does not retry');
