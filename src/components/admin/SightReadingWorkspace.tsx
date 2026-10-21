@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightReadingPatterns';
 import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightReadingVerovio';
 import { addSightReadingArchiveItem, getSightReadingArchive, getStudents, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
-import { workerApi } from '@/lib/workerApi';
+import { workerApi, readStudentMailMode } from '@/lib/workerApi';
 import { hybridSync } from '@/lib/hybridSync';
 import { sendMessageViaGmail, getMessages } from '@/lib/messages';
 import { RHYTHM_GROUPS, updatePatternSelection } from '@/lib/sightReadingRhythmGroups';
