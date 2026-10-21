@@ -199,17 +199,45 @@ export async function makeSightReadingPdf(xml:string):Promise<Blob>{
     if(count!==1)throw new Error('שגיאת תיווי: שורה '+(i+1)+' הופקה כ-'+count+' דפים פנימיים');
     const svg=toolkit.renderToSVG(1);
     const image=await loadPdfImage(svgImageUrl(svg),15000);
-    const ratio=image.naturalHeight/image.naturalWidth;
-    if(!(ratio>0))throw new Error('יחס גדלים לא תקין בדף התווים');
+    // Verovio's SVG image includes blank *page* canvas. Scaling the
+    // entire image to a 28-mm slot shrinks the actual notation drastically.
+    // Trim blank space around *ink*, then maximize the score's size in
+    // the available 185 mm x (slot-2 mm) rectangle without distortion.
     const canvas=document.createElement('canvas');
-    canvas.width=1950;canvas.height=Math.max(140,Math.round(canvas.width*ratio));
-    const context=canvas.getContext('2d');
-    if(!context)throw new Error('לא ניתן לייצר דף תווים');
+    canvas.width=1850;
+    canvas.height=Math.max(140,Math.round(canvas.width*image.naturalHeight/image.naturalWidth));
+    const context=canvas.getContext('2d',{willReadFrequently:true});
+    if(!context)throw new Error('לא ניתן לעבד תווים להדפסה');
     context.clearRect(0,0,canvas.width,canvas.height);
     context.drawImage(image,0,0,canvas.width,canvas.height);
-    const png=canvas.toDataURL('image/png');
-    // Uniform scale: do not distort noteheads, clefs, stems or beams.
-    const width=Math.min(181,(slot-2)/ratio);
+    const bitmap=context.getImageData(0,0,canvas.width,canvas.height);
+    const data=bitmap.data;
+    let xMin=canvas.width,yMin=canvas.height,xMax=-1,yMax=-1;
+    // Ignore white/transparent page backgrounds but preserve every music
+    // glyph, ledger line, staff line, accidental, clef and barline.
+    for(let y=0;y<canvas.height;y++){
+      for(let x=0;x<canvas.width;x++){
+        const pos=(y*canvas.width+x)*4;
+        if(data[pos+3]<40)continue;
+        if(data[pos]>245&&data[pos+1]>245&&data[pos+2]>245)continue;
+        if(x<xMin)xMin=x;if(x>xMax)xMax=x;
+        if(y<yMin)yMin=y;if(y>yMax)yMax=y;
+      }
+    }
+    if(xMax<xMin||yMax<yMin)throw new Error('תיווי ריק בשורה '+(i+1));
+    const pad=14;
+    const sx=Math.max(0,xMin-pad),sy=Math.max(0,yMin-pad);
+    const sw=Math.min(canvas.width-sx,xMax-xMin+1+2*pad);
+    const sh=Math.min(canvas.height-sy,yMax-yMin+1+2*pad);
+    const cropped=document.createElement('canvas');
+    cropped.width=sw;cropped.height=sh;
+    const ctx=cropped.getContext('2d');
+    if(!ctx)throw new Error('לא ניתן להכין תווים מוגדלים');
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,sw,sh);
+    ctx.drawImage(canvas,sx,sy,sw,sh,0,0,sw,sh);
+    const png=cropped.toDataURL('image/png');
+    const ratio=sh/sw;
+    const width=Math.min(185,(slot-2)/ratio);
     const height=width*ratio;
     const y=topY+(i%rowsPerPage)*slot+(slot-height)/2;
     pdf.addImage(png,'PNG',(210-width)/2,y,width,height,undefined,'FAST');

@@ -3,6 +3,7 @@ import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightRe
 import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightReadingVerovio';
 import { addSightReadingArchiveItem, getSightReadingArchive, getStudents, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
 import { workerApi } from '@/lib/workerApi';
+import { hybridSync } from '@/lib/hybridSync';
 import { sendMessageViaGmail, getMessages } from '@/lib/messages';
 import { RHYTHM_GROUPS, updatePatternSelection } from '@/lib/sightReadingRhythmGroups';
 import { searchSightReadingArchive } from '@/lib/sightReadingSearch';
@@ -155,7 +156,10 @@ export default function SightReadingWorkspace() {
           });
         }
       }
-      setMailStatus('השמירה לאזור האישי בוצעה מקומית. שולח באמצעות Gmail…');
+      setMailStatus('מאמת סנכרון של השיוכים ל-Dropbox לפני שליחת Gmail…');
+      const synced=await hybridSync.manualSync();
+      if(!synced)throw new Error('רישום הקבצים לא סונכרן ל-Dropbox — לא נשלח מייל כדי למנוע קישור שבור');
+      setMailStatus('השיוכים סונכרנו ל-Dropbox. שולח באמצעות Gmail…');
       for(const student of recipients){
         const address=(student.email||'').trim();
         if(!address.includes('@')||!address.split('@')[1]?.includes('.'))throw new Error('לתלמידה שנבחרה אין כתובת מייל תקינה');
@@ -175,11 +179,11 @@ export default function SightReadingWorkspace() {
           senderId:'admin',senderName:'TOBY Music',recipientIds:[student.id],
           subject,content:body,contentHtml:`<p>קיבלת תרגיל קריאה מהדף: ${item.serial}</p><p>התרגיל זמין באזור האישי שלך.</p><p><a href="${escapedLink}">לצפייה ב-PDF</a></p>`,
           type:'general',
-        },[address]);
+        },[address],{throwOnFailure:true});
         if(!result)throw new Error('שירות Gmail לא אישר משלוח; עצרתי כדי למנוע שליחה כפולה');
         sent++;
       }
-      setMailStatus(`Gmail אישר ${sent} הודעות חדשות; הודעות שכבר נשלחו לא נשלחו שוב. הודעת הדואר כוללת קישור לקובץ (לא צרופה בינארית).`);
+      setMailStatus(`Gmail אישר ${sent} הודעות חדשות מתוך ${recipients.length} נמענות; הודעות שכבר נשלחו לא נשלחו שוב. הודעת הדואר כוללת קישור לקובץ (לא צרופה בינארית).`);
     }catch(e){setMailStatus(`נשלחו ${sent} הודעות לפני עצירה. `+String(e instanceof Error?e.message:e)+' — בדקי את הדואר היוצא לפני ניסיון חוזר.');}
     finally{setBusy(false);}
   };
@@ -212,7 +216,10 @@ export default function SightReadingWorkspace() {
         });
         added++;
       }
-      setDeliveryStatus('קובצי PDF הועלו, '+added+' שיוכים נוספו לאזור האישי והועברו לסנכרון. אימות התצוגה בחשבונות התלמידות וקריאה חוזרת מ-Dropbox עדיין נדרשים.');
+      setDeliveryStatus('מאמת שמירה של '+added+' שיוכים בענן…');
+      const synced=await hybridSync.manualSync();
+      if(!synced)throw new Error('הקובץ הועלה, אך שיוך התלמידה עדיין לא נשמר בענן. אין לשלוח לפני תיקון הסנכרון.');
+      setDeliveryStatus('שיוך '+added+' קבצים סונכרן ל-Dropbox. נדרש אימות צפייה מתוך חשבון תלמידה.');
     }catch(e){setDeliveryStatus('לא ניתן להשלים שיתוף: '+String(e instanceof Error?e.message:e));}
     finally{setBusy(false);}
   };
