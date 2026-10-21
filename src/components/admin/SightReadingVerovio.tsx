@@ -110,6 +110,26 @@ export function EngravedPattern({id,events}:{id:string;events:RhythmEvent[]}) {
 /** Create a shareable A4 PDF from the same local engraving used by the preview.
  * All SVG pages are rasterized within the isolated image context to preserve
  * Bravura glyphs, avoiding the HTML sanitizer and any network/CDN dependency. */
+/** Loads an image without races on cached resources and without hanging forever
+ * in filtered browsers. A failed logo is optional, but music images are required. */
+function loadPdfImage(src:string,timeoutMs=12000):Promise<HTMLImageElement>{
+  return new Promise((resolve,reject)=>{
+    const image=new Image();
+    let finished=false;
+    const finish=(error?:Error)=>{
+      if(finished)return;
+      finished=true;
+      window.clearTimeout(timer);
+      image.onload=null;image.onerror=null;
+      if(error)reject(error);else resolve(image);
+    };
+    const timer=window.setTimeout(()=>finish(new Error('זמן טעינת תמונה עבור PDF הסתיים')),timeoutMs);
+    image.onload=()=>finish();
+    image.onerror=()=>finish(new Error('תמונת תווים או לוגו לא נטענה'));
+    image.src=src;
+    if(image.complete&&image.naturalWidth>0)finish();
+  });
+}
 async function renderOfficialBlank():Promise<string>{
   // The TOBY colored stationery layout approved 2026-10-19:
   // gold perimeter lines, small upper-right inscription, black logo at
@@ -135,14 +155,11 @@ async function renderOfficialBlank():Promise<string>{
   c.textAlign='center';c.font=`${X(2.65)}px sans-serif`;c.fillStyle='#333';
   c.fillText('tobymusic.club  |  TOBY.musicartist@gmail.com',X(160),X(283.3));
   c.fillText('0504124161',X(160),X(288.2));
-  const image=new Image();
-  image.src='/lovable-uploads/toby-music-logo.png';
-  // Branding must never block generating or assigning the student's score.
-  // An image may be blocked by the client's content filter or browser.
-  const loaded=await new Promise<boolean>((resolve)=>{
-    image.onload=()=>resolve(true);image.onerror=()=>resolve(false);
-  });
-  if(loaded && image.naturalWidth>0 && image.naturalHeight>0){
+  let image:HTMLImageElement|null=null;
+  try { image=await loadPdfImage('/lovable-uploads/toby-music-logo.png',4500); }
+  catch { /* optional decorative logo must never block PDFs */ }
+  const loaded=Boolean(image);
+  if(loaded && image && image.naturalWidth>0 && image.naturalHeight>0){
     const logoW=42,logoH=logoW*image.naturalHeight/image.naturalWidth;
     c.drawImage(image,X(35),X(290-logoH),X(logoW),X(logoH));
   } else {
@@ -181,11 +198,7 @@ export async function makeSightReadingPdf(xml:string):Promise<Blob>{
     const count=toolkit.getPageCount();
     if(count!==1)throw new Error('שגיאת תיווי: שורה '+(i+1)+' הופקה כ-'+count+' דפים פנימיים');
     const svg=toolkit.renderToSVG(1);
-    const image=new Image();
-    image.src=svgImageUrl(svg);
-    await new Promise<void>((resolve,reject)=>{
-      image.onload=()=>resolve();image.onerror=()=>reject(new Error('הצגת תווים ב-PDF נכשלה'));
-    });
+    const image=await loadPdfImage(svgImageUrl(svg),15000);
     const ratio=image.naturalHeight/image.naturalWidth;
     if(!(ratio>0))throw new Error('יחס גדלים לא תקין בדף התווים');
     const canvas=document.createElement('canvas');
