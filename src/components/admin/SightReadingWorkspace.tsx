@@ -147,7 +147,20 @@ export default function SightReadingWorkspace() {
     if(isDevMode()){setMailStatus('שליחת Gmail חסומה במצב פיתוח');return;}
     const recipients=getStudents().filter(student=>studentIds.includes(student.id));
     if(!recipients.length || recipients.length!==studentIds.length){setMailStatus('לא נשלח דבר: יש לסמן לפחות תלמידה אחת ברשימה שלמעלה.');return;}
-    if(!window.confirm(`לשייך PDF לאזור האישי ולשלוח מייל עם קישור ל-PDF ל-${recipients.length} תלמידות? ההודעה תישמר גם בתיבת הדואר בפלטפורמה.`))return;
+    // Check live Worker policy before uploading or writing any assignment.
+    // A successful Dropbox GET does not prove Gmail is enabled.
+    setMailStatus('בודק הרשאות שליחה בשרת הדואר…');
+    let mailMode: Awaited<ReturnType<typeof readStudentMailMode>>;
+    try { mailMode=await readStudentMailMode(); }
+    catch(e) {setMailStatus('לא ניתן לאמת הרשאות שליחת Gmail. לא נוצר שיוך ולא נשלח מייל: '+String(e instanceof Error?e.message:e));return;}
+    if(!mailMode.enabled){
+      const allowTest=mailMode.testMode&&recipients.length===1&&String(recipients[0].personalCode||'')===String(mailMode.testStudentCode||'');
+      if(!allowTest){
+        setMailStatus('ה-Worker נמצא במצב ניסוי מוגבל לשליחה לתלמידת בדיקה מורשית בלבד. לא בוצעה שליחה ולא נוצר שיוך חדש. השתמשי בכפתור השיוך הנפרד כדי לשתף באזור האישי.');
+        return;
+      }
+    }
+    if(!window.confirm(`לשייך PDF לאזור האישי ולשלוח מייל עם קישור ל-PDF ל-${recipients.length} תלמידות? ההודעה תישמר גם בתיבת הדואר בפלטפורמה.`)){setMailStatus('השליחה בוטלה');return;}
     setBusy(true);setMailStatus('');
     let sent=0;
     let stage='בדיקת נמענות';

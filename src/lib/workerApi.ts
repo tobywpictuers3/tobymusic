@@ -152,7 +152,7 @@ async function callWorkerGmail<T>(
 
   const data = await response.json().catch(() => ({}));
 
-  if (!response.ok || data.ok === false) {
+  if (!response.ok || data.ok === false || data.disabled === true) {
     const msg = data?.error || `Worker request failed: ${response.status} ${response.statusText}`;
     throw new Error(msg);
   }
@@ -163,6 +163,15 @@ async function callWorkerGmail<T>(
 /* ===========================================================
    EXPORT: Worker API
    =========================================================== */
+
+export async function readStudentMailMode(): Promise<{enabled:boolean;testMode:boolean;testStudentCode?:string|null;reason?:string}> {
+  // Read-only, unauthenticated status route. No PII or manager credential.
+  const response=await fetch(WORKER_BASE_URL+'/?action=email_bridge_status', {method:'GET',cache:'no-store'});
+  if(!response.ok)throw new Error('לא ניתן לאמת את מצב שירות הדואר');
+  const data=await response.json();
+  if(data.ok!==true)throw new Error('שירות הדואר לא החזיר מצב תקין');
+  return data;
+}
 
 export const workerApi = {
   /* -----------------------------------------------------------
