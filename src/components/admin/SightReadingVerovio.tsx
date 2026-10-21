@@ -137,12 +137,18 @@ async function renderOfficialBlank():Promise<string>{
   c.fillText('0504124161',X(160),X(288.2));
   const image=new Image();
   image.src='/lovable-uploads/toby-music-logo.png';
-  await new Promise<void>((resolve,reject)=>{
-    image.onload=()=>resolve();image.onerror=()=>reject(new Error('הלוגו של TOBY Music לא נטען'));
+  // Branding must never block generating or assigning the student's score.
+  // An image may be blocked by the client's content filter or browser.
+  const loaded=await new Promise<boolean>((resolve)=>{
+    image.onload=()=>resolve(true);image.onerror=()=>resolve(false);
   });
-  // Preserve the source logo's aspect ratio.
-  const logoW=42,logoH=logoW*image.naturalHeight/image.naturalWidth;
-  c.drawImage(image,X(35),X(290-logoH),X(logoW),X(logoH));
+  if(loaded && image.naturalWidth>0 && image.naturalHeight>0){
+    const logoW=42,logoH=logoW*image.naturalHeight/image.naturalWidth;
+    c.drawImage(image,X(35),X(290-logoH),X(logoW),X(logoH));
+  } else {
+    c.fillStyle='#74303B';c.font=`bold ${X(6)}px serif`;
+    c.textAlign='left';c.fillText('TOBY music',X(29),X(284));
+  }
   return canvas.toDataURL('image/png');
 }
 
@@ -164,13 +170,16 @@ export async function makeSightReadingPdf(xml:string):Promise<Blob>{
     if(i>0&&i%rowsPerPage===0)pdf.addPage();
     if(i%rowsPerPage===0)pdf.addImage(blank,'PNG',0,0,210,297,'toby-letterhead-'+(i/rowsPerPage),'FAST');
     const toolkit=makeToolkit(C,chunks[i],{
-      pageWidth:2100,pageHeight:420,scale:82,breaks:'encoded',
+      // A 42mm page caused Verovio to split some busy systems across
+      // two internal pages, aborting ALL PDF generation. Give the renderer
+      // enough vertical room and let it crop to notation height.
+      pageWidth:2100,pageHeight:1500,scale:76,breaks:'none',
       adjustPageHeight:true,svgViewBox:true,
-      pageMarginLeft:125,pageMarginRight:125,pageMarginTop:15,pageMarginBottom:15,
+      pageMarginLeft:125,pageMarginRight:125,pageMarginTop:30,pageMarginBottom:30,
       noJustification:true,header:'none',footer:'none',
     });
     const count=toolkit.getPageCount();
-    if(count!==1)throw new Error('שורת תווים חרגה מעמוד תיווי יחיד');
+    if(count!==1)throw new Error('שגיאת תיווי: שורה '+(i+1)+' הופקה כ-'+count+' דפים פנימיים');
     const svg=toolkit.renderToSVG(1);
     const image=new Image();
     image.src=svgImageUrl(svg);

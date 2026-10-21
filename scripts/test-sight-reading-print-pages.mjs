@@ -35,3 +35,17 @@ for(const [index,chunk] of chunks.entries()){
  console.log('PDF layout chunk',index+1,'rows 8, Verovio physical pages:',pages);
 }
 console.log('PASS: max eight systems per PDF source sheet, page attributes repeated');
+
+const singleSystems=paginateSightReadingXml(xml,1);
+assert.equal(singleSystems.length,16,'production exporter must get exactly 16 separate rows');
+for(const [index,chunk] of singleSystems.entries()){
+  const t=new VerovioToolkit(module);
+  t.setOptions({inputFrom:'xml',font:'Bravura',breaks:'none',pageWidth:2100,
+    pageHeight:1500,scale:76,adjustPageHeight:true,svgViewBox:true,
+    pageMarginLeft:125,pageMarginRight:125,pageMarginTop:30,pageMarginBottom:30,
+    noJustification:true,header:'none',footer:'none'});
+  assert.ok(t.loadData(chunk),'production row '+(index+1)+' must be accepted');
+  assert.equal(t.getPageCount(),1,'production PDF row '+(index+1)+' must fit one internal page');
+  assert.match(t.renderToSVG(1),/<svg/,'production row '+(index+1)+' must render');
+}
+console.log('PASS production export settings: 16 score rows render individually');
