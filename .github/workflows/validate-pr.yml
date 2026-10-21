@@ -37,6 +37,8 @@ jobs:
         run: node scripts/test-sight-reading-pdf-mail-flow.mjs
       - name: Student Gmail CORS regression
         run: node scripts/test-student-gmail-simple-post.mjs
+      - name: Sight-reading Gmail preflight import regression
+        run: node scripts/test-sight-reading-mail-mode-import.mjs
       - name: Production build
         timeout-minutes: 5
         run: npm run build
