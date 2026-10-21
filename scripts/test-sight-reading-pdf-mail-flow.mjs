@@ -12,5 +12,6 @@ const mail=workspace.slice(workspace.indexOf('const sendReadingEmail='),workspac
 assert.ok(mail.indexOf('workerApi.uploadAttachment')>=0,'send action automatically uploads missing PDF');
 assert.ok(mail.indexOf('addFile(')>mail.indexOf('workerApi.uploadAttachment'),'student assignment follows upload');
 assert.ok(mail.indexOf('sendMessageViaGmail(')>mail.indexOf('addFile('),'mail is sent only after file assignment');
+assert.ok(mail.indexOf('hybridSync.manualSync()')>mail.indexOf('addFile('),'cloud sync must precede Gmail');
 assert.ok(mail.includes('window.confirm('),'explicit recipient send confirmation required');
 console.log('PASS A4 print slots, TOBY stationery and one-action assign-then-mail ordering');
