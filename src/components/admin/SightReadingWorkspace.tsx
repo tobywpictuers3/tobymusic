@@ -179,7 +179,7 @@ export default function SightReadingWorkspace() {
           senderId:'admin',senderName:'TOBY Music',recipientIds:[student.id],
           subject,content:body,contentHtml:`<p>קיבלת תרגיל קריאה מהדף: ${item.serial}</p><p>התרגיל זמין באזור האישי שלך.</p><p><a href="${escapedLink}">לצפייה ב-PDF</a></p>`,
           type:'general',
-        },[address]);
+        },[address],{throwOnFailure:true});
         if(!result)throw new Error('שירות Gmail לא אישר משלוח; עצרתי כדי למנוע שליחה כפולה');
         sent++;
       }
