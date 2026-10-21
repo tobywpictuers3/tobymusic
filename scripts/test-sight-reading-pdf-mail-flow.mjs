@@ -5,7 +5,8 @@ const workspace=fs.readFileSync('src/components/admin/SightReadingWorkspace.tsx'
 assert.match(pdf,/paginateSightReadingXml\(xml,1\)/,'one musical system per render');
 assert.match(pdf,/const rowsPerPage=8/,'eight systems per A4');
 assert.match(pdf,/const slot=\(bottomY-topY\)\/rowsPerPage/,'distribute systems vertically');
-assert.match(pdf,/Math\.min\(181,\(slot-2\)\/ratio\)/,'uniformly scale music into each slot');
+assert.match(pdf,/getImageData/,'crop glyph ink instead of empty SVG page');
+assert.ok(pdf.includes('const width=Math.min(185,(slot-2)/ratio);'),'scale cropped score into A4 slot');
 assert.match(pdf,/pdf\.addImage\(blank,'PNG'/,'letterhead on every sheet');
 assert.match(pdf,/toby-music-logo\.png/,'use in-repository logo');
 const mail=workspace.slice(workspace.indexOf('const sendReadingEmail='),workspace.indexOf('const assignPdf='));
