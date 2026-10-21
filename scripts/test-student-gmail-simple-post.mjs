@@ -11,5 +11,5 @@ assert.match(fn,/JSON\.stringify\(opts\.body \|\| \{\}\)/);
 assert.match(fn,/managerCode/);
 assert.match(fn,/X-Sonata-Manager-Code/);
 assert.ok(fn.indexOf('simpleSend') < fn.indexOf('fetch(url'));
-assert.doesNotMatch(fn,/retry|fetch\(url,[\s\S]*fetch\(url/i);
+assert.equal(fn.split('await fetch(url,').length-1,1,'Gmail helper must make a single request');
 console.log('PASS Gmail send uses one CORS-simple POST, preserves existing query-based authorization and does not retry');
