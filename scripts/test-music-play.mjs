@@ -250,7 +250,7 @@ test('voice name mode and played-pitch mode have separate onscreen interfaces',(
   const comp=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
   assert.ok(comp.includes('שליפה בהקראה — לומר / לבחור שם תו'));
   assert.ok(comp.includes('שליפה בנגינה — לזהות גובה הצליל'));
-  assert.ok(comp.includes("prefs.answer==='name'?<section"),'name-only touch controls');
+  assert.ok(comp.includes("prefs.answer==='name'&&<aside"),'name-only compact stave-side touch controls');
   assert.ok(comp.includes('לחצני שמות הצלילים'));
   assert.ok(comp.includes('RecallScreenPiano allowed={options}'));
   assert.ok(comp.includes('RecallScreenFlute allowed={options}'));
@@ -326,8 +326,8 @@ test('Hebrew speech parser recognizes clear note words, octave names and prevent
   assert.deepEqual([...parse('אמרתי סול ואחר כך לה', [67,69])],[67,69]);
   assert.deepEqual([...parse('דו ראשון', [60,72])],[60]);
   assert.deepEqual([...parse('דו שני', [60,72])],[72]);
-  assert.deepEqual([...parse('דו', [60,72])],[],'octave must be stated when both pitches are allowed');
-  assert.deepEqual([...parse('דו שלישי',[60])],[], 'wrong explicit octave is not silently accepted');
+  assert.deepEqual([...parse('דו', [60,72], [72])],[72],'bare note name is sufficient, current exercise chooses octave');
+  assert.deepEqual([...parse('דו שלישי',[60])],[], 'wrong explicitly stated octave must still be rejected');
   assert.deepEqual([...parse('שלום ילדים',[60,67])],[],'do not match note names inside Hebrew words');
   assert.deepEqual([...parse('לה רה',[60,62])],[62], 'ignore notes not assigned');
 });
@@ -336,7 +336,8 @@ test('speech microphone can be armed before training and is maintained when exer
   const source=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
   assert.ok(source.includes("if(prefs.answer!=='name')return;"), 'speech start must not require running');
   assert.ok(!source.includes("if(prefs.answer!=='name'||!running)return"), 'old running guard removed');
-  assert.ok(source.includes("if(!(prefs.answer==='name'&&speech.current))stop();"), 'do not drop prearmed speech when exercise starts');
+  assert.ok(source.includes("const spoken=Boolean(prefs.answer==='name'&&speech.current)"), 'preserve prearmed speech through exercise start');
+  assert.ok(source.includes("const effectiveClock=spoken?'elapsed':prefs.clock"), 'spoken notes must not be penalized for transcript delay');
   assert.ok(source.includes('בדיקת מיקרופון להקראת שמות תווים'));
   assert.ok(source.includes('תמלול אחרון:'));
   assert.ok(source.includes('instance.interimResults=true'),'expose partial transcripts before final result');
@@ -348,11 +349,45 @@ test('speech microphone can be armed before training and is maintained when exer
   assert.ok(source.includes('speechRetry.current=setTimeout'),'transcript service restarts while prearmed');
 });
 
-test('spoken recall buttons form vertical descending notes with matching number shortcuts',()=>{
+test('compact spoken recall keeps pitch-height buttons immediately beside the notation',()=>{
   const source=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
-  assert.ok(source.includes('className="flex flex-col items-center gap-2 max-h-'));
+  assert.ok(source.includes("grid-cols-[minmax(0,1fr)_106px]"), 'stave and name buttons side by side on small screens');
+  assert.ok(source.includes('sticky top-2'), 'keep name buttons alongside notation when scrolling');
+  assert.ok(source.includes('max-h-[350px] overflow-y-auto'), 'long name ranges can scroll');
   assert.ok(source.includes('[...options].reverse().map(midi'), 'higher notes appear at the top');
-  assert.ok(source.includes('options.indexOf(midi)+1'), 'computer key number follows ascending pitch not vertical order');
-  assert.ok(source.includes('הצליל הגבוה ביותר למעלה'));
-  assert.ok(!source.includes('aria-label="לחצני שמות הצלילים" className="grid'), 'old horizontal name grid removed');
+  assert.ok(source.includes('options.indexOf(midi)+1'), 'keyboard shortcut digits preserve lowest-first convention');
+  assert.ok(source.includes('תו גבוה ↑'));
+  assert.ok(source.includes('תו נמוך ↓'));
+  assert.ok(source.includes('max-h-[350px]'),'short note column instead of full-width stacked buttons');
+  assert.ok(!source.includes('max-h-[460px]'), 'old oversize column removed');
+  assert.ok(source.includes('⚙️ הגדרות אימון'), 'secondary controls can be collapsed to keep notation visible');
+});
+
+test('single spoken note works across octaves and common Hebrew ASR variants, without accidental repeats',()=>{
+  const x={exports:{}};
+  const text=readFileSync(new URL('../src/lib/recallSpeech.ts',import.meta.url),'utf8');
+  const compiled=ts.transpileModule(text,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}});
+  vm.runInNewContext(compiled.outputText,{exports:x.exports});
+  const {parseHebrewRecallNotes:parse,fastInterimRecallNote:fast}=x.exports;
+  assert.deepEqual([...parse('דו',[60,72],[72])],[72]);
+  assert.deepEqual([...parse('דו',[60,72],[60,72],[60])],[72],'second utterance can target next octave');
+  assert.deepEqual([...parse('דו',[60,72],[])],[60], 'no octave required even without an exercise context');
+  assert.deepEqual([...parse('ראה',[62],[62])],[62], 'one-word ASR alternative for רה');
+  assert.deepEqual([...parse('לא',[69],[69])],[69], 'isolated ASR alternative for לה');
+  assert.deepEqual([...parse('לא נכון',[69],[69])],[], 'negative statement must not be interpreted as a note');
+  assert.equal(fast('דו'),true);
+  assert.equal(fast('דו ראשון'),false);
+  assert.equal(fast('דוד'),false);
+  assert.equal(fast('אני אומרת דו'),false);
+});
+
+test('spoken note recognition records fast isolated interim once, advances on recognized answer and exposes feedback',()=>{
+  const source=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
+  assert.ok(source.includes('speechProcessed.current.has(i)'), 'dedupe interim/final for one result index');
+  assert.ok(source.includes('speechProcessed.current.add(i)'));
+  assert.ok(source.includes('fastInterimRecallNote(heard)'), 'accept clearly decoded isolated note before ASR final');
+  assert.ok(source.includes("notes.filter(n=>addAnswer(n,'microphone')).length"), 'route transcript through the scoring input');
+  assert.ok(source.includes("const effectiveClock=spoken?'elapsed':prefs.clock"), 'avoid 2-beat ASR latency rejection');
+  assert.ok(source.includes("engine.current.pref.clock='elapsed'"), 'enabling the mic mid-exercise must also disable time rejection');
+  assert.ok(source.includes('✓ נקלטה תשובה:'), 'positive feedback only after actual answer acceptance');
 });
