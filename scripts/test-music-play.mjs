@@ -312,3 +312,47 @@ test('on-screen piano and flute controls deliver only permitted touch pitches',(
   assert.ok(comp.includes('אפשר לגלול לרוחב'));
   assert.ok(comp.includes('אין צלילים בתחום החליל הווירטואלי'));
 });
+
+test('Hebrew speech parser recognizes clear note words, octave names and prevents false or ambiguous answers',()=>{
+  const module={exports:{}};
+  const src=readFileSync(new URL('../src/lib/recallSpeech.ts',import.meta.url),'utf8');
+  const out=ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020},reportDiagnostics:true});
+  assert.equal(out.diagnostics?.length||0,0);
+  vm.runInNewContext(out.outputText,{exports:module.exports});
+  const {parseHebrewRecallNotes:parse,normalizedSpokenNoteTokens:tokens}=module.exports;
+  assert.deepEqual([...tokens('  דּוֹ, רֵה!  ')],['דו','רה']);
+  assert.deepEqual([...parse('דו', [60,62,64])],[60]);
+  assert.deepEqual([...parse('דו ראשון רה ראשון מי ראשון',[60,62,64])],[60,62,64]);
+  assert.deepEqual([...parse('אמרתי סול ואחר כך לה', [67,69])],[67,69]);
+  assert.deepEqual([...parse('דו ראשון', [60,72])],[60]);
+  assert.deepEqual([...parse('דו שני', [60,72])],[72]);
+  assert.deepEqual([...parse('דו', [60,72])],[],'octave must be stated when both pitches are allowed');
+  assert.deepEqual([...parse('דו שלישי',[60])],[], 'wrong explicit octave is not silently accepted');
+  assert.deepEqual([...parse('שלום ילדים',[60,67])],[],'do not match note names inside Hebrew words');
+  assert.deepEqual([...parse('לה רה',[60,62])],[62], 'ignore notes not assigned');
+});
+
+test('speech microphone can be armed before training and is maintained when exercise begins',()=>{
+  const source=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
+  assert.ok(source.includes("if(prefs.answer!=='name')return;"), 'speech start must not require running');
+  assert.ok(!source.includes("if(prefs.answer!=='name'||!running)return"), 'old running guard removed');
+  assert.ok(source.includes("if(!(prefs.answer==='name'&&speech.current))stop();"), 'do not drop prearmed speech when exercise starts');
+  assert.ok(source.includes('בדיקת מיקרופון להקראת שמות תווים'));
+  assert.ok(source.includes('תמלול אחרון:'));
+  assert.ok(source.includes('instance.interimResults=true'),'expose partial transcripts before final result');
+  assert.ok(source.includes('instance.onspeechstart=()=>'),'distinguish audio arrival from a transcription');
+  assert.ok(source.includes("code==='no-speech'"));
+  assert.ok(source.includes("'network'"),'network block needs a visible explanation');
+  assert.ok(source.includes('parseHebrewRecallNotes(heard,options)'));
+  assert.ok(source.includes('if(current&&!current.finished&&current.pref.answer'), 'preflight never grades without active exercise');
+  assert.ok(source.includes('speechRetry.current=setTimeout'),'transcript service restarts while prearmed');
+});
+
+test('spoken recall buttons form vertical descending notes with matching number shortcuts',()=>{
+  const source=readFileSync(new URL('../src/components/student/MusicRecall.tsx',import.meta.url),'utf8');
+  assert.ok(source.includes('className="flex flex-col items-center gap-2 max-h-'));
+  assert.ok(source.includes('[...options].reverse().map(midi'), 'higher notes appear at the top');
+  assert.ok(source.includes('options.indexOf(midi)+1'), 'computer key number follows ascending pitch not vertical order');
+  assert.ok(source.includes('הצליל הגבוה ביותר למעלה'));
+  assert.ok(!source.includes('aria-label="לחצני שמות הצלילים" className="grid'), 'old horizontal name grid removed');
+});
