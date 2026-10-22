@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mic, MicOff, Play, RotateCcw, Volume2 } from 'lucide-react';
 import { RecallScreenPiano, RecallScreenFlute } from './MusicRecallInstruments';
-import { parseHebrewRecallNotes } from '@/lib/recallSpeech';
+import { fastInterimRecallNote, parseHebrewRecallNotes } from '@/lib/recallSpeech';
 
 type PlayedInput = 'touch' | 'keyboard' | 'midi' | 'microphone';
 type Running = {
@@ -37,7 +37,7 @@ function RecallNotation({events,index,profile}:{events:RecallEvent[];index:numbe
   const height=profile.clefs==='both'?300:profile.clefs==='bass'?300:190;
   const linesBottom=(clef:'treble'|'bass')=>clef==='treble'?122:244;
   return <div dir="ltr" className="rounded-xl border bg-white overflow-x-auto p-2">
-    <svg role="img" aria-label="חמשה עם ראשי תווים חלולים ללא רגל, התו הנוכחי מסומן במשולש מתחתיו" viewBox={'0 0 800 '+height} className="w-full min-w-[550px] text-slate-900">
+    <svg role="img" aria-label="חמשה עם ראשי תווים חלולים ללא רגל, התו הנוכחי מסומן במשולש מתחתיו" viewBox={'0 0 800 '+height} className="w-full min-w-[380px] sm:min-w-[460px] text-slate-900">
       <rect width={800} height={height} fill="#fffefa"/>
       {visible.map((ev,j)=>from+j===index?<rect key={'bg'+ev.id} x={118+j*104-39} y={24} width={80} height={height-37} fill="#fffbeb" rx={10}/>:null)}
       {clefs.map(clef=><g key={clef}>
@@ -114,6 +114,7 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
   const media=useRef<{stream:MediaStream;ctx:AudioContext;analyser:AnalyserNode;buffer:Float32Array<ArrayBuffer>;lastPitch:number|null;since:number;lastInputAt:number;lastFiredPitch:number|null}|null>(null);
   const speech=useRef<BrowserSpeech|null>(null);
   const speechRetry=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const speechProcessed=useRef<Set<number>>(new Set());
   const alive=useRef(true);
   const options=useMemo(()=>profile?[...new Set([...(profile.clefs!=='bass'?profile.trebleNotes:[]),...(profile.clefs!=='treble'?profile.bassNotes:[])])].sort((a,b)=>a-b):[],[profile]);
   const canUseComputerKeyboard=options.length>0&&options.length<=RECALL_ENGLISH_KEYS.length;
@@ -128,6 +129,7 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
       void media.current.ctx.close().catch(()=>undefined);
       media.current=null;
     }
+    speechProcessed.current.clear();
     setMicMode('off');
     setSpeechStatus('מיקרופון ההקראה כבוי.');
   },[]);
@@ -196,27 +198,36 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
   },[finish]);
   const addAnswer=useCallback((midi:number,input:PlayedInput)=>{
     const active=engine.current;
-    if(!active||active.finished)return;
+    if(!active||active.finished)return false;
     const current=active.index;
-    if(current<0||current>=active.events.length)return;
+    if(current<0||current>=active.events.length)return false;
     let index=current;
     if(active.pref.clock==='metronome'){
       const beat=(active.audio.currentTime-active.start)/(60/active.pref.bpm);
       const chosen=assignRecallInput(active.events,current,beat,midi,active.hits.get(current)||[]);
-      if(chosen===null)return;
+      if(chosen===null)return false;
       index=chosen;
     }
     const expected=active.events[index];
     const recorded=active.hits.get(index)||[];
-    if(recorded.length>=expected.notes.length)return;
+    if(recorded.length>=expected.notes.length)return false;
     active.input=input;
     recorded.push(midi);active.hits.set(index,recorded);
     if(active.pref.clock==='elapsed'&&recorded.length===expected.notes.length)judge(active,index);
+    return true;
   },[judge]);
   const start=async()=>{
     // A speech session activated in preflight remains armed during the exercise.
     // stop() would otherwise turn off a previously permitted microphone.
-    if(!(prefs.answer==='name'&&speech.current))stop();
+    const spoken=Boolean(prefs.answer==='name'&&speech.current);
+    if(spoken){
+      cancelAnimationFrame(frame.current);
+      if(engine.current&&!engine.current.finished){
+        engine.current.finished=true;
+        void engine.current.audio.close().catch(()=>undefined);
+      }
+      engine.current=null;setRunning(false);setCountdown(null);
+    }else stop();
     setError('');setScore(null);setCursor(0);setEvents([]);
     if(!profile)return;
     let generated:RecallEvent[];
@@ -226,12 +237,14 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
     try{
       const audio=new AudioContext();await audio.resume();
       const beatSeconds=60/prefs.bpm;
-      const begin=audio.currentTime+(prefs.clock==='metronome'?4*beatSeconds+.12:.1);
-      if(prefs.clock==='metronome'){
+      // Spoken answers must not be disqualified by the external ASR delay.
+      const effectiveClock=spoken?'elapsed':prefs.clock;
+      const begin=audio.currentTime+(effectiveClock==='metronome'?4*beatSeconds+.12:.1);
+      if(effectiveClock==='metronome'){
         for(let b=-4;b<generated.length*2;b++)drawTone(audio,begin+b*beatSeconds,b%4===0);
       }
       const active:Running={audio,events:generated,start:begin,started:performance.now(),index:0,hits:new Map(),
-        correct:0,responded:-1,finished:false,pref:{...prefs},input:'touch',level:safeIndex+1,profileId:profile.id};
+        correct:0,responded:-1,finished:false,pref:{...prefs,clock:effectiveClock},input:'touch',level:safeIndex+1,profileId:profile.id};
       engine.current=active;setEvents(generated);setRunning(true);
       let previousCountdown=-1;
       const tick=()=>{
@@ -280,6 +293,12 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
     // Allow a genuine recognition check before the exercise begins.
     if(prefs.answer!=='name')return;
     stopListening();setError('');setSpeechMessage('');setSpeechPreview('');
+    speechProcessed.current.clear();
+    if(engine.current&&!engine.current.finished&&engine.current.pref.answer==='name'){
+      // A speech transcript arrives after the sound; make the voice exercise response-paced.
+      engine.current.pref.clock='elapsed';
+      setCountdown(null);
+    }
     const Constructor=speechConstructor();
     if(!Constructor){
       setSpeechStatus('זיהוי דיבור בעברית אינו נתמך בדפדפן הזה.');
@@ -310,21 +329,29 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
           const heard=item?.[0]?.transcript?.trim()||'';
           if(!heard)continue;
           setSpeechPreview(heard);
-          if(item.isFinal===false){
-            setSpeechStatus('נשמע דיבור: '+heard+' — ממתין לאישור התמלול.');
+          if(speechProcessed.current.has(i))continue;
+          if(item.isFinal===false&&!fastInterimRecallNote(heard)){
+            setSpeechStatus('שומע: '+heard+' — מזהה שם תו...');
             continue;
           }
-          const notes=parseHebrewRecallNotes(heard,options);
-          setSpeechMessage('הדפדפן שמע: "'+heard+'"');
-          if(!notes.length){
-            setSpeechStatus('הדיבור תומלל, אך לא זוהה שם תו מהרמה הנוכחית. אמרי למשל "דו" או "דו ראשון".');
-            continue;
-          }
-          setSpeechStatus('זוהו שמות התווים: '+notes.map(noteName).join(', ')+(engine.current&&!engine.current.finished?' — התשובה נקלטה.':' — בדיקת המיקרופון הצליחה; אפשר להתחיל.'));
           const current=engine.current;
-          // Preflight confirms recognition but never grades a student attempt.
+          const expectation=current&&!current.finished?current.events[current.index]?.notes.map(n=>n.midi)||[]:[];
+          const already=current&&!current.finished?current.hits.get(current.index)||[]:[];
+          const notes=parseHebrewRecallNotes(heard,options,expectation,already);
+          if(!notes.length){
+            setSpeechStatus('הדפדפן תמלל "'+heard+'" אך לא זוהה שם תו. נסי לומר רק "דו", "רה" או "מי".');
+            continue;
+          }
+          // Interim or final of the same recognition result must never count twice.
+          speechProcessed.current.add(i);
+          setSpeechMessage('הדפדפן שמע: "'+heard+'"');
           if(current&&!current.finished&&current.pref.answer==='name'){
-            notes.forEach(n=>addAnswer(n,'microphone'));
+            const accepted=notes.filter(n=>addAnswer(n,'microphone')).length;
+            setSpeechStatus(accepted
+              ?'✓ נקלטה תשובה: '+notes.map(noteName).join(', ')+' — התרגיל התקדם.'
+              :'זוהה "'+heard+'" אך לא נרשמה תשובה. נסי שוב או לחצי על שם התו.');
+          }else{
+            setSpeechStatus('✓ זוהה שם התו: '+notes.map(noteName).join(', ')+' — אפשר להתחיל.');
           }
         }
       };
@@ -357,6 +384,7 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
       };
       instance.onend=()=>{
         if(!alive.current||speech.current!==instance)return;
+        speechProcessed.current.clear();
         setSpeechStatus('שירות זיהוי הדיבור נעצר. מנסה לחדש האזנה...');
         if(speechRetry.current!==null)clearTimeout(speechRetry.current);
         speechRetry.current=setTimeout(()=>{
@@ -409,15 +437,21 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
     <p>יש להגדיר ולאשר את הרמה הראשונה דרך ״רמות אימון״ בכרטיס התלמידה.</p>
   </div>;
   return <Card className="border-indigo-300" dir="rtl">
-    <CardHeader><CardTitle>🎼 שליפת תווים — אימון אישי</CardTitle>
-      <p className="text-sm text-muted-foreground">אין רמות קבועות: כל רמה נקבעת על ידי המורה עבור התלמידה הזאת בלבד.</p></CardHeader>
-    <CardContent className="space-y-4">
+    <CardHeader className="pb-2"><CardTitle>🎼 שליפת תווים — אימון אישי</CardTitle></CardHeader>
+    <CardContent className="space-y-2">
       {preview&&<p className="rounded border border-amber-300 bg-amber-50 text-amber-900 p-2 text-xs">התנסות מורה: אם לא הוגדרו רמות אישיות, נעשה שימוש בדוגמה בלבד. אין כתיבה לנתוני תלמידות.</p>}
       <div className="flex flex-wrap gap-2">
         {(levels.length?levels:[profile]).map((level,i)=><Button type="button" size="sm" key={level.id+'-'+i}
           variant={safeIndex===i?'default':'outline'} disabled={running} onClick={()=>{stop();setLevelIndex(i);setEvents([]);setScore(null);}}>רמה {i+1}: {level.title||'שליפה'}</Button>)}
       </div>
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 rounded-xl border p-3">
+      <div className="flex items-center gap-2 flex-wrap"><div role="group" aria-label="שני מצבי שליפת תווים" className="flex flex-wrap gap-1.5">
+          <Button type="button" variant={prefs.answer==='name'?'default':'outline'} disabled={running} aria-pressed={prefs.answer==='name'} onClick={()=>savePref({answer:'name'})}>🗣️ שליפה בהקראה — לומר / לבחור שם תו</Button>
+          <Button type="button" variant={prefs.answer==='play'?'default':'outline'} disabled={running} aria-pressed={prefs.answer==='play'} onClick={()=>savePref({answer:'play'})}>🎶 שליפה בנגינה — לזהות גובה הצליל</Button>
+        </div></div>
+      <details className="rounded-lg border border-slate-200 px-2 py-1">
+        <summary className="cursor-pointer text-xs font-semibold text-slate-600 select-none">⚙️ הגדרות אימון — זמן, מהירות ומספר תווים</summary>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-2 pb-1">
+
         <label className="text-sm space-y-1">כמה עמודות תווים להוסיף מעבר למינימום ({profile.minEvents})
           <input type="number" min={0} max={48} value={prefs.extraEvents} disabled={running} onChange={e=>savePref({extraEvents:Number(e.target.value)})} className="block w-full border rounded p-2 bg-background"/>
         </label>
@@ -429,51 +463,52 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
             <option value="metronome">מטרונום — 2 פעימות לכל עמודה</option><option value="elapsed">מדידת זמן — קידום עם כל תשובה</option>
           </select>
         </label>
-        <div role="group" aria-label="שני מצבי שליפת תווים" className="col-span-full flex flex-wrap gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-2">
-          <Button type="button" variant={prefs.answer==='name'?'default':'outline'} disabled={running} aria-pressed={prefs.answer==='name'} onClick={()=>savePref({answer:'name'})}>🗣️ שליפה בהקראה — לומר / לבחור שם תו</Button>
-          <Button type="button" variant={prefs.answer==='play'?'default':'outline'} disabled={running} aria-pressed={prefs.answer==='play'} onClick={()=>savePref({answer:'play'})}>🎶 שליפה בנגינה — לזהות גובה הצליל</Button>
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground">{prefs.clock==='elapsed'?'בלי מטרונום: השעון מודד את זמן התרגיל, וכל תגובה מקדמת לעמודה הבאה.':'עם מטרונום: אפשר לענות בכל רגע בתוך שתי הפעימות של העמודה. הקשה קרובה מעט לפני תחילת התו הבא (עד רבע פעימה) יכולה להיחשב עבורו.'} התווים מצוירים כראשי תווים בלבד, ללא רגל.</p>
-      {!!events.length&&<RecallNotation events={events} index={cursor} profile={profile}/>}
-      {!events.length&&<div className="rounded-xl border border-dashed p-7 text-center text-muted-foreground">בחרי הגדרות והתחילי את האימון.</div>}
-      {countdown!==null&&<div role="status" className="text-3xl text-center font-bold text-amber-700">הכנה: {countdown}</div>}
-      <div className="flex gap-2 flex-wrap justify-center">
-        {!running?<Button onClick={()=>void start()}><Play className="w-4 h-4 ml-1"/> התחלת אימון</Button>:
-          <Button variant="outline" onClick={stop}>עצירה</Button>}
-        {running&&prefs.answer==='play'&&<Button variant="outline" onClick={()=>void connectMidi()}>🎹 חיבור מקלדת MIDI</Button>}
-        {running&&prefs.answer==='play'&&<Button variant="outline" onClick={()=>micMode==='pitch'?stopListening():void startPitchMic()}>
-          {micMode==='pitch'?<MicOff className="w-4 h-4 ml-1"/>:<Mic className="w-4 h-4 ml-1"/>}{micMode==='pitch'?'כיבוי מיקרופון':'זיהוי גובה צליל מהמיקרופון'}
-        </Button>}
 
+
+        </div>
+      </details>
+      <div className={prefs.answer==='name'?'grid grid-cols-[minmax(0,1fr)_106px] sm:grid-cols-[minmax(0,1fr)_124px] lg:grid-cols-[minmax(0,1fr)_148px] gap-2 items-start':'space-y-2'} dir="ltr">
+        <div className="min-w-0 space-y-2" dir="rtl">
+          {!!events.length&&<RecallNotation events={events} index={cursor} profile={profile}/>}
+          {!events.length&&<div className="rounded-lg border border-dashed px-3 py-4 text-xs text-center text-muted-foreground">בחרי מצב והתחילי אימון.</div>}
+          {countdown!==null&&<p role="status" className="text-center text-xl font-bold text-amber-700">הכנה: {countdown}</p>}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {!running?<Button size="sm" onClick={()=>void start()}><Play className="w-3.5 h-3.5 ml-1"/> התחלת אימון</Button>
+              :<Button size="sm" variant="outline" onClick={stop}>עצירה</Button>}
+            {running&&prefs.answer==='play'&&<Button size="sm" variant="outline" onClick={()=>void connectMidi()}>חיבור MIDI</Button>}
+            {running&&prefs.answer==='play'&&<Button size="sm" variant="outline" onClick={()=>micMode==='pitch'?stopListening():void startPitchMic()}>
+              {micMode==='pitch'?<MicOff className="w-3.5 h-3.5 ml-1"/>:<Mic className="w-3.5 h-3.5 ml-1"/>}
+              {micMode==='pitch'?'כיבוי מיקרופון':'זיהוי גובה צליל מהמיקרופון'}
+            </Button>}
+            {prefs.answer==='name'&&<Button size="sm" type="button" variant={micMode==='speech'?'default':'outline'} onClick={()=>micMode==='speech'?stopListening():startSpeech()}>
+              {micMode==='speech'?<MicOff className="w-3.5 h-3.5 ml-1"/>:<Mic className="w-3.5 h-3.5 ml-1"/>}
+              {micMode==='speech'?'כיבוי מיקרופון':'זיהוי שמות תווים במיקרופון'}
+            </Button>}
+          </div>
+          {prefs.answer==='name'&&<div aria-label="בדיקת מיקרופון להקראת שמות תווים" className="rounded-lg border bg-sky-50/60 px-2 py-1.5">
+            <p role="status" aria-live="polite" className="text-xs text-slate-800">{speechStatus}</p>
+            {speechPreview&&<p className="text-xs text-slate-700">תמלול אחרון: <strong>{speechPreview}</strong></p>}
+            {micMode==='speech'&&<p className="text-[11px] text-sky-800">ההקראה מתקדמת לפי כל תשובה, ללא קנס על השהיית התמלול. המיקרופון יכול להישאר פעיל מתחילת האימון.</p>}
+            <p className="text-[11px] text-slate-500">זיהוי דיבור בעברית תלוי בשירות הדפדפן וייתכן ששמע מועבר לספק השירות.</p>
+          </div>}
+          {error&&<p role="alert" className="text-xs text-red-700">{error}</p>}
+          {speechMessage&&<p role="status" className="text-xs text-slate-600">{speechMessage}</p>}
+        </div>
+        {prefs.answer==='name'&&<aside dir="rtl" aria-label="לחצני שמות הצלילים" className="rounded-xl border border-sky-200 bg-sky-50/60 p-1.5 sticky top-2">
+          <p className="text-[11px] font-semibold text-center text-slate-700 pb-1">תו גבוה ↑</p>
+          <div role="group" className="flex flex-col items-center gap-1 max-h-[350px] overflow-y-auto">
+            {[...options].reverse().map(midi=><button type="button" key={midi}
+              disabled={!running||(countdown!==null&&countdown>1)}
+              onClick={()=>addAnswer(midi,'touch')} aria-label={'הקראה: '+noteName(midi)}
+              className="w-full min-h-[38px] rounded-md border border-sky-300 bg-white px-1 py-1 text-slate-900 text-xs font-semibold leading-tight enabled:hover:bg-sky-100 enabled:active:bg-amber-100 disabled:opacity-50 touch-manipulation">
+              <span className="block">{noteName(midi)}</span>
+              {canUseComputerKeyboard&&<span className="block text-[10px] font-normal text-slate-500">{options.indexOf(midi)+1}</span>}
+            </button>)}
+          </div>
+          <p className="text-[10px] text-center text-slate-600 pt-1">תו נמוך ↓</p>
+        </aside>}
       </div>
-      {prefs.answer==='name'&&<p className="text-xs text-muted-foreground">תמלול דיבור בעברית תלוי בשירות זיהוי הדיבור של הדפדפן, ולעיתים השמע מועבר לספק השירות. הסכמת מיקרופון בלבד אינה מבטיחה שהשירות זמין.</p>}
-      {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
-      {speechMessage&&<p role="status" className="text-xs text-muted-foreground">{speechMessage}</p>}
-      {prefs.answer==='name'?<section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3" aria-label="שליפה בהקראה">
-        <p className="font-semibold">🗣️ שליפה בהקראה</p>
-        <p className="text-sm text-muted-foreground">אפשר לבדוק את המיקרופון כבר עכשיו, לפני התחלת התרגיל. אמרי שם תו בודד (למשל "דו ראשון") וראי מה הדפדפן שמע; במהלך האימון התשובה תיקלט אוטומטית.</p>
-        <div className="rounded-xl border border-sky-200 bg-white p-3 space-y-2" aria-label="בדיקת מיקרופון להקראת שמות תווים">
-          <Button type="button" variant={micMode==='speech'?'default':'outline'} onClick={()=>micMode==='speech'?stopListening():startSpeech()}>
-            {micMode==='speech'?<MicOff className="w-4 h-4 ml-1"/>:<Mic className="w-4 h-4 ml-1"/>}
-            {micMode==='speech'?'כיבוי זיהוי דיבור':'זיהוי שמות תווים במיקרופון — בדיקה והפעלה'}
-          </Button>
-          <p role="status" aria-live="polite" className="text-sm text-slate-700">{speechStatus}</p>
-          {speechPreview&&<p className="text-xs text-slate-600">תמלול אחרון: <strong>{speechPreview}</strong></p>}
-          {!running&&micMode==='speech'&&<p className="text-xs text-emerald-800">המיקרופון יישאר מופעל גם לאחר לחיצה על ״התחלת אימון״.</p>}
-        </div>
-        <p className="text-sm text-muted-foreground">אפשר גם ללחוץ על שם התו. עד תשעה תווים זמינים בנוסף מקשי הספרות 1–9 במחשב.</p>
-        <div aria-label="לחצני שמות הצלילים" role="group" className="flex flex-col items-center gap-2 max-h-[460px] overflow-y-auto rounded-xl bg-white/60 p-3">
-          {[...options].reverse().map(midi=><button type="button" key={midi} disabled={!running||(countdown!==null&&countdown>1)}
-            onClick={()=>addAnswer(midi,'touch')} aria-label={'הקראה: '+noteName(midi)}
-            className="w-full max-w-[280px] min-h-14 rounded-xl border-2 border-sky-200 bg-white px-3 py-3 text-slate-900 font-semibold enabled:hover:bg-sky-100 disabled:opacity-55 touch-manipulation">
-            <span className="block">{noteName(midi)}</span>
-            {canUseComputerKeyboard&&<span className="block text-xs text-muted-foreground mt-1">מקש {options.indexOf(midi)+1}</span>}
-          </button>)}
-        </div>
-        <p className="text-xs text-slate-600">הצליל הגבוה ביותר למעלה והנמוך ביותר למטה. {canUseComputerKeyboard?'מקשי הספרות במחשב ממוספרים מדו הנמוך לגבוה (1 לנמוך ביותר).':''}</p>
-        {options.length>RECALL_ENGLISH_KEYS.length&&<p className="text-xs text-amber-800">מעל תשעה צלילים אין קלט ממקלדת מחשב. ניתן לענות בלחיצה על שמות התווים או במיקרופון.</p>}
-      </section>:<section className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/30 p-3" aria-label="שליפה בנגינה">
+      {prefs.answer==='play'&&<section className="space-y-2 rounded-xl border border-indigo-200 bg-indigo-50/30 p-2" aria-label="שליפה בנגינה">
         <p className="font-semibold">🎶 שליפה בנגינה</p>
         <p className="text-sm text-muted-foreground">אפשר לנגן צליל במיקרופון, להשתמש במקלדת MIDI או ללחוץ על כלי נגינה וירטואלי. מיקרופון גובה צליל תומך כעת בצליל בודד; MIDI וכלי המסך תומכים גם בכמה צלילים ברצף.</p>
         <div role="group" aria-label="בחירת כלי נגינה על המסך" className="flex flex-wrap gap-2">
