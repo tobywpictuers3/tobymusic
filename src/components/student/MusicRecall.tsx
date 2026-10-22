@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mic, MicOff, Play, RotateCcw, Volume2 } from 'lucide-react';
 import { RecallScreenPiano, RecallScreenFlute } from './MusicRecallInstruments';
+import { parseHebrewRecallNotes } from '@/lib/recallSpeech';
 
 type PlayedInput = 'touch' | 'keyboard' | 'midi' | 'microphone';
 type Running = {
@@ -76,25 +77,12 @@ const drawTone=(ctx:AudioContext,at:number,accent:boolean)=>{
   gain.gain.exponentialRampToValueAtTime(.0001,at+.05);
   osc.start(at);osc.stop(at+.06);
 };
-const cleanSpeech=(value:string)=>value.replace(/[\u0591-\u05c7]/g,'').replace(/[^א-ת0-9]/g,'').replace(/ה(ראשון|שני|שלישי|גדול|קטן)/g,'$1');
-function spokenNotes(text:string,options:number[]) {
-  let source=cleanSpeech(text);
-  const labels=options.map(midi=>({midi,full:cleanSpeech(noteName(midi)),simple:cleanSpeech(noteName(midi).split(' ')[0])}));
-  const results:number[]=[];
-  while(source.length){
-    const first=labels.filter(x=>source.startsWith(x.full)).sort((a,b)=>b.full.length-a.full.length)[0];
-    if(first){results.push(first.midi);source=source.slice(first.full.length);continue;}
-    const short=labels.filter(x=>source.startsWith(x.simple));
-    const distinct=[...new Set(short.map(n=>n.midi))];
-    if(distinct.length===1){results.push(distinct[0]);source=source.slice(short[0].simple.length);continue;}
-    // Move one codepoint when speech contains additional words.
-    source=source.slice(1);
-  }
-  return results;
-}
+type SpeechResult = ArrayLike<{transcript:string}> & {isFinal?:boolean};
 type BrowserSpeech = {
   lang:string;continuous:boolean;interimResults:boolean;
-  onresult:((event:{results:ArrayLike<ArrayLike<{transcript:string}>>;resultIndex:number})=>void)|null;
+  onstart:(()=>void)|null;onaudiostart:(()=>void)|null;onspeechstart:(()=>void)|null;
+  onnomatch:(()=>void)|null;
+  onresult:((event:{results:ArrayLike<SpeechResult>;resultIndex:number})=>void)|null;
   onerror:((event:{error:string})=>void)|null;
   onend:(()=>void)|null;start:()=>void;stop:()=>void;
 };
@@ -118,6 +106,8 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
   const [error,setError]=useState('');
   const [micMode,setMicMode]=useState<'off'|'pitch'|'speech'>('off');
   const [speechMessage,setSpeechMessage]=useState('');
+  const [speechStatus,setSpeechStatus]=useState('מיקרופון ההקראה כבוי. אפשר לבדוק אותו לפני תחילת התרגיל.');
+  const [speechPreview,setSpeechPreview]=useState('');
   const [playSurface,setPlaySurface]=useState<'piano'|'flute'>('piano');
   const engine=useRef<Running|null>(null);
   const frame=useRef(0);
@@ -139,6 +129,7 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
       media.current=null;
     }
     setMicMode('off');
+    setSpeechStatus('מיקרופון ההקראה כבוי.');
   },[]);
   const stop=useCallback(()=>{
     cancelAnimationFrame(frame.current);
@@ -152,6 +143,7 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
     alive.current=true;
     return ()=>{alive.current=false;cancelAnimationFrame(frame.current);
       if(engine.current)void engine.current.audio.close().catch(()=>undefined);
+      if(speechRetry.current!==null)clearTimeout(speechRetry.current);
       if(speech.current){try{speech.current.onend=null;speech.current.stop();}catch{}}
       if(media.current){media.current.stream.getTracks().forEach(t=>t.stop());void media.current.ctx.close().catch(()=>undefined);}
     };
@@ -222,7 +214,10 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
     if(active.pref.clock==='elapsed'&&recorded.length===expected.notes.length)judge(active,index);
   },[judge]);
   const start=async()=>{
-    stop();setError('');setScore(null);setCursor(0);setEvents([]);
+    // A speech session activated in preflight remains armed during the exercise.
+    // stop() would otherwise turn off a previously permitted microphone.
+    if(!(prefs.answer==='name'&&speech.current))stop();
+    setError('');setScore(null);setCursor(0);setEvents([]);
     if(!profile)return;
     let generated:RecallEvent[];
     try{generated=generateRecallExercise(profile,profile.minEvents+prefs.extraEvents);}catch(e){
@@ -282,40 +277,108 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
     }catch{setError('אין גישה למיקרופון או שהדפדפן אינו תומך. אפשר להמשיך דרך המסך או MIDI.');}
   };
   const startSpeech=()=>{
-    if(prefs.answer!=='name'||!running)return;
-    stopListening();setError('');setSpeechMessage('');
+    // Allow a genuine recognition check before the exercise begins.
+    if(prefs.answer!=='name')return;
+    stopListening();setError('');setSpeechMessage('');setSpeechPreview('');
     const Constructor=speechConstructor();
-    if(!Constructor){setError('זיהוי דיבור בעברית אינו זמין בדפדפן זה. השתמשי בכפתורי שמות התווים.');return;}
+    if(!Constructor){
+      setSpeechStatus('זיהוי דיבור בעברית אינו נתמך בדפדפן הזה.');
+      setError('המיקרופון של המכשיר אינו מספיק: הדפדפן צריך לתמוך גם בזיהוי דיבור בעברית. אפשר להשתמש בלחצני שמות התווים.');
+      return;
+    }
     try{
       const instance=new Constructor();
-      instance.lang='he-IL';instance.continuous=true;instance.interimResults=false;
+      instance.lang='he-IL';instance.continuous=true;instance.interimResults=true;
+      instance.onstart=()=>{
+        if(speech.current!==instance)return;
+        setMicMode('speech');
+        setSpeechStatus('מוכן להקראה — אמרי בקול ברור דו, רה או מי.');
+      };
+      instance.onaudiostart=()=>{
+        if(speech.current===instance)setSpeechStatus('המיקרופון מחובר; ממתין לדיבור בעברית...');
+      };
+      instance.onspeechstart=()=>{
+        if(speech.current===instance)setSpeechStatus('נקלט דיבור, ממתין לתמלול של הדפדפן...');
+      };
+      instance.onnomatch=()=>{
+        if(speech.current===instance)setSpeechStatus('נקלט קול, אבל שירות זיהוי הדיבור לא הצליח לתמלל אותו. נסי לומר תו בודד.');
+      };
       instance.onresult=event=>{
+        if(speech.current!==instance)return;
         for(let i=event.resultIndex;i<event.results.length;i++){
-          const spoken=event.results[i]?.[0]?.transcript||'';
-          setSpeechMessage('זוהה: '+spoken);
-          const active=engine.current;
-          if(!active||active.finished)continue;
-          spokenNotes(spoken,options).forEach(n=>addAnswer(n,'microphone'));
+          const item=event.results[i];
+          const heard=item?.[0]?.transcript?.trim()||'';
+          if(!heard)continue;
+          setSpeechPreview(heard);
+          if(item.isFinal===false){
+            setSpeechStatus('נשמע דיבור: '+heard+' — ממתין לאישור התמלול.');
+            continue;
+          }
+          const notes=parseHebrewRecallNotes(heard,options);
+          setSpeechMessage('הדפדפן שמע: "'+heard+'"');
+          if(!notes.length){
+            setSpeechStatus('הדיבור תומלל, אך לא זוהה שם תו מהרמה הנוכחית. אמרי למשל "דו" או "דו ראשון".');
+            continue;
+          }
+          setSpeechStatus('זוהו שמות התווים: '+notes.map(noteName).join(', ')+(engine.current&&!engine.current.finished?' — התשובה נקלטה.':' — בדיקת המיקרופון הצליחה; אפשר להתחיל.'));
+          const current=engine.current;
+          // Preflight confirms recognition but never grades a student attempt.
+          if(current&&!current.finished&&current.pref.answer==='name'){
+            notes.forEach(n=>addAnswer(n,'microphone'));
+          }
         }
       };
       instance.onerror=event=>{
-        if(['not-allowed','service-not-allowed','audio-capture'].includes(event.error)){
-          setError('לא ניתן להשתמש במיקרופון לזיהוי דיבור ('+event.error+'). אפשר לענות בכפתורי השמות.');
+        if(speech.current!==instance)return;
+        const code=event.error;
+        if(code==='no-speech'){
+          setSpeechStatus('המיקרופון מחובר, אבל לא זוהה דיבור ברור. נסי שוב בתו בודד.');
+          return;
+        }
+        const fatal=['not-allowed','service-not-allowed','audio-capture','network','language-not-supported'];
+        const descriptions:Record<string,string>={
+          'not-allowed':'הרשאת המיקרופון נדחתה.',
+          'service-not-allowed':'הדפדפן חסם את שירות זיהוי הדיבור.',
+          'audio-capture':'אין גישה למקור שמע במכשיר.',
+          network:'שירות זיהוי הדיבור לא הצליח להתחבר לרשת; ייתכן שהסינון חוסם אותו.',
+          'language-not-supported':'הדפדפן אינו תומך בזיהוי עברית.',
+        };
+        if(fatal.includes(code)){
           if(speechRetry.current!==null){clearTimeout(speechRetry.current);speechRetry.current=null;}
-          speech.current=null;setMicMode('off');
+          instance.onend=null;
+          try{instance.stop();}catch{}
+          speech.current=null;
+          setMicMode('off');
+          setSpeechStatus(descriptions[code]||'שירות זיהוי הדיבור אינו זמין.');
+          setError('זיהוי הדיבור לא פועל: '+(descriptions[code]||code)+' אפשר לענות בינתיים בלחצני התווים.');
+        }else{
+          setSpeechStatus('זיהוי הדיבור נכשל ('+code+'). ניסיון חדש יתבצע אם הדפדפן יאפשר.');
         }
       };
       instance.onend=()=>{
-        if(!alive.current||speech.current!==instance||!engine.current||engine.current.finished)return;
+        if(!alive.current||speech.current!==instance)return;
+        setSpeechStatus('שירות זיהוי הדיבור נעצר. מנסה לחדש האזנה...');
+        if(speechRetry.current!==null)clearTimeout(speechRetry.current);
         speechRetry.current=setTimeout(()=>{
           speechRetry.current=null;
-          if(speech.current===instance&&engine.current&&!engine.current.finished){
-            try{instance.start();}catch{setMicMode('off');speech.current=null;setError('הדפדפן הפסיק את ההקראה. לחצי שוב על זיהוי דיבור או עני במסך.');}
+          if(speech.current===instance&&alive.current){
+            try{instance.start();}catch{
+              setMicMode('off');speech.current=null;
+              setSpeechStatus('לא ניתן לחדש את זיהוי הדיבור.');
+              setError('הדפדפן הפסיק את ההקראה. לחצי שוב על הפעלת המיקרופון או השתמשי בכפתורי שמות התווים.');
+            }
           }
-        },350);
+        },500);
       };
-      speech.current=instance;instance.start();setMicMode('speech');
-    }catch{setError('לא ניתן להפעיל את זיהוי הדיבור בדפדפן זה.');}
+      speech.current=instance;
+      setSpeechStatus('מפעיל את זיהוי הדיבור בעברית...');
+      instance.start();
+      setMicMode('speech');
+    }catch{
+      speech.current=null;setMicMode('off');
+      setSpeechStatus('לא ניתן להפעיל את שירות זיהוי הדיבור.');
+      setError('בדקי הרשאת מיקרופון ותמיכת הדפדפן בזיהוי דיבור בעברית.');
+    }
   };
   const connectMidi=async()=>{
     const nav=navigator as Navigator & {requestMIDIAccess?:()=>Promise<{inputs:Map<string,{onmidimessage:((ev:{data:Uint8Array})=>void)|null}>}>};
@@ -382,25 +445,33 @@ export default function MusicRecall({student,preview=false}:{student:Student;pre
         {running&&prefs.answer==='play'&&<Button variant="outline" onClick={()=>micMode==='pitch'?stopListening():void startPitchMic()}>
           {micMode==='pitch'?<MicOff className="w-4 h-4 ml-1"/>:<Mic className="w-4 h-4 ml-1"/>}{micMode==='pitch'?'כיבוי מיקרופון':'זיהוי גובה צליל מהמיקרופון'}
         </Button>}
-        {running&&prefs.answer==='name'&&<Button variant="outline" onClick={()=>micMode==='speech'?stopListening():startSpeech()}>
-          <Mic className="w-4 h-4 ml-1"/>{micMode==='speech'?'כיבוי זיהוי דיבור':'זיהוי שמות תווים במיקרופון'}
-        </Button>}
+
       </div>
-      {running&&prefs.answer==='name'&&<p className="text-xs text-muted-foreground">זיהוי דיבור עברי תלוי בדפדפן, ועשוי להעביר שמע לשירות הזיהוי שלו. לחיצה על כפתורי התווים אינה דורשת מיקרופון.</p>}
+      {prefs.answer==='name'&&<p className="text-xs text-muted-foreground">תמלול דיבור בעברית תלוי בשירות זיהוי הדיבור של הדפדפן, ולעיתים השמע מועבר לספק השירות. הסכמת מיקרופון בלבד אינה מבטיחה שהשירות זמין.</p>}
       {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
       {speechMessage&&<p role="status" className="text-xs text-muted-foreground">{speechMessage}</p>}
       {prefs.answer==='name'?<section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3" aria-label="שליפה בהקראה">
         <p className="font-semibold">🗣️ שליפה בהקראה</p>
-        <p className="text-sm text-muted-foreground">אמרי את שם התו במיקרופון או לחצי על שמו כאן. אם יש עד תשעה תווים, אפשר להשתמש גם במקשי הספרות 1–9 במקלדת המחשב.</p>
-        <div aria-label="לחצני שמות הצלילים" className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-          {options.map((midi,i)=><button type="button" key={midi} disabled={!running||(countdown!==null&&countdown>1)}
+        <p className="text-sm text-muted-foreground">אפשר לבדוק את המיקרופון כבר עכשיו, לפני התחלת התרגיל. אמרי שם תו בודד (למשל "דו ראשון") וראי מה הדפדפן שמע; במהלך האימון התשובה תיקלט אוטומטית.</p>
+        <div className="rounded-xl border border-sky-200 bg-white p-3 space-y-2" aria-label="בדיקת מיקרופון להקראת שמות תווים">
+          <Button type="button" variant={micMode==='speech'?'default':'outline'} onClick={()=>micMode==='speech'?stopListening():startSpeech()}>
+            {micMode==='speech'?<MicOff className="w-4 h-4 ml-1"/>:<Mic className="w-4 h-4 ml-1"/>}
+            {micMode==='speech'?'כיבוי זיהוי דיבור':'זיהוי שמות תווים במיקרופון — בדיקה והפעלה'}
+          </Button>
+          <p role="status" aria-live="polite" className="text-sm text-slate-700">{speechStatus}</p>
+          {speechPreview&&<p className="text-xs text-slate-600">תמלול אחרון: <strong>{speechPreview}</strong></p>}
+          {!running&&micMode==='speech'&&<p className="text-xs text-emerald-800">המיקרופון יישאר מופעל גם לאחר לחיצה על ״התחלת אימון״.</p>}
+        </div>
+        <p className="text-sm text-muted-foreground">אפשר גם ללחוץ על שם התו. עד תשעה תווים זמינים בנוסף מקשי הספרות 1–9 במחשב.</p>
+        <div aria-label="לחצני שמות הצלילים" role="group" className="flex flex-col items-center gap-2 max-h-[460px] overflow-y-auto rounded-xl bg-white/60 p-3">
+          {[...options].reverse().map(midi=><button type="button" key={midi} disabled={!running||(countdown!==null&&countdown>1)}
             onClick={()=>addAnswer(midi,'touch')} aria-label={'הקראה: '+noteName(midi)}
-            className="rounded-xl border-2 border-sky-200 bg-white px-3 py-4 text-slate-900 font-semibold enabled:hover:bg-sky-100 disabled:opacity-55 touch-manipulation">
+            className="w-full max-w-[280px] min-h-14 rounded-xl border-2 border-sky-200 bg-white px-3 py-3 text-slate-900 font-semibold enabled:hover:bg-sky-100 disabled:opacity-55 touch-manipulation">
             <span className="block">{noteName(midi)}</span>
-            {canUseComputerKeyboard&&<span className="block text-xs text-muted-foreground mt-1">מקש {i+1}</span>}
+            {canUseComputerKeyboard&&<span className="block text-xs text-muted-foreground mt-1">מקש {options.indexOf(midi)+1}</span>}
           </button>)}
         </div>
-        {!running&&canUseComputerKeyboard&&<p className="text-xs text-slate-600">מקש 1 עבור {noteName(options[0])}; יתר המקשים ממוספרים לפי הסדר המוצג.</p>}
+        <p className="text-xs text-slate-600">הצליל הגבוה ביותר למעלה והנמוך ביותר למטה. {canUseComputerKeyboard?'מקשי הספרות במחשב ממוספרים מדו הנמוך לגבוה (1 לנמוך ביותר).':''}</p>
         {options.length>RECALL_ENGLISH_KEYS.length&&<p className="text-xs text-amber-800">מעל תשעה צלילים אין קלט ממקלדת מחשב. ניתן לענות בלחיצה על שמות התווים או במיקרופון.</p>}
       </section>:<section className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/30 p-3" aria-label="שליפה בנגינה">
         <p className="font-semibold">🎶 שליפה בנגינה</p>
