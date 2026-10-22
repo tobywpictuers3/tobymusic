@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightReadingPatterns';
 import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightReadingVerovio';
 import { addSightReadingArchiveItem, getSightReadingArchive, getStudents, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
-import { workerApi, teacherDirectMailStatus, teacherDirectSend, teacherDirectReceipt } from '@/lib/workerApi';
+import { workerApi, teacherDirectMailStatus, teacherDirectSend, teacherDirectReceipt, probeStudentsGmailOauth } from '@/lib/workerApi';
 import { hybridSync } from '@/lib/hybridSync';
 import { addMessage, getMessages } from '@/lib/messages';
 import { RHYTHM_GROUPS, updatePatternSelection } from '@/lib/sightReadingRhythmGroups';
@@ -142,6 +142,17 @@ export default function SightReadingWorkspace() {
     return /failed to fetch|networkerror|load failed|network request failed/i.test(value)
       ? 'כשל תקשורת בשלב '+stage+'. ייתכן שכתובת ה-Worker חסומה ברשת או שהשרת אינו נגיש. לא ניתן לאשר השלמה. בדקי חיבור לשרת לפני ניסיון נוסף.'
       : 'כשל בשלב '+stage+': '+value;
+  };
+  const checkGmailOauth=async()=>{
+    setMailStatus('בודק את חשבון Gmail המחובר — ללא שליחת הודעה…');
+    try{
+      const result=await probeStudentsGmailOauth();
+      setMailStatus(result.expectedAccountMatched
+        ?'הרשאת Gmail תקפה והחשבון המחובר אומת. עדיין נדרש להפעיל בנפרד את מצב השליחה הייעודי.'
+        :'בדיקת Gmail הסתיימה ללא אימות החשבון הרצוי.');
+    }catch(error){
+      setMailStatus('בדיקת Gmail נכשלה: '+String(error instanceof Error?error.message:error)+'. לא נשלח מייל.');
+    }
   };
   const sendReadingEmail=async(item:SightReadingArchiveItem)=>{
     if(isDevMode()){setMailStatus('שליחת Gmail חסומה במצב פיתוח.');return;}
@@ -391,7 +402,8 @@ export default function SightReadingWorkspace() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">{getStudents().map(student=><label key={student.id} className="flex gap-2 items-center"><input type="checkbox" checked={studentIds.includes(student.id)} onChange={e=>setStudentIds(ids=>e.target.checked?[...ids,student.id]:ids.filter(id=>id!==student.id))}/>{student.firstName} {student.lastName}</label>)}</div>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void assignPdf(selectedArchive)}>העלה PDF ושייך לתלמידות שנבחרו</button>
       <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy} onClick={()=>void sendReadingEmail(selectedArchive)}>שיוך PDF + שליחת Gmail ייעודית</button>
-      <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>טיוטת מייל ידנית</button></div>
+      <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>טיוטת מייל ידנית</button>
+      <button type="button" className="border rounded p-2 mt-2" disabled={busy} onClick={()=>void checkGmailOauth()}>בדיקת הרשאת Gmail (ללא שליחה)</button></div>
       <p className="text-xs text-muted-foreground">השליחה הייעודית מופעלת רק לאחר אישור שרת הדואר, ושומרת אישור Gmail למניעת כפילויות. עד להפעלה ניתן לשייך תרגילים לאזור האישי ללא מייל.</p>
       <div className="flex items-center gap-2 text-xs"><button type="button" className="border rounded px-2 py-1" onClick={()=>void checkDropboxConnection()}>בדיקת חיבור לשרת</button><span role="status">{connectionStatus}</span></div>
       {mailStatus&&<p role="status">{mailStatus}</p>}
