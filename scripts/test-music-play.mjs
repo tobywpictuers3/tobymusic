@@ -261,24 +261,29 @@ test('recall stage presents pitch-height stepped touch buttons and hides compute
   assert.ok(!component.includes('canShowPiano'),'legacy organ logic removed');
 });
 
-test('DIAGNOSTIC ONLY: verify live personal recall has distinct voice and play surfaces', {timeout:190000},async()=>{
+test('DIAGNOSTIC ONLY: live production bundle includes 2026-10-22 Hebrew speech preflight and vertical notes', {timeout:150000},async()=>{
   const base='https://students.tobymusic.club';
-  const markers=['שליפה בהקראה — לומר / לבחור שם תו','שליפה בנגינה — לזהות גובה הצליל','חליל צד על המסך','פסנתר על המסך','אישור האצבוע'];
-  let latest='';
-  for(let attempt=1;attempt<=18;attempt++){
-    const response=await fetch(base+'/?asset-probe=20261019-voice-'+attempt,{cache:'no-store',signal:AbortSignal.timeout(15000)});
-    assert.equal(response.status,200,'Production HTML status');
+  const markers=[
+    'בדיקת מיקרופון להקראת שמות תווים',
+    'הצליל הגבוה ביותר למעלה',
+    'המיקרופון יישאר מופעל גם לאחר לחיצה',
+    'נקלט דיבור, ממתין לתמלול של הדפדפן',
+    'תמלול אחרון:',
+  ];
+  for(let attempt=1;attempt<=15;attempt++){
+    const response=await fetch(base+'/?check=recall-20261022-'+attempt,{cache:'no-store',signal:AbortSignal.timeout(15000)});
+    assert.equal(response.status,200,'Production student HTML must load');
     const html=await response.text();
     const match=html.match(/<script[^>]*src=["']([^"']*\/assets\/index-[^"']+\.js)["']/);
-    assert.ok(match,'Production HTML must reference Vite main JS');
-    const url=new URL(match[1],base);latest=url.pathname;
-    const jsResponse=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(20000)});
-    assert.equal(jsResponse.status,200,'Production JS asset status');
-    const bundle=await jsResponse.text();
-    const found=markers.map(value=>({marker:value,found:bundle.includes(value)}));
-    console.log('LIVE_RECALL_CHECK',JSON.stringify({attempt,asset:url.pathname,length:bundle.length,found}));
-    if(found.every(v=>v.found))return;
-    if(attempt<18)await new Promise(resolve=>setTimeout(resolve,6000));
+    assert.ok(match,'Live student HTML must reference a main bundle');
+    const asset=new URL(match[1],base);
+    const js=await fetch(asset,{cache:'no-store',signal:AbortSignal.timeout(20000)});
+    assert.equal(js.status,200,'Exact production bundle must exist');
+    const source=await js.text();
+    const found=markers.map(m=>source.includes(m));
+    console.log('TOBY_RECALL_SPEECH_LIVE',JSON.stringify({attempt,asset:asset.pathname,bytes:source.length,found}));
+    if(found.every(Boolean))return;
+    if(attempt<15)await new Promise(resolve=>setTimeout(resolve,5000));
   }
-  assert.fail('Live students bundle '+latest+' does not contain the merged spoken/play recall release');
+  assert.fail('Current live asset does not contain the deployed microphone readiness and vertical note controls');
 });
