@@ -344,7 +344,7 @@ test('speech microphone can be armed before training and is maintained when exer
   assert.ok(source.includes('instance.onspeechstart=()=>'),'distinguish audio arrival from a transcription');
   assert.ok(source.includes("code==='no-speech'"));
   assert.ok(source.includes("'network'"),'network block needs a visible explanation');
-  assert.ok(source.includes('parseHebrewRecallNotes(heard,options)'));
+  assert.ok(source.includes('parseHebrewRecallNotes(heard,options,expectation,already)'), 'speech parser gets exercise context');
   assert.ok(source.includes('if(current&&!current.finished&&current.pref.answer'), 'preflight never grades without active exercise');
   assert.ok(source.includes('speechRetry.current=setTimeout'),'transcript service restarts while prearmed');
 });
