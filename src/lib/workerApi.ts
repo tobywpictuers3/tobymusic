@@ -182,7 +182,12 @@ export async function probeStudentsGmailOauth():Promise<{ok:boolean;expectedAcco
       'X-Sonata-Manager-Code':getManagerCode()},body:'{}',
   });
   const result=await reply.json().catch(()=>({ok:false,error:'תגובה לא תקינה מ-Gmail'}));
-  if(!reply.ok||result.ok!==true)throw new Error(result.error||'אימות Gmail נכשל');
+  if(!reply.ok||result.ok!==true){
+    const allowed=new Set(['invalid_grant','invalid_client','unauthorized_client','invalid_request','access_denied','unsupported_grant_type']);
+    const code=String(result.googleError||'').trim();
+    const suffix=allowed.has(code)?' — שגיאת Google OAuth: '+code:'';
+    throw new Error(String(result.error||'אימות Gmail נכשל')+suffix);
+  }
   return result;
 }
 export async function teacherDirectMailStatus():Promise<{ok:boolean;mode:TeacherDirectMailMode;teacherDirectSendEnabled:boolean;testOnly:boolean}>{
