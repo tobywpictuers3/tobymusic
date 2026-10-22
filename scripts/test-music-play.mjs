@@ -261,29 +261,23 @@ test('recall stage presents pitch-height stepped touch buttons and hides compute
   assert.ok(!component.includes('canShowPiano'),'legacy organ logic removed');
 });
 
-test('DIAGNOSTIC ONLY: live production bundle includes 2026-10-22 Hebrew speech preflight and vertical notes', {timeout:150000},async()=>{
+test('DIAGNOSTIC ONLY: verify fresh production students bundle has compact stave-side voice recall', {timeout:150000},async()=>{
   const base='https://students.tobymusic.club';
-  const markers=[
-    'בדיקת מיקרופון להקראת שמות תווים',
-    'הצליל הגבוה ביותר למעלה',
-    'המיקרופון יישאר מופעל גם לאחר לחיצה',
-    'נקלט דיבור, ממתין לתמלול של הדפדפן',
-    'תמלול אחרון:',
-  ];
+  const markers=['grid-cols-[minmax(0,1fr)_106px]','תו גבוה ↑','ההקראה מתקדמת לפי כל תשובה','✓ נקלטה תשובה:','תמלול אחרון:'];
   for(let attempt=1;attempt<=15;attempt++){
-    const response=await fetch(base+'/?check=recall-20261022-'+attempt,{cache:'no-store',signal:AbortSignal.timeout(15000)});
-    assert.equal(response.status,200,'Production student HTML must load');
-    const html=await response.text();
-    const match=html.match(/<script[^>]*src=["']([^"']*\/assets\/index-[^"']+\.js)["']/);
-    assert.ok(match,'Live student HTML must reference a main bundle');
-    const asset=new URL(match[1],base);
-    const js=await fetch(asset,{cache:'no-store',signal:AbortSignal.timeout(20000)});
-    assert.equal(js.status,200,'Exact production bundle must exist');
-    const source=await js.text();
-    const found=markers.map(m=>source.includes(m));
-    console.log('TOBY_RECALL_SPEECH_LIVE',JSON.stringify({attempt,asset:asset.pathname,bytes:source.length,found}));
+    const htmlResponse=await fetch(base+'/?toby-recall-compact=20261022-'+attempt,{cache:'no-store',signal:AbortSignal.timeout(15000)});
+    assert.equal(htmlResponse.status,200,'Live HTML status');
+    const html=await htmlResponse.text();
+    const matched=html.match(/<script[^>]*src=["']([^"']*\/assets\/index-[^"']+\.js)["']/);
+    assert.ok(matched,'Vite production JS reference present');
+    const asset=new URL(matched[1],base);
+    const bundleResponse=await fetch(asset,{cache:'no-store',signal:AbortSignal.timeout(20000)});
+    assert.equal(bundleResponse.status,200,'Referenced production JS is fetchable');
+    const js=await bundleResponse.text();
+    const found=markers.map(m=>js.includes(m));
+    console.log('TOBY_COMPACT_RECALL_LIVE',JSON.stringify({attempt,asset:asset.pathname,bytes:js.length,found}));
     if(found.every(Boolean))return;
     if(attempt<15)await new Promise(resolve=>setTimeout(resolve,5000));
   }
-  assert.fail('Current live asset does not contain the deployed microphone readiness and vertical note controls');
+  assert.fail('Live students bundle lacks one or more compact voice recall markers');
 });
