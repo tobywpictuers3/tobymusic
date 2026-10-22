@@ -386,3 +386,10 @@ The payment data model already contains all 12 academic months, September throug
 ## 2026-10-21: Sight reading Gmail runtime ReferenceError
 - Teacher screenshot confirmed `readStudentMailMode is not defined` on sending a reading assignment. Cause: `SightReadingWorkspace.tsx` called the exported `readStudentMailMode` from `workerApi.ts` but failed to import it, a runtime ReferenceError that Vite build did not detect because TS diagnostics are continue-on-error in CI.
 - Corrected named import and added a dedicated import regression check in PR CI. This repair only gets the policy preflight executing; it does not enable Gmail delivery outside the Worker's controlled test mode. No student email was sent as part of the fix.
+
+## Dedicated teacher Gmail sender — staging October 22, 2026
+- The legacy Gmail bridge remains in restricted test mode. New dedicated Worker actions (`teacher_direct_status`, `teacher_direct_send`, `teacher_direct_receipt`) are isolated from its cron/historic queue. The new sender is **disabled by default** until a controlled Gmail OAuth pilot and explicit enablement.
+- The sight-reading UI queries the separate sender's live readiness. On successful authorization only, it ensures per-student PDF assignment, verifies Dropbox sync, calls receipt-verified server send (no client retries), then creates a local internal mailbox message with the Gmail message ID and verifies sync.
+- For `unknown` server receipt status, the UI blocks re-sends and requires manual Gmail Sent review. For a confirmed `sent` receipt, a repeated click can repair a missing internal message without resending Gmail.
+- The new Worker feature code is in `tobywpictuers3/tobymusic-workers-ci` (isolated sender module plus Durable Object storage); by default it sends **zero** mail. The sender's rollout flag must never be conflated with `EMAIL_BRIDGE_MODE` or old queue processing.
+- Live student/Gmail end-to-end test and actual rollout flag are not yet complete; do not claim that outgoing Gmail is available to every student.

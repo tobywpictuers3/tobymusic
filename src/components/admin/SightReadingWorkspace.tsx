@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react';
 import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightReadingPatterns';
 import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightReadingVerovio';
 import { addSightReadingArchiveItem, getSightReadingArchive, getStudents, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
-import { workerApi, readStudentMailMode } from '@/lib/workerApi';
+import { workerApi, teacherDirectMailStatus, teacherDirectSend, teacherDirectReceipt, probeStudentsGmailOauth } from '@/lib/workerApi';
 import { hybridSync } from '@/lib/hybridSync';
-import { sendMessageViaGmail, getMessages } from '@/lib/messages';
+import { addMessage, getMessages } from '@/lib/messages';
 import { RHYTHM_GROUPS, updatePatternSelection } from '@/lib/sightReadingRhythmGroups';
 import { searchSightReadingArchive } from '@/lib/sightReadingSearch';
 
@@ -143,83 +143,90 @@ export default function SightReadingWorkspace() {
       ? 'כשל תקשורת בשלב '+stage+'. ייתכן שכתובת ה-Worker חסומה ברשת או שהשרת אינו נגיש. לא ניתן לאשר השלמה. בדקי חיבור לשרת לפני ניסיון נוסף.'
       : 'כשל בשלב '+stage+': '+value;
   };
-  const sendReadingEmail=async(item:SightReadingArchiveItem)=>{
-    if(isDevMode()){setMailStatus('שליחת Gmail חסומה במצב פיתוח');return;}
-    const recipients=getStudents().filter(student=>studentIds.includes(student.id));
-    if(!recipients.length || recipients.length!==studentIds.length){setMailStatus('לא נשלח דבר: יש לסמן לפחות תלמידה אחת ברשימה שלמעלה.');return;}
-    // Check live Worker policy before uploading or writing any assignment.
-    // A successful Dropbox GET does not prove Gmail is enabled.
-    setMailStatus('בודק הרשאות שליחה בשרת הדואר…');
-    let mailMode: Awaited<ReturnType<typeof readStudentMailMode>>;
-    try { mailMode=await readStudentMailMode(); }
-    catch(e) {setMailStatus('לא ניתן לאמת הרשאות שליחת Gmail. לא נוצר שיוך ולא נשלח מייל: '+String(e instanceof Error?e.message:e));return;}
-    if(!mailMode.enabled){
-      const allowTest=mailMode.testMode&&recipients.length===1&&String(recipients[0].personalCode||'')===String(mailMode.testStudentCode||'');
-      if(!allowTest){
-        setMailStatus('ה-Worker נמצא במצב ניסוי מוגבל לשליחה לתלמידת בדיקה מורשית בלבד. לא בוצעה שליחה ולא נוצר שיוך חדש. השתמשי בכפתור השיוך הנפרד כדי לשתף באזור האישי.');
-        return;
-      }
-    }
-    if(!window.confirm(`לשייך PDF לאזור האישי ולשלוח מייל עם קישור ל-PDF ל-${recipients.length} תלמידות? ההודעה תישמר גם בתיבת הדואר בפלטפורמה.`)){setMailStatus('השליחה בוטלה');return;}
-    setBusy(true);setMailStatus('');
-    let sent=0;
-    let stage='בדיקת נמענות';
+  const checkGmailOauth=async()=>{
+    setMailStatus('בודק את חשבון Gmail המחובר — ללא שליחת הודעה…');
     try{
-      // One click must complete assignment *before* attempting Gmail delivery.
-      // Reuse existing student-specific assignment for safe retries.
-      const missing=recipients.filter(student=>!getFiles().some(file=>
-        file.studentId===student.id&&file.description?.includes('sight-reading:'+item.id)));
+      const result=await probeStudentsGmailOauth();
+      setMailStatus(result.expectedAccountMatched
+        ?'הרשאת Gmail תקפה והחשבון המחובר אומת. עדיין נדרש להפעיל בנפרד את מצב השליחה הייעודי.'
+        :'בדיקת Gmail הסתיימה ללא אימות החשבון הרצוי.');
+    }catch(error){
+      setMailStatus('בדיקת Gmail נכשלה: '+String(error instanceof Error?error.message:error)+'. לא נשלח מייל.');
+    }
+  };
+  const sendReadingEmail=async(item:SightReadingArchiveItem)=>{
+    if(isDevMode()){setMailStatus('שליחת Gmail חסומה במצב פיתוח.');return;}
+    const recipients=getStudents().filter(student=>studentIds.includes(student.id));
+    if(!recipients.length||recipients.length!==studentIds.length){setMailStatus('יש לבחור תלמידה אחת לפחות.');return;}
+    setMailStatus('מאמת שמנגנון הדואר הייעודי מאושר לשליחה…');
+    let mode: Awaited<ReturnType<typeof teacherDirectMailStatus>>;
+    try{mode=await teacherDirectMailStatus();}
+    catch(e){setMailStatus('לא ניתן לאמת את שירות הדואר החדש: '+String(e instanceof Error?e.message:e));return;}
+    if(mode.mode==='disabled'){
+      setMailStatus('שירות שליחת Gmail החדש עדיין חסום להפעלה. ניתן לשייך קובץ לאזור האישי ללא מייל.');
+      return;
+    }
+    if(mode.mode==='test_1111_manual'&&
+      (recipients.length!==1||String(recipients[0].personalCode||'')!=='1111')){
+      setMailStatus('השירות נמצא במצב ניסוי: מותר לשלוח רק לתלמידת בדיקה מורשית.');
+      return;
+    }
+    if(!window.confirm('לשייך את התרגיל לאזור האישי ולשלוח מייל ל-'+recipients.length+' תלמידות?'))return;
+    setBusy(true);
+    let sent=0,stage='בדיקת שיוכים';
+    try{
+      const missing=recipients.filter(student=>!getFiles().some(file=>file.studentId===student.id&&file.description?.includes('sight-reading:'+item.id)));
       if(missing.length){
-        setMailStatus('מכין ושומר PDF באזור האישי של '+missing.length+' תלמידות…');
-        stage='יצירת PDF';
+        stage='יצירת והעלאת PDF';
         const pdf=await makeSightReadingPdf(item.xml);
         for(const student of missing){
-          const fileName='TOBY-reading-'+item.serial+'-'+randomId()+'.pdf';
-          stage='העלאת PDF ל-Dropbox';
-          const upload=await workerApi.uploadAttachment(new File([pdf],fileName,{type:'application/pdf'}));
-          if(!upload.success||!upload.data?.webViewLink)
-            throw new Error(explainNetworkFailure(upload.error||'העלאה נכשלה',stage));
-          addFile({
-            studentId:student.id,name:item.title+'.pdf',
+          const filename='TOBY-reading-'+item.serial+'-'+randomId()+'.pdf';
+          const upload=await workerApi.uploadAttachment(new File([pdf],filename,{type:'application/pdf'}));
+          if(!upload.success||!upload.data?.webViewLink)throw new Error(upload.error||'העלאת PDF נכשלה');
+          addFile({studentId:student.id,name:item.title+'.pdf',
             description:'תרגיל קריאה מהדף · sight-reading:'+item.id,
-            webViewLink:upload.data.webViewLink,
-            dropboxPath:upload.data.path,kind:'pdf',mimeType:'application/pdf',
-            size:upload.data.size??pdf.size,
-          });
+            webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path,
+            kind:'pdf',mimeType:'application/pdf',size:upload.data.size??pdf.size});
         }
       }
-      setMailStatus('מאמת סנכרון של השיוכים ל-Dropbox לפני שליחת Gmail…');
-      stage='סנכרון רשומות לאזור האישי';
+      stage='אימות שמירה בענן';
       const synced=await hybridSync.manualSync();
-      if(!synced)throw new Error('רישום הקבצים לא סונכרן ל-Dropbox — לא נשלח מייל כדי למנוע קישור שבור');
-      setMailStatus('השיוכים סונכרנו ל-Dropbox. שולח באמצעות Gmail…');
+      if(!synced)throw new Error('השמירה ב-Dropbox לא אומתה');
       for(const student of recipients){
-        const address=(student.email||'').trim();
-        if(!address.includes('@')||!address.split('@')[1]?.includes('.'))throw new Error('לתלמידה שנבחרה אין כתובת מייל תקינה');
-        const subject=`תרגיל קריאה מהדף #${item.serial}: ${item.title}`;
-        // This must be the actual student-specific assignment, not the master PDF.
-        const attached=getFiles().find(file=>file.studentId===student.id&&file.description?.includes('sight-reading:'+item.id));
-        if(!attached?.webViewLink)throw new Error('לא הצלחתי לשייך את הקובץ לאזור האישי של התלמידה');
-        // Existing sent messages are receipts. Never send again by a repeated click.
-        if(getMessages().some(m=>m.senderId==='admin'&&m.recipientIds.includes(student.id)&&m.subject===subject)){
-          continue;
-        }
-        const link=attached.webViewLink;
-        if(!link.startsWith('https://'))throw new Error('קישור קובץ לא מאובטח');
-        const body=`שלום,\\nקיבלת תרגיל קריאה מהדף: ${item.title}.\\nהתרגיל נמצא באזור האישי שלך בפלטפורמת TOBY Music.\\nלצפייה ב-PDF: ${link}`;
-        const escapedLink=link.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
         stage='Gmail';
-        const result=await sendMessageViaGmail({
-          senderId:'admin',senderName:'TOBY Music',recipientIds:[student.id],
-          subject,content:body,contentHtml:`<p>קיבלת תרגיל קריאה מהדף: ${item.serial}</p><p>התרגיל זמין באזור האישי שלך.</p><p><a href="${escapedLink}">לצפייה ב-PDF</a></p>`,
-          type:'general',
-        },[address],{throwOnFailure:true});
-        if(!result)throw new Error('שירות Gmail לא אישר משלוח; עצרתי כדי למנוע שליחה כפולה');
-        sent++;
+        const subject='תרגיל קריאה מהדף — TOBY Music';
+        setMailStatus('בודק אישור שליחה לתלמידה שנבחרה…');
+        // Server receipt is canonical. Never rely on browser-only history
+        // when deciding whether an uncertain email should be sent again.
+        const receipt=await teacherDirectReceipt(student.id,item.id);
+        if(receipt.status==='unknown')
+          throw new Error('קיים ניסיון שליחה קודם שמצבו אינו ידוע. יש לבדוק Gmail נשלח לפני ניסיון נוסף.');
+        const result=receipt.status==='sent'
+          ? {ok:true,status:'sent',gmailMessageId:receipt.gmailMessageId,duplicatePrevented:true}
+          : await teacherDirectSend(student.id,item.id);
+        if(!result.ok||result.status!=='sent')throw new Error('Gmail לא אישר שליחה');
+        if(!result.duplicatePrevented)sent++;
+        // Preserve the existing internal mailbox behavior. Only create a
+        // local platform message AFTER the server confirms the Gmail receipt.
+        const existing=getMessages().some(message=>
+          message.senderId==='admin'&&message.recipientIds.includes(student.id)&&
+          message.gmailMessageId===result.gmailMessageId);
+        if(!existing){
+          addMessage({senderId:'admin',senderName:'TOBY Music',recipientIds:[student.id],
+            subject,content:'תרגיל קריאה מהדף הועלה לאזור האישי שלך. לצפייה: https://students.tobymusic.club/',
+            type:'general',gmailMessageId:result.gmailMessageId,
+            emailSent:true,emailSentAt:new Date().toISOString(),emailSource:'lovable',
+            emailDeliveryStatus:'sent',emailDeliveryRoute:'teacher_direct_send'});
+        }
       }
-      setMailStatus(`Gmail אישר ${sent} הודעות חדשות מתוך ${recipients.length} נמענות; הודעות שכבר נשלחו לא נשלחו שוב. הודעת הדואר כוללת קישור לקובץ (לא צרופה בינארית).`);
-    }catch(e){setMailStatus('אושרו '+sent+' הודעות לפני עצירה. '+explainNetworkFailure(e,stage)+' יש לבדוק את הדואר היוצא ואת שיוכי התלמידות לפני ניסיון חוזר.');}
-    finally{setBusy(false);}
+      stage='סנכרון דואר פנימי';
+      const stored=await hybridSync.manualSync();
+      if(!stored)throw new Error('Gmail אישר שליחה, אך שמירת הודעות הדואר הפנימיות טרם אומתה');
+      setMailStatus('אושרו '+sent+' שליחות Gmail חדשות. השיוך והדואר הפנימי סונכרנו; לא נשלחו שוב הודעות שכבר אושרו.');
+    }catch(e){
+      setMailStatus('אושרו '+sent+' שליחות חדשות לפני עצירה. '+explainNetworkFailure(e,stage)+
+        ' אין לנסות שוב לפני בדיקת אישור השליחה בשרת.');
+    }finally{setBusy(false);}
   };
   const assignPdf=async(item:SightReadingArchiveItem)=>{
     if(isDevMode()){setDeliveryStatus('לא ניתן לשלוח מתוך סביבת פיתוח');return;}
@@ -394,9 +401,10 @@ export default function SightReadingWorkspace() {
       <fieldset id="sightreading-delivery" className="border rounded p-2"><legend>שיוך PDF לאזור האישי ושליחה</legend>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">{getStudents().map(student=><label key={student.id} className="flex gap-2 items-center"><input type="checkbox" checked={studentIds.includes(student.id)} onChange={e=>setStudentIds(ids=>e.target.checked?[...ids,student.id]:ids.filter(id=>id!==student.id))}/>{student.firstName} {student.lastName}</label>)}</div>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void assignPdf(selectedArchive)}>העלה PDF ושייך לתלמידות שנבחרו</button>
-      <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy} onClick={()=>void sendReadingEmail(selectedArchive)}>שיוך PDF + שליחת מייל והודעה</button>
-      <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>טיוטת מייל ידנית</button></div>
-      <p className="text-xs text-muted-foreground">כפתור השליחה משייך תחילה PDF לאזור האישי ואז שולח קישור דרך Gmail. אין צורך בשיוך מוקדם. המייל אינו מכיל צרופה בינארית.</p>
+      <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy} onClick={()=>void sendReadingEmail(selectedArchive)}>שיוך PDF + שליחת Gmail ייעודית</button>
+      <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>טיוטת מייל ידנית</button>
+      <button type="button" className="border rounded p-2 mt-2" disabled={busy} onClick={()=>void checkGmailOauth()}>בדיקת הרשאת Gmail (ללא שליחה)</button></div>
+      <p className="text-xs text-muted-foreground">השליחה הייעודית מופעלת רק לאחר אישור שרת הדואר, ושומרת אישור Gmail למניעת כפילויות. עד להפעלה ניתן לשייך תרגילים לאזור האישי ללא מייל.</p>
       <div className="flex items-center gap-2 text-xs"><button type="button" className="border rounded px-2 py-1" onClick={()=>void checkDropboxConnection()}>בדיקת חיבור לשרת</button><span role="status">{connectionStatus}</span></div>
       {mailStatus&&<p role="status">{mailStatus}</p>}
       {deliveryStatus&&<p role="status">{deliveryStatus}</p>}

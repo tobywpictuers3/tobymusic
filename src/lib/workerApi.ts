@@ -173,6 +173,41 @@ export async function readStudentMailMode(): Promise<{enabled:boolean;testMode:b
   return data;
 }
 
+export type TeacherDirectMailMode = 'disabled' | 'test_1111_manual' | 'enabled';
+export async function probeStudentsGmailOauth():Promise<{ok:boolean;expectedAccountMatched?:boolean;error?:string;tokenRefreshSucceeded?:boolean}>{
+  if(isDevMode())throw new Error('בדיקת Gmail אינה פעילה בסביבת פיתוח');
+  // Existing Worker read-only probe (refresh + Gmail profile; zero messages).
+  const reply=await fetch(WORKER_BASE_URL+'/?action=gmail_oauth_probe',{
+    method:'POST',cache:'no-store',headers:{'Content-Type':'text/plain;charset=UTF-8',
+      'X-Sonata-Manager-Code':getManagerCode()},body:'{}',
+  });
+  const result=await reply.json().catch(()=>({ok:false,error:'תגובה לא תקינה מ-Gmail'}));
+  if(!reply.ok||result.ok!==true)throw new Error(result.error||'אימות Gmail נכשל');
+  return result;
+}
+export async function teacherDirectMailStatus():Promise<{ok:boolean;mode:TeacherDirectMailMode;teacherDirectSendEnabled:boolean;testOnly:boolean}>{
+  const reply=await fetch(WORKER_BASE_URL+'/?action=teacher_direct_status',{cache:'no-store'});
+  if(!reply.ok)throw new Error('לא ניתן לבדוק את זמינות שירות הדואר החדש');
+  return reply.json();
+}
+export async function teacherDirectSend(studentId:string,exerciseId:string):Promise<{ok:boolean;status:string;gmailMessageId?:string;duplicatePrevented?:boolean;error?:string}>{
+  if(isDevMode())throw new Error('שליחת מייל חסומה בסביבת פיתוח');
+  const reply=await fetch(WORKER_BASE_URL+'/?action=teacher_direct_send',{
+    method:'POST',cache:'no-store',
+    headers:{'Content-Type':'application/json','X-Sonata-Manager-Code':getManagerCode()},
+    body:JSON.stringify({studentId,exerciseId}),
+  });
+  const result=await reply.json().catch(()=>({ok:false,error:'תגובה לא תקינה משרת הדואר'}));
+  if(!reply.ok||result.ok!==true)throw new Error(result.error||'השרת לא אישר שליחת Gmail');
+  return result;
+}
+export async function teacherDirectReceipt(studentId:string,exerciseId:string):Promise<{ok:boolean;status:string;gmailMessageId?:string}>{
+  const query=new URLSearchParams({action:'teacher_direct_receipt',studentId,exerciseId});
+  const reply=await fetch(WORKER_BASE_URL+'/?'+query,{headers:{'X-Sonata-Manager-Code':getManagerCode()},cache:'no-store'});
+  if(!reply.ok)throw new Error('לא ניתן לקרוא אישור שליחה');
+  return reply.json();
+}
+
 export const workerApi = {
   /* -----------------------------------------------------------
      1. Download Latest Database JSON
