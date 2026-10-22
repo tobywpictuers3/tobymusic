@@ -174,6 +174,17 @@ export async function readStudentMailMode(): Promise<{enabled:boolean;testMode:b
 }
 
 export type TeacherDirectMailMode = 'disabled' | 'test_1111_manual' | 'enabled';
+export async function probeStudentsGmailOauth():Promise<{ok:boolean;expectedAccountMatched?:boolean;error?:string;tokenRefreshSucceeded?:boolean}>{
+  if(isDevMode())throw new Error('בדיקת Gmail אינה פעילה בסביבת פיתוח');
+  // Existing Worker read-only probe (refresh + Gmail profile; zero messages).
+  const reply=await fetch(WORKER_BASE_URL+'/?action=gmail_oauth_probe',{
+    method:'POST',cache:'no-store',headers:{'Content-Type':'text/plain;charset=UTF-8',
+      'X-Sonata-Manager-Code':getManagerCode()},body:'{}',
+  });
+  const result=await reply.json().catch(()=>({ok:false,error:'תגובה לא תקינה מ-Gmail'}));
+  if(!reply.ok||result.ok!==true)throw new Error(result.error||'אימות Gmail נכשל');
+  return result;
+}
 export async function teacherDirectMailStatus():Promise<{ok:boolean;mode:TeacherDirectMailMode;teacherDirectSendEnabled:boolean;testOnly:boolean}>{
   const reply=await fetch(WORKER_BASE_URL+'/?action=teacher_direct_status',{cache:'no-store'});
   if(!reply.ok)throw new Error('לא ניתן לבדוק את זמינות שירות הדואר החדש');
