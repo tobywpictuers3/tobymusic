@@ -407,3 +407,12 @@ The payment data model already contains all 12 academic months, September throug
 - Short isolated interim Web Speech transcripts may be used without waiting for final ASR result. A Set keyed by browser recognition result index prevents double grading from interim+final updates; reset it on new recognizer sessions. Use the standard engine `addAnswer` route (not display-only status) to record and judge each allowed spoken answer, and provide positive feedback only when `addAnswer` accepted a pitch.
 - External browser ASR transcript delays can exceed two metronome beats. When speech is armed, the current exercise runs **response-paced without an onset deadline**, irrespective of previous metronome preference; enabling speech while running also makes that attempt response-paced. This is announced in the UI and leaves persisted preferences unchanged. Do not claim hardware microphone response latency or ASR network performance is solved without real-device tests.
 - No student record schema changes and no background audio recording/PII logging. Student preview remains non-writing. Real end-to-end voice + touch QA remains necessary to confirm Web Speech in the user's Chrome/filter combination; a successful bundle or CI test cannot prove ASR provider behavior.
+
+## Mandatory Lovable parity and publication verification (2026-10-25)
+
+- After every student-platform code change, compare the resulting GitHub revision with the connected Lovable project, including relevant UI behavior and changed files. Report verified parity and any gaps; do not claim parity without evidence.
+- Check Lovable publication status and the published revision independently. A project being marked published does not prove the newest edit is live.
+- Verify production deployment on `students.tobymusic.club` using the exact built asset hash and a fetch of that asset, as specified above. Do not claim deployment from a successful upload alone.
+- GitHub `main` remains authoritative; never overwrite newer GitHub changes with a stale Lovable publication. Preserve existing functionality and student data.
+- Include the parity, Lovable publication, CI, and production verification outcomes in every completion report. Mark unverified items explicitly.
+- Shared student weekly timetable cards must show the lesson time alongside each student's name, using existing lesson start/end fields without changing schedule data.
