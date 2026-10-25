@@ -230,6 +230,7 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
                         >
                           <div className="space-y-2 text-center">
                             <div className="font-bold text-base text-[#6B1F2A] dark:text-[#FFE5A0]">{studentDetails.name}</div>
+                            <div className="font-semibold text-sm tabular-nums text-[#6B1F2A] dark:text-[#FFE5A0]" dir="ltr">{lesson.startTime}{lesson.endTime ? `–${lesson.endTime}` : ""}</div>
                             <div className="flex gap-1 flex-wrap mt-1">
                               {lesson.isSwapped && (
                                 <Badge className="text-[10px] px-1.5 py-0.5 bg-red-600 text-white border-red-600">הוחלף</Badge>
