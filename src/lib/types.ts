@@ -51,6 +51,17 @@ export interface Lesson {
   gradeNotes?: string; // optional text notes for the grade
   isSwapped?: boolean; // indicates this lesson was swapped with another student
   lastModified?: string; // Optimistic locking timestamp
+  /** Accounting override: school year whose contract counts this lesson (date stays original). */
+  countedInSchoolYear?: number;
+  /** Audit marker for an approved lesson re-attribution correction. */
+  correctionAudit?: {
+    correctionId: string;
+    originalStudentId: string;
+    originalSchoolYear: number;
+    targetSchoolYear: number;
+    appliedAt: string;
+    reason: string;
+  };
 }
 
 export interface Payment {

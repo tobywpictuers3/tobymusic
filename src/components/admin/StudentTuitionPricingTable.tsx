@@ -58,6 +58,12 @@ export default function StudentTuitionPricingTable() {
 
   const applyCalculatedPrice = (row: (typeof rows)[number]) => {
     const { student, currentRecord, startReason, startingLessonNumber, calculatedAnnualRate, currentYearTarget } = row;
+    const preview = `תצוגה מקדימה — ${student.firstName} ${student.lastName}\n`
+      + `מחיר שנתי שמור: ${money(row.storedFullAnnual)}\n`
+      + `מחיר שנתי חדש: ${money(calculatedAnnualRate)} (הנחת ותק ${money(row.cohortDiscount)})\n`
+      + `יעד השנה הנוכחית: ${money(currentYearTarget)}\n`
+      + `תשלומים קיימים ושנים סגורות אינם משתנים. להחיל?`;
+    if (!window.confirm(preview)) return;
     try {
       const calculatedAmount = Math.abs(currentYearTarget - calculatedAnnualRate) > 0.009
         ? currentYearTarget
