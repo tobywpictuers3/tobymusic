@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { RHYTHM_PATTERNS, buildRhythmBar, type RhythmEvent } from '@/lib/sightReadingPatterns';
 import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightReadingVerovio';
-import { addSightReadingArchiveItem, getSightReadingArchive, getStudents, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
+import { addSightReadingArchiveItem, getSightReadingArchive, getStudentsForCurrentYearLists, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
 import { workerApi, teacherDirectMailStatus, teacherDirectSend, teacherDirectReceipt, probeStudentsGmailOauth } from '@/lib/workerApi';
 import { hybridSync } from '@/lib/hybridSync';
 import { addMessage, getMessages } from '@/lib/messages';
@@ -114,7 +114,7 @@ export default function SightReadingWorkspace() {
     }finally{setBusy(false);}
   };
   const prepareEmail=async(item:SightReadingArchiveItem)=>{
-    const students=getStudents().filter(s=>studentIds.includes(s.id));
+    const students=getStudentsForCurrentYearLists().filter(s=>studentIds.includes(s.id));
     const emails=[...new Set(students.map(s=>s.email?.trim()).filter((value):value is string=>Boolean(value)))];
     if(!students.length||emails.length!==students.length){
       setMailStatus('בחרי תלמידות שלכולן כתובת מייל תקינה לפני הכנת הטיוטה.');return;
@@ -156,7 +156,7 @@ export default function SightReadingWorkspace() {
   };
   const sendReadingEmail=async(item:SightReadingArchiveItem)=>{
     if(isDevMode()){setMailStatus('שליחת Gmail חסומה במצב פיתוח.');return;}
-    const recipients=getStudents().filter(student=>studentIds.includes(student.id));
+    const recipients=getStudentsForCurrentYearLists().filter(student=>studentIds.includes(student.id));
     if(!recipients.length||recipients.length!==studentIds.length){setMailStatus('יש לבחור תלמידה אחת לפחות.');return;}
     setMailStatus('מאמת שמנגנון הדואר הייעודי מאושר לשליחה…');
     let mode: Awaited<ReturnType<typeof teacherDirectMailStatus>>;
@@ -233,7 +233,7 @@ export default function SightReadingWorkspace() {
     if(!studentIds.length){setDeliveryStatus('בחרי לפחות תלמידה אחת');return;}
     setBusy(true);setDeliveryStatus('');
     try{
-      const targetStudents=getStudents().filter(student=>studentIds.includes(student.id));
+      const targetStudents=getStudentsForCurrentYearLists().filter(student=>studentIds.includes(student.id));
       if(targetStudents.length!==studentIds.length)throw new Error('יש בחירה שאינה תואמת לתלמידה פעילה במערכת');
       const pdf=await makeSightReadingPdf(item.xml);
       let added=0;
@@ -399,7 +399,7 @@ export default function SightReadingWorkspace() {
       <button className="border rounded p-2" disabled={busy} onClick={()=>void downloadPdf(selectedArchive)}>הורדת PDF למחשב</button>
       <button className="border rounded p-2" disabled={busy} onClick={()=>void printPdf(selectedArchive)}>הדפסת התרגיל</button></div>
       <fieldset id="sightreading-delivery" className="border rounded p-2"><legend>שיוך PDF לאזור האישי ושליחה</legend>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">{getStudents().map(student=><label key={student.id} className="flex gap-2 items-center"><input type="checkbox" checked={studentIds.includes(student.id)} onChange={e=>setStudentIds(ids=>e.target.checked?[...ids,student.id]:ids.filter(id=>id!==student.id))}/>{student.firstName} {student.lastName}</label>)}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto">{getStudentsForCurrentYearLists().map(student=><label key={student.id} className="flex gap-2 items-center"><input type="checkbox" checked={studentIds.includes(student.id)} onChange={e=>setStudentIds(ids=>e.target.checked?[...ids,student.id]:ids.filter(id=>id!==student.id))}/>{student.firstName} {student.lastName}</label>)}</div>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void assignPdf(selectedArchive)}>העלה PDF ושייך לתלמידות שנבחרו</button>
       <div className="flex gap-2 flex-wrap"><button className="border rounded p-2 mt-2" disabled={busy} onClick={()=>void sendReadingEmail(selectedArchive)}>שיוך PDF + שליחת Gmail ייעודית</button>
       <button className="border rounded p-2 mt-2" disabled={busy||!studentIds.length} onClick={()=>void prepareEmail(selectedArchive)}>טיוטת מייל ידנית</button>

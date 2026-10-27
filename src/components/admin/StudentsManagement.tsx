@@ -11,15 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/safe-ui/badge';
 import { Grid, List, UserPlus, Edit, Trash2, Users, History, Coins, DoorOpen } from 'lucide-react';
 import { NumberStepper } from '@/components/ui/number-stepper';
-import { getStudents, addStudent, updateStudent, deleteStudentCascade, getCompletedLessonsCount, convertAnnualToPerLesson, getPayments } from '@/lib/storage';
+import { getStudentsForStudentCards, addStudent, updateStudent, deleteStudentCascade, getCompletedLessonsCount, convertAnnualToPerLesson, getPayments } from '@/lib/storage';
 import { deleteMessagesForStudentCascade } from '@/lib/messages';
-import { Student } from '@/lib/types';
+import { Payment, Student } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import StudentLessonHistory from './StudentLessonHistory';
 import StudentSchoolYearSummary from './StudentSchoolYearSummary';
 import MusicPlaySettingsEditor from './MusicPlaySettingsEditor';
-import TuitionSettingsCard from './TuitionSettingsCard';
-import { getTuitionSettings, type TuitionSettings } from '@/lib/tuitionSettings';
+import { calculateCohortAnnualRate, getCohortDiscountAmount, getCohortSchoolYear, getTuitionSettings, type TuitionSettings } from '@/lib/tuitionSettings';
 import {
   calculateBaseAnnualTarget,
   ensureSchoolYearRollover,
@@ -35,6 +34,18 @@ import {
 const DEFAULT_SCHOOL_YEAR = getSchoolYearForDate();
 const DEFAULT_START_DATE = getSchoolYearBounds(DEFAULT_SCHOOL_YEAR).start;
 const money = (value: number) => `₪${Number(value || 0).toLocaleString('he-IL', { maximumFractionDigits: 2 })}`;
+type PaymentMethod = Payment['paymentMethod'];
+
+const getStudentPaymentMethodPreference = (student: Student): PaymentMethod => {
+  if (student.paymentMethod) return student.paymentMethod;
+  const schoolYear = getSchoolYearForDate();
+  const { start, end } = getSchoolYearBounds(schoolYear);
+  const startMonth = start.slice(0, 7);
+  const endMonth = end.slice(0, 7);
+  return getPayments().find(payment =>
+    payment.studentId === student.id && payment.month >= startMonth && payment.month <= endMonth,
+  )?.paymentMethod || 'inactive';
+};
 const fixedDiscountRate = (rate: number, discount: number) =>
   Math.round(Math.max(0, Math.max(0, rate) - Math.max(0, discount)) * 100) / 100;
 
@@ -56,6 +67,7 @@ type StudentForm = {
   startingLessonNumber: number;
   annualAmount: number;
   paymentMonths: number;
+  paymentMethod: PaymentMethod;
   notes: string;
   additionalPhones: string[];
   additionalEmails: string[];
@@ -73,6 +85,7 @@ const createDefaultForm = (settings: TuitionSettings): StudentForm => ({
   startingLessonNumber: 1,
   annualAmount: settings.annualRate,
   paymentMonths: 12,
+  paymentMethod: 'inactive',
   notes: '',
   additionalPhones: [],
   additionalEmails: [],
@@ -97,7 +110,7 @@ const StudentsManagement = () => {
   const [tuitionSettings, setTuitionSettings] = useState<TuitionSettings>(() => getTuitionSettings());
   const [studentForm, setStudentForm] = useState<StudentForm>(() => createDefaultForm(getTuitionSettings()));
 
-  const refreshStudents = () => setStudents(getStudents());
+  const refreshStudents = () => setStudents(getStudentsForStudentCards());
 
   useEffect(() => {
     void ensureSchoolYearRollover().finally(refreshStudents);
@@ -150,6 +163,7 @@ const StudentsManagement = () => {
       startingLessonNumber: student.startingLessonNumber,
       annualAmount: student.annualAmount,
       paymentMonths: student.paymentMonths,
+      paymentMethod: getStudentPaymentMethodPreference(student),
       notes: student.notes || '',
       additionalPhones: student.additionalPhones || [],
       additionalEmails: student.additionalEmails || [],
@@ -204,7 +218,7 @@ const StudentsManagement = () => {
     }));
   };
 
-  const formSchoolYear = getSchoolYearForDate(studentForm.startDate || new Date());
+  const formSchoolYear = editingStudent ? getSchoolYearForDate() : getSchoolYearForDate(studentForm.startDate || new Date());
   const storedYearRecord = editingStudent ? getStudentSchoolYearRecord(editingStudent.id, formSchoolYear) : undefined;
   const inferredStartReason: SchoolYearStartReason = storedYearRecord?.startReason ||
     (studentForm.startingLessonNumber > 1 ? 'midyear_join' : 'regular');
@@ -242,7 +256,7 @@ const StudentsManagement = () => {
       return;
     }
 
-    const schoolYear = getSchoolYearForDate(studentForm.startDate || new Date());
+    const schoolYear = editingStudent ? getSchoolYearForDate() : getSchoolYearForDate(studentForm.startDate || new Date());
     const existingRecord = editingStudent ? getStudentSchoolYearRecord(editingStudent.id, schoolYear) : undefined;
     const startReason: SchoolYearStartReason = existingRecord?.startReason ||
       (studentForm.startingLessonNumber > 1 ? 'midyear_join' : 'regular');
@@ -303,6 +317,7 @@ const StudentsManagement = () => {
         startingLessonNumber: studentForm.startingLessonNumber,
         annualAmount: studentForm.annualAmount,
         paymentMonths: studentForm.paymentMonths,
+        paymentMethod: studentForm.paymentMethod,
         calculatedAmount: studentForm.paymentType === 'annual' ? calculatedAmount : undefined,
         monthlyAmount: studentForm.paymentType === 'annual' ? monthlyAmount : 0,
         notes: studentForm.notes,
@@ -341,6 +356,7 @@ const StudentsManagement = () => {
         startingLessonNumber: studentForm.startingLessonNumber,
         annualAmount: studentForm.annualAmount,
         paymentMonths: studentForm.paymentMonths,
+        paymentMethod: studentForm.paymentMethod,
         calculatedAmount: studentForm.paymentType === 'annual' ? calculatedAmount : undefined,
         monthlyAmount: studentForm.paymentType === 'annual' ? monthlyAmount : 0,
         notes: studentForm.notes,
@@ -394,8 +410,6 @@ const StudentsManagement = () => {
 
   return (
     <div className="space-y-6">
-      <TuitionSettingsCard onSaved={handleTuitionSettingsSaved} />
-
       <Card className="card-gradient card-shadow">
         <CardHeader>
           <div className="flex justify-between items-center">
@@ -541,8 +555,22 @@ const StudentsManagement = () => {
               <Label className="text-base font-semibold mb-3 block">מסלול תשלום</Label>
               <Select value={studentForm.paymentType} onValueChange={(value: 'annual' | 'per_lesson') => setStudentForm({...studentForm, paymentType: value})}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="annual">תשלום שנתי</SelectItem><SelectItem value="per_lesson">שיעורים חד-פעמיים (מזומן)</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="annual">תשלום שנתי</SelectItem><SelectItem value="per_lesson">שיעורים חד-פעמיים / לפי שיעור</SelectItem></SelectContent>
               </Select>
+
+              <div className="mt-3">
+                <Label htmlFor="paymentMethod">אמצעי תשלום</Label>
+                <Select value={studentForm.paymentMethod} onValueChange={(value: PaymentMethod) => setStudentForm({...studentForm, paymentMethod: value})}>
+                  <SelectTrigger id="paymentMethod" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inactive">לא הוגדר</SelectItem>
+                    <SelectItem value="bank">העברה בנקאית</SelectItem>
+                    <SelectItem value="check">צ׳ק</SelectItem>
+                    <SelectItem value="cash">מזומן</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">ניתן לשנות גם ישירות בלוח התשלומים השנתי.</p>
+              </div>
 
               {studentForm.paymentType === 'per_lesson' && (
                 <div className="mt-3 space-y-3">
@@ -560,7 +588,16 @@ const StudentsManagement = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><Label htmlFor="startDate">תאריך התחלה</Label><Input id="startDate" type="date" value={studentForm.startDate} onChange={(e) => setStudentForm({...studentForm, startDate: e.target.value})} /></div>
+              <div className="rounded-lg border-2 border-primary/40 bg-primary/5 p-3 md:col-span-2">
+                <Label htmlFor="startDate" className="font-semibold">תאריך תחילת לימודים מקורי (קובע שנת הצטרפות והנחת ותק)</Label>
+                <Input id="startDate" type="date" value={studentForm.startDate} onChange={(e) => setStudentForm({...studentForm, startDate: e.target.value})} />
+                {studentForm.startDate && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    שנת הצטרפות: {getCohortSchoolYear(studentForm.startDate) ?? 'לא ידוע'} · הנחת ותק: ₪{getCohortDiscountAmount(tuitionSettings, studentForm.startDate)} · תעריף מחושב: ₪{calculateCohortAnnualRate(tuitionSettings, studentForm.startDate)}.
+                    המחיר השמור לא משתנה אוטומטית — החלה מתבצעת בתשלומים › תמחור, עם תצוגה מקדימה.
+                  </p>
+                )}
+              </div>
               <div><Label htmlFor="startingLessonNumber">מספר שיעור התחלתי</Label><NumberStepper id="startingLessonNumber" value={studentForm.startingLessonNumber} onValueChange={(n) => setStudentForm({...studentForm, startingLessonNumber: Math.max(1, n)})} step={1} min={1} /></div>
             </div>
 

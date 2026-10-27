@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/safe-ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
 import { Calendar, Plus, Edit, Trash2, Check, X } from 'lucide-react';
-import { getStudents, getScheduleTemplates, addScheduleTemplate, updateScheduleTemplate, deleteScheduleTemplate, activateScheduleTemplate } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, getScheduleTemplates, addScheduleTemplate, updateScheduleTemplate, deleteScheduleTemplate, activateScheduleTemplate } from '@/lib/storage';
 import { Student, ScheduleTemplate, WeeklyScheduleData } from '@/lib/types';
 import { hybridSync } from '@/lib/hybridSync';
 import { downloadCanonicalDropboxLatest } from '@/lib/canonicalDropboxRead';
@@ -97,7 +97,7 @@ const FixedScheduleTab = () => {
   }, []);
 
   const loadData = () => {
-    setStudents(getStudents());
+    setStudents(getStudentsForCurrentYearLists());
     setTemplates([...getScheduleTemplates()].sort((a, b) => 
       new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime()
     ));
@@ -267,6 +267,7 @@ const FixedScheduleTab = () => {
         studentId: data.studentId,
         student: students.find(s => s.id === data.studentId)
       }))
+      .filter(item => Boolean(item.student))
       .sort((a, b) => a.time.localeCompare(b.time));
   };
 

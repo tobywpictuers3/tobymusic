@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar, ArrowRight, ArrowLeft, CalendarOff } from 'lucide-react';
-import { getStudents, getHolidays } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, getHolidays } from '@/lib/storage';
 import { hybridSync } from '@/lib/hybridSync';
 import { Holiday, Lesson, Student } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
@@ -37,7 +37,7 @@ const GeneralWeeklySchedule: React.FC<GeneralWeeklyScheduleProps> = ({ studentId
   const [detailsLesson, setDetailsLesson] = useState<Lesson | null>(null);
 
   const refreshSharedScheduleData = useCallback(() => {
-    setStudents(getStudents());
+    setStudents(getStudentsForCurrentYearLists());
     setHolidays(getHolidays());
   }, []);
 

@@ -21,6 +21,7 @@ import { DateModeProvider, useDateMode } from '@/contexts/DateModeContext';
 import { ensureSchoolYearRollover } from '@/lib/schoolYear';
 
 import StudentsManagement from '@/components/admin/StudentsManagement';
+import StudentPaymentMethodDecorator from '@/components/admin/StudentPaymentMethodDecorator';
 import LessonJournal from '@/components/admin/LessonJournal';
 import Metronome from './Metronome';
 import PaymentManagementShell from '@/components/admin/PaymentManagementShell';
@@ -184,6 +185,7 @@ const AdminDashboard = () => {
 
   return (
     <DateModeProvider>
+      <StudentPaymentMethodDecorator />
       <div className="relative z-10 min-h-screen musical-gradient overflow-hidden page-enter">
         <div className="sticky top-0 z-50 bg-gradient-to-b from-background via-background to-background/95 backdrop-blur-sm border-b border-primary/20 shadow-lg">
           <div className="container mx-auto p-2 sm:p-4">

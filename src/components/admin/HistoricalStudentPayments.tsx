@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/safe-ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
-import { getPayments, getPerLessonPayments, getStudents } from '@/lib/storage';
+import { getPayments, getPerLessonPayments, getStudentsForCurrentYearLists } from '@/lib/storage';
 import { getSchoolYearBounds, getSchoolYearForDate, getSchoolYearLabel, getStudentSchoolYearRecords } from '@/lib/schoolYear';
 import type { Payment } from '@/lib/types';
 
@@ -24,7 +24,7 @@ const methodLabel = (method: Payment['paymentMethod']) => {
 
 export default function HistoricalStudentPayments() {
   const currentSchoolYear = getSchoolYearForDate();
-  const students = getStudents();
+  const students = getStudentsForCurrentYearLists();
   const studentNames = new Map(students.map(student => [student.id, `${student.firstName} ${student.lastName}`.trim()]));
 
   const availableYears = useMemo(() => {

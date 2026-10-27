@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { MessageSquare, Send } from 'lucide-react';
-import { getStudents, addSwapRequest } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, addSwapRequest } from '@/lib/storage';
 import { toast } from '@/hooks/use-toast';
 
 interface StudentsSwapRequestDialogProps {
@@ -23,7 +23,7 @@ const StudentsSwapRequestDialog = ({ open, onOpenChange, selectedLesson }: Stude
   const [reason, setReason] = useState('');
   const [step, setStep] = useState(1); // 1: code verification, 2: swap details
 
-  const students = getStudents();
+  const students = getStudentsForCurrentYearLists();
 
   const handleCodeVerification = () => {
     if (!personalCode.trim()) {

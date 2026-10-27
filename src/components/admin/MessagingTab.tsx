@@ -24,7 +24,7 @@ import {
   getMessages,
   sendMessageViaGmail
 } from "@/lib/messages";
-import { getStudents, updateSwapRequestStatus } from "@/lib/storage";
+import { getStudentsForCurrentYearLists, updateSwapRequestStatus } from "@/lib/storage";
 import { Message, Student, Attachment } from "@/lib/types";
 import { toast } from "sonner";
 import { 
@@ -113,7 +113,7 @@ export default function MessagingTab() {
   }, [sidebarCollapsed]);
 
   const loadData = useCallback(() => {
-    setStudents(getStudents());
+    setStudents(getStudentsForCurrentYearLists());
     const box = getMailbox('admin');
     setMailbox(box);
     

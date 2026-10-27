@@ -41,11 +41,14 @@ const BackupImport = () => {
 
     setIsLoading(true);
     try {
-      await hybridSync.loadDataOnInit();
+      const result = await hybridSync.pullCanonicalLatest();
+      if (!result.success || !result.synced) {
+        throw new Error(result.message);
+      }
 
       toast({
-        title: '✅ הורדה הושלמה',
-        description: 'הנתונים עודכנו מהדרופבוקס',
+        title: '✅ הורדה אומתה',
+        description: 'הנתונים האחרונים נטענו מה־canonical latest בדרופבוקס',
       });
 
       setTimeout(() => {

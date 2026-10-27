@@ -10,11 +10,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/s
 import { Label } from '@/components/safe-ui/label';
 import { CreditCard, ChevronRight, ChevronLeft, Download, Coins, Plus, Pencil, Trash2, Calendar } from 'lucide-react';
 import { NumberStepper } from '@/components/ui/number-stepper';
-import { getStudents, getPayments, savePayments, updateStudent, getPerformances, getOneTimePayments, saveOneTimePayments, updateOneTimePayment, deleteOneTimePayment, getTithePaid, saveTithePaid, getCompletedLessonsCount, recordPerLessonPayment, getPerLessonPayments, getStudentPerLessonPayments, getStudentPerLessonLedger, updatePerLessonPayment, deletePerLessonPayment, updatePerformance, deletePerformance, getPerformancePaidTotal, getPerformancePaymentStatus, addPerformancePayment, updatePerformancePayment, deletePerformancePayment } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, getPayments, savePayments, updateStudent, getPerformances, getOneTimePayments, saveOneTimePayments, updateOneTimePayment, deleteOneTimePayment, getTithePaid, saveTithePaid, getCompletedLessonsCount, recordPerLessonPayment, getPerLessonPayments, getStudentPerLessonPayments, getStudentPerLessonLedger, updatePerLessonPayment, deletePerLessonPayment, updatePerformance, deletePerformance, getPerformancePaidTotal, getPerformancePaymentStatus, addPerformancePayment, updatePerformancePayment, deletePerformancePayment } from '@/lib/storage';
 import { Payment, Student, OneTimePayment, Performance, PerLessonPayment } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import { Badge } from '@/components/safe-ui/badge';
 import { format } from 'date-fns';
+import { getPerLessonSchoolYearLedger } from '@/lib/priorYearBalances';
+
+const todayInJerusalem = () => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
 
 const PaymentManagement = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -97,6 +106,9 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
 
   useEffect(() => {
     loadData();
+    const handleStudentActiveStatusChanged = () => loadData();
+    window.addEventListener('student-active-status-changed', handleStudentActiveStatusChanged);
+    return () => window.removeEventListener('student-active-status-changed', handleStudentActiveStatusChanged);
   }, []);
 
   // סרגל גלילה עליון חדש ופשוט: סנכרון 1:1 בין המסילה העליונה לבין הטבלה
@@ -152,7 +164,7 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
   }, []);
 
   const loadData = () => {
-    setStudents(getStudents());
+    setStudents(getStudentsForCurrentYearLists());
     setPayments(getPayments());
     setOneTimePayments(getOneTimePayments());
   };
@@ -195,66 +207,52 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
     return payments.find(p => p.studentId === studentId && p.month === monthKey) || null;
   };
 
+  const getCurrentAcademicBaseYear = () => {
+    const now = new Date();
+    return now.getMonth() + 1 >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+  };
+
   const handlePaymentMethodChange = (studentId: string, newMethod: 'bank' | 'check' | 'cash' | 'inactive') => {
-    const updatedPayments = [...payments];
-    const student = students.find(s => s.id === studentId);
-    
-    // Update student's payment records with the new payment method
-    const studentPayments = updatedPayments.filter(p => p.studentId === studentId);
-    studentPayments.forEach(p => p.paymentMethod = newMethod);
-    
-    // Calculate monthly amount based on calculatedAmount if exists, otherwise annualAmount
-    const effectiveAmount = student?.calculatedAmount || student?.annualAmount || 0;
-    const monthlyAmount = effectiveAmount / (student?.paymentMonths || 12);
-    
-    // Apply specific logic based on payment method
-    academicMonths.forEach((month, index) => {
-      const year = parseInt(month.key) >= 9 ? selectedYear : selectedYear + 1;
-      const monthKey = getMonthKey(month.key, year);
-      
-      const existingPaymentIndex = updatedPayments.findIndex(
-        p => p.studentId === studentId && p.month === monthKey
-      );
-      
-      let status: Payment['status'] = 'not_paid';
-      let amount = 0;
-      
-      if (newMethod === 'bank') {
-        status = 'pending';
-      } else if (newMethod === 'check') {
-        status = 'paid';
-        amount = monthlyAmount;
-      } else if (newMethod === 'cash' && index === 0) {
-        status = 'paid';
-        amount = monthlyAmount;
-      }
-      
-      if (existingPaymentIndex >= 0) {
-        updatedPayments[existingPaymentIndex] = {
-          ...updatedPayments[existingPaymentIndex],
-          status,
-          amount,
-          paymentMethod: newMethod,
-          lastModified: new Date().toISOString()
-        };
-      } else {
+    if (selectedYear !== getCurrentAcademicBaseYear()) {
+      toast({
+        title: 'שנה סגורה',
+        description: 'אמצעי תשלום ניתן לשינוי רק בשנת הלימודים הפעילה, כדי לא לשנות היסטוריה כספית סגורה.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const yearMonthKeys = new Set(academicMonths.map(month => {
+      const year = parseInt(month.key, 10) >= 9 ? selectedYear : selectedYear + 1;
+      return getMonthKey(month.key, year);
+    }));
+
+    const updatedPayments = payments.map(payment => {
+      if (payment.studentId !== studentId || !yearMonthKeys.has(payment.month)) return payment;
+      return { ...payment, paymentMethod: newMethod, lastModified: now };
+    });
+
+    yearMonthKeys.forEach(monthKey => {
+      const exists = updatedPayments.some(payment => payment.studentId === studentId && payment.month === monthKey);
+      if (!exists) {
         updatedPayments.push({
-          id: `${studentId}-${monthKey}`,
+          id: studentId + '-' + monthKey,
           studentId,
           month: monthKey,
-          amount,
-          status,
+          amount: 0,
+          status: 'not_paid',
           paymentMethod: newMethod,
-          lastModified: new Date().toISOString()
+          lastModified: now
         });
       }
     });
-    
+
+    updateStudent(studentId, { paymentMethod: newMethod });
     savePayments(updatedPayments);
     loadData();
-    toast({ description: 'צורת התשלום עודכנה בהצלחה' });
+    toast({ description: newMethod === 'inactive' ? 'אמצעי התשלום הוסר' : '✅ אמצעי התשלום עודכן' });
   };
-
   const handleCellClick = (studentId: string, monthNum: string, currentStatus: Payment['status'], paymentMethod: 'bank' | 'check' | 'cash' | 'inactive') => {
     const student = students.find(s => s.id === studentId);
     if (!student) return;
@@ -277,7 +275,7 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
           ...updatedPayments[paymentIndex],
           amount,
           status: 'paid',
-          paidDate: new Date().toISOString().split('T')[0],
+          paidDate: todayInJerusalem(),
           lastModified: new Date().toISOString()
         };
       } else {
@@ -288,7 +286,7 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
           amount,
           status: 'paid',
           paymentMethod,
-          paidDate: new Date().toISOString().split('T')[0],
+          paidDate: todayInJerusalem(),
           lastModified: new Date().toISOString()
         });
       }
@@ -329,14 +327,14 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
       status = 'paid';
     }
     
-    const paymentMethod = payments.find(p => p.studentId === editingCell.studentId)?.paymentMethod || 'cash';
+    const paymentMethod = getStudentPaymentMethod(editingCell.studentId);
     
     if (paymentIndex >= 0) {
       updatedPayments[paymentIndex] = {
         ...updatedPayments[paymentIndex],
         amount: editAmount.trim() === '#' ? 0 : amount,
         status,
-        paidDate: status === 'paid' ? new Date().toISOString().split('T')[0] : undefined,
+        paidDate: status === 'paid' ? todayInJerusalem() : undefined,
         lastModified: new Date().toISOString()
       };
     } else {
@@ -659,11 +657,31 @@ const handleAddOneTimePayment = () => {
   });
 };
 
+  // For the current school year, exclude students who were already inactive on September 1.
+  // A student who became inactive only after September 1 remains in that year's payment roster,
+  // because she participated in the year. Reactivating a student makes her visible immediately.
+  // Historical years remain fully viewable and no historical payment rows are deleted.
+  const jerusalemYearMonth = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date());
+  const jerusalemYear = Number(jerusalemYearMonth.find(part => part.type === 'year')?.value);
+  const jerusalemMonth = Number(jerusalemYearMonth.find(part => part.type === 'month')?.value);
+  const currentAcademicBaseYear = jerusalemMonth >= 9 ? jerusalemYear : jerusalemYear - 1;
+  const currentSchoolYearStart = `${currentAcademicBaseYear}-09-01`;
+  const studentsVisibleInPayments = selectedYear === currentAcademicBaseYear
+    ? students.filter(student =>
+        student.isActive !== false ||
+        (typeof student.leftDate === 'string' && student.leftDate > currentSchoolYearStart)
+      )
+    : students;
+
   // Filter annual students (paymentType is 'annual' or undefined)
-  const annualStudents = students.filter(s => !s.paymentType || s.paymentType === 'annual');
+  const annualStudents = studentsVisibleInPayments.filter(s => !s.paymentType || s.paymentType === 'annual');
   
   // Filter per-lesson students
-  const perLessonStudents = students.filter(s => s.paymentType === 'per_lesson');
+  const perLessonStudents = studentsVisibleInPayments.filter(s => s.paymentType === 'per_lesson');
 
   const filteredStudents = annualStudents.filter(student => {
     const fullName = `${student.firstName} ${student.lastName}`.trim().toLowerCase();
@@ -673,7 +691,7 @@ const handleAddOneTimePayment = () => {
       return false;
     }
 
-    const studentMethod = payments.find(p => p.studentId === student.id)?.paymentMethod || 'inactive';
+    const studentMethod = payments.find(p => p.studentId === student.id && p.month >= `${selectedYear}-09` && p.month <= `${selectedYear + 1}-08`)?.paymentMethod || 'inactive';
     if (filterMethod !== 'all' && studentMethod !== filterMethod) {
       return false;
     }
@@ -708,7 +726,7 @@ const handleAddOneTimePayment = () => {
   const [showPerLessonPaymentDialog, setShowPerLessonPaymentDialog] = useState(false);
   const [selectedPerLessonStudent, setSelectedPerLessonStudent] = useState<Student | null>(null);
   const [perLessonPaymentAmount, setPerLessonPaymentAmount] = useState('');
-  const [perLessonPaymentDate, setPerLessonPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [perLessonPaymentDate, setPerLessonPaymentDate] = useState(() => todayInJerusalem());
   const [perLessonPaymentNotes, setPerLessonPaymentNotes] = useState('');
 
   // One-time payment edit state
@@ -758,7 +776,7 @@ const handleAddOneTimePayment = () => {
     setShowPerLessonPaymentDialog(false);
     setSelectedPerLessonStudent(null);
     setPerLessonPaymentAmount('');
-    setPerLessonPaymentDate(new Date().toISOString().split('T')[0]);
+    setPerLessonPaymentDate(todayInJerusalem());
     setPerLessonPaymentNotes('');
     
     toast({
@@ -809,7 +827,7 @@ const handleAddOneTimePayment = () => {
   };
 
   // Partial-payment editor state (used inside Edit Performance dialog)
-  const [newPpDate, setNewPpDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newPpDate, setNewPpDate] = useState(() => todayInJerusalem());
   const [newPpAmount, setNewPpAmount] = useState('');
   const [newPpTravel, setNewPpTravel] = useState('');
   const [newPpMethod, setNewPpMethod] = useState<'bank' | 'check' | 'cash'>('bank');
@@ -901,7 +919,7 @@ const handleAddOneTimePayment = () => {
   };
 
   const getPerLessonStudentSummary = (student: Student) => {
-    const ledger = getStudentPerLessonLedger(student.id);
+    const ledger = getPerLessonSchoolYearLedger(student.id, selectedYear + 1);
 
     return {
       ledger,
@@ -918,7 +936,11 @@ const handleAddOneTimePayment = () => {
 const getStudentFullName = (student: Student) => `${student.firstName} ${student.lastName}`.trim();
 
   const getStudentPaymentMethod = (studentId: string): Payment['paymentMethod'] => {
-    return payments.find(p => p.studentId === studentId)?.paymentMethod || 'inactive';
+    const selectedYearPayment = academicMonths
+      .map(month => getPaymentForMonth(studentId, month.key))
+      .find((payment): payment is Payment => Boolean(payment));
+    if (selectedYearPayment) return selectedYearPayment.paymentMethod;
+    return students.find(student => student.id === studentId)?.paymentMethod || 'inactive';
   };
 
   const getAcademicMonthKey = (monthNum: string) => {
@@ -1077,7 +1099,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
             <thead className="sticky top-0 z-30 bg-background shadow-sm">
               <tr>
                 <th className="sticky top-0 right-0 z-40 bg-primary/25 dark:bg-primary/45 text-foreground border-b border-border w-[12%] text-right px-1 py-2 font-bold text-xs truncate">תלמידה</th>
-                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border w-[5%] text-center px-0 py-2 font-bold text-xs">אמצ'ת</th>
+                <th className="sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border w-[8%] text-center px-0 py-2 font-bold text-xs">אמצעי</th>
                 {academicMonths.map(month => {
                   const isHighlighted = regularMonthFilter === month.key;
                   return (
@@ -1105,7 +1127,17 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                     <td className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold px-1 py-1 text-xs truncate max-w-0">
                       {getStudentFullName(student)}
                     </td>
-                    <td className="text-center px-0 py-1 text-xs">{getPaymentMethodLabel(method)}</td>
+                    <td className="text-center px-0 py-1 text-xs">
+                      <Select value={method} onValueChange={(value: Payment['paymentMethod']) => handlePaymentMethodChange(student.id, value)} disabled={selectedYear !== getCurrentAcademicBaseYear()}>
+                        <SelectTrigger className="h-7 min-w-[82px] px-1 text-xs" title={selectedYear !== getCurrentAcademicBaseYear() ? 'שנה סגורה — היסטוריה אינה ניתנת לשינוי' : 'שינוי אמצעי תשלום'}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inactive">לא הוגדר</SelectItem>
+                          <SelectItem value="bank">בנק</SelectItem>
+                          <SelectItem value="check">צ׳ק</SelectItem>
+                          <SelectItem value="cash">מזומן</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </td>
                     {academicMonths.map(month => {
                       const year = parseInt(month.key, 10) >= 9 ? selectedYear : selectedYear + 1;
                       const monthKey = getMonthKey(month.key, year);
@@ -1181,7 +1213,17 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                 <TableCell className="sticky right-0 z-20 bg-accent/55 dark:bg-accent/35 text-foreground text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold">
                   {getStudentFullName(student)}
                 </TableCell>
-                <TableCell className="text-right">{getPaymentMethodLabel(method)}</TableCell>
+                <TableCell className="text-right">
+                  <Select value={method} onValueChange={(value: Payment['paymentMethod']) => handlePaymentMethodChange(student.id, value)} disabled={selectedYear !== getCurrentAcademicBaseYear()}>
+                    <SelectTrigger className="h-8 min-w-[110px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inactive">לא הוגדר</SelectItem>
+                      <SelectItem value="bank">בנק</SelectItem>
+                      <SelectItem value="check">צ׳ק</SelectItem>
+                      <SelectItem value="cash">מזומן</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </TableCell>
                 <TableCell className="text-right">₪{formatCurrencyAmount(student.monthlyAmount || 0)}</TableCell>
                 <TableCell className="text-right">
                   <div className={`inline-flex rounded-md px-3 py-1 text-sm ${display.className}`}>{display.text}</div>
@@ -1245,7 +1287,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                         onClick={() => {
                           setSelectedPerLessonStudent(student);
                           setPerLessonPaymentAmount(summary.amountToPay > 0 ? summary.amountToPay.toString() : '');
-                          setPerLessonPaymentDate(new Date().toISOString().split('T')[0]);
+                          setPerLessonPaymentDate(todayInJerusalem());
                           setPerLessonPaymentNotes('');
                           setShowPerLessonPaymentDialog(true);
                         }}
@@ -1308,7 +1350,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                       <td className={`sticky right-0 z-20 text-right shadow-[-1px_0_0_0_hsl(var(--border))] font-semibold px-3 py-3 ${row.firstCellClass}`}>{row.label}</td>
                       {academicMonths.map(month => {
                         const value = row.value(month.key);
-                        return <td key={month.key} className={`text-center px-2 py-3 ${row.valueClass}`}>{value > 0 ? `₪${formatCurrencyAmount(value)}` : '-'}</td>;
+                        return <td key={month.key} className={`text-center px-2 py-3 ${row.valueClass}`}>{value !== 0 ? `${value < 0 ? '-' : ''}₪${formatCurrencyAmount(Math.abs(value))}` : '-'}</td>;
                       })}
                       <td className={`text-center font-semibold px-2 py-3 ${row.valueClass}`}>₪{formatCurrencyAmount(rowTotal)}</td>
                     </tr>
@@ -1535,7 +1577,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
                   <TableCell className="text-center">{row.regularBank > 0 ? `₪${formatCurrencyAmount(row.regularBank)}` : '-'}</TableCell>
                   <TableCell className="text-center">{row.perLesson > 0 ? `₪${formatCurrencyAmount(row.perLesson)}` : '-'}</TableCell>
                   <TableCell className="text-center">{row.performances > 0 ? `₪${formatCurrencyAmount(row.performances)}` : '-'}</TableCell>
-                  <TableCell className="text-center">{row.other > 0 ? `₪${formatCurrencyAmount(row.other)}` : '-'}</TableCell>
+                  <TableCell className="text-center">{row.other !== 0 ? `${row.other < 0 ? '-' : ''}₪${formatCurrencyAmount(Math.abs(row.other))}` : '-'}</TableCell>
                   <TableCell className="text-center font-bold text-emerald-700 dark:text-emerald-300">₪{formatCurrencyAmount(row.total)}</TableCell>
                   <TableCell className="text-center text-amber-700 dark:text-amber-300">₪{formatCurrencyAmount(row.tithe)}</TableCell>
                 </TableRow>
@@ -1562,7 +1604,7 @@ const getStudentFullName = (student: Student) => `${student.firstName} ${student
           <div className="rounded-lg border p-3 bg-background"><div className="text-xs text-muted-foreground">קבועים בנק</div><div className="font-bold">₪{formatCurrencyAmount(breakdown.regularBank)}</div></div>
           <div className="rounded-lg border p-3 bg-background"><div className="text-xs text-muted-foreground">תלמידות ח"פ</div><div className="font-bold">₪{formatCurrencyAmount(breakdown.perLesson)}</div></div>
           <div className="rounded-lg border p-3 bg-background"><div className="text-xs text-muted-foreground">הופעות</div><div className="font-bold">₪{formatCurrencyAmount(breakdown.performances)}</div></div>
-          <div className="rounded-lg border p-3 bg-background"><div className="text-xs text-muted-foreground">אחר</div><div className="font-bold">₪{formatCurrencyAmount(breakdown.other)}</div></div>
+          <div className="rounded-lg border p-3 bg-background"><div className="text-xs text-muted-foreground">אחר</div><div className="font-bold">{breakdown.other < 0 ? `-₪${formatCurrencyAmount(Math.abs(breakdown.other))}` : `₪${formatCurrencyAmount(breakdown.other)}`}</div></div>
           <div className="rounded-lg border p-3 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60"><div className="text-xs text-muted-foreground">סה"כ {monthLabel}</div><div className="font-bold text-emerald-700 dark:text-emerald-300">₪{formatCurrencyAmount(breakdown.total)}</div></div>
         </div>
 

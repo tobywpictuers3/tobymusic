@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/card';
 import { Input } from '@/components/safe-ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
 import { Button } from '@/components/ui/button';
-import { getStudents } from '@/lib/storage';
+import { getStudentsForCurrentYearLists } from '@/lib/storage';
 import { getPriorYearBalanceRecords } from '@/lib/priorYearBalances';
 import {
   editPriorYearBalanceDurably,
@@ -53,7 +53,7 @@ export default function PriorYearBalancesCard({ selectedBaseYear }: Props) {
   const [cashModeId, setCashModeId] = useState<string | null>(null);
   const [cashDates, setCashDates] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
-  const students = getStudents();
+  const students = getStudentsForCurrentYearLists();
 
   const reload = () => {
     setRows((getPriorYearBalanceRecords() as ManagedPriorYearBalanceRecord[])
@@ -67,11 +67,10 @@ export default function PriorYearBalancesCard({ selectedBaseYear }: Props) {
     return () => window.removeEventListener('toby:storage-imported', imported);
   }, [targetSchoolYear]);
 
-  const actionable = useMemo(
-    () => rows.filter(row => row.signedBalance !== 0 || row.requiresVerification),
-    [rows],
-  );
-  const balancedCount = rows.length - actionable.length;
+  const visibleStudentIds = new Set(students.map(student => student.id));
+  const displayRows = rows.filter(row => visibleStudentIds.has(row.studentId));
+  const actionable = displayRows.filter(row => row.signedBalance !== 0 || row.requiresVerification);
+  const balancedCount = displayRows.length - actionable.length;
   const creditTotal = actionable
     .filter(row => !row.requiresVerification && row.signedBalance > 0)
     .reduce((sum, row) => sum + row.signedBalance, 0);

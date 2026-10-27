@@ -5,6 +5,7 @@ import PriorYearBalancesCard from '@/components/admin/PriorYearBalancesCard';
 import HistoricalStudentPayments from '@/components/admin/HistoricalStudentPayments';
 import TuitionSettingsCard from '@/components/admin/TuitionSettingsCard';
 import StudentTuitionPricingTable from '@/components/admin/StudentTuitionPricingTable';
+import LessonAttributionCorrectionCard from '@/components/admin/LessonAttributionCorrectionCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getTithePaid, isDevMode } from '@/lib/storage';
 import { hydrateTithePaidFromHistory, persistTitheMonthDurably } from '@/lib/titheDurability';
@@ -147,6 +148,7 @@ export default function PaymentManagementShell() {
           <PriorYearBalancesCard key={`prior-year-${revision}`} selectedBaseYear={currentSchoolYear - 1} />
           <HistoricalStudentPayments key={`payment-history-${revision}`} />
           <AnnualSchoolYearReport key={`annual-report-${revision}`} />
+          <LessonAttributionCorrectionCard key={`lesson-attr-${revision}`} />
         </TabsContent>
 
         <TabsContent value="pricing" className="mt-0 space-y-6">

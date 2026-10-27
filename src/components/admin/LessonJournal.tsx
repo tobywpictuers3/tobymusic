@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { ChevronRight, ChevronLeft, Check, Plus, Trash2, Undo2, Clock, Download, AlertTriangle } from 'lucide-react';
 import { NumberStepper } from '@/components/ui/number-stepper';
-import { getStudents, getLessons, addLesson, updateLesson, deleteLesson, getActiveScheduleTemplate, getPerformances, getHolidays, addHoliday, deleteHoliday, isHoliday } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, getLessons, addLesson, updateLesson, deleteLesson, getActiveScheduleTemplate, getPerformances, getHolidays, addHoliday, deleteHoliday, isHoliday } from '@/lib/storage';
 import { Student, Lesson, Performance } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import { useDateMode } from '@/contexts/DateModeContext';
@@ -64,7 +64,7 @@ const LessonJournal = () => {
   }, []);
 
   const loadData = () => {
-    setStudents(getStudents());
+    setStudents(getStudentsForCurrentYearLists());
     setLessons(getLessons());
     setPerformances(getPerformances());
     setHolidays(getHolidays().map(h => h.date));
@@ -178,7 +178,8 @@ const LessonJournal = () => {
       .map(l => ({
         ...l,
         student: students.find(s => s.id === l.studentId)
-      }));
+      }))
+      .filter(lesson => Boolean(lesson.student));
 
     const allLessons = [...templateLessons, ...actualLessons];
     return allLessons.map(lesson => {

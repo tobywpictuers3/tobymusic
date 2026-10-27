@@ -21,7 +21,6 @@ self.onmessage = async (event: MessageEvent<WorkerUploadRequest>) => {
   try {
     const params = new URLSearchParams({
       action: 'upload_versioned',
-      managerCode: managerCode || '',
     });
 
     const response = await fetch(`${workerBaseUrl}?${params.toString()}`, {

@@ -7,7 +7,7 @@ import { Label } from '@/components/safe-ui/label';
 import { Badge } from '@/components/safe-ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/safe-ui/tabs';
 import { TrendingUp, Trophy, Calendar, User, ShoppingBag, Settings } from 'lucide-react';
-import { getStudents, getPracticeSessions, getStudentPracticeSessions, getStudentMedalRecords, getStudentStatistics } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, getPracticeSessions, getStudentPracticeSessions, getStudentMedalRecords, getStudentStatistics } from '@/lib/storage';
 import { Student, PracticeSession } from '@/lib/types';
 import { recalcAllForStudent } from '@/lib/practiceEngine';
 import { getCurrentStreak } from '@/lib/medalEngine';
@@ -44,7 +44,7 @@ const AdminPracticeStats = () => {
   const [activeTab, setActiveTab] = useState<'stats' | 'store' | 'yemot'>('stats');
 
   useEffect(() => {
-    const allStudents = getStudents();
+    const allStudents = getStudentsForCurrentYearLists();
     setStudents(allStudents);
     calculateLeaderboard(allStudents);
   }, []);

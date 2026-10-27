@@ -300,8 +300,9 @@ export const calculateStudentYearSnapshot = (
     .filter(lesson =>
       lesson.studentId === student.id &&
       lesson.status === 'completed' &&
-      lesson.date >= start &&
-      lesson.date <= end &&
+      (typeof lesson.countedInSchoolYear === 'number'
+        ? lesson.countedInSchoolYear === schoolYear
+        : lesson.date >= start && lesson.date <= end) &&
       !isPriorYearDebtMakeupLesson(lesson),
     );
 

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Calendar, Plus, Edit, Settings, Save, X } from 'lucide-react';
-import { getScheduleTemplates, addScheduleTemplate, updateScheduleTemplate, getStudents } from '@/lib/storage';
+import { getScheduleTemplates, addScheduleTemplate, updateScheduleTemplate, getStudentsForCurrentYearLists } from '@/lib/storage';
 import { ScheduleTemplate, WeeklyScheduleData } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 
@@ -19,7 +19,7 @@ const ScheduleTemplateManager = () => {
   const [scheduleData, setScheduleData] = useState<WeeklyScheduleData>({});
   const [customTimeSlots, setCustomTimeSlots] = useState<{ [dayIndex: string]: string[] }>({});
   
-  const students = getStudents();
+  const students = getStudentsForCurrentYearLists();
   const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
   const handleCreateTemplate = () => {

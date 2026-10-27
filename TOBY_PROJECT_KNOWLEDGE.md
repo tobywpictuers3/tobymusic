@@ -416,3 +416,9 @@ The payment data model already contains all 12 academic months, September throug
 - GitHub `main` remains authoritative; never overwrite newer GitHub changes with a stale Lovable publication. Preserve existing functionality and student data.
 - Include the parity, Lovable publication, CI, and production verification outcomes in every completion report. Mark unverified items explicitly.
 - Shared student weekly timetable cards must show the lesson time alongside each student's name, using existing lesson start/end fields without changing schedule data.
+
+## 2026-10-27: Pricing moved to Payments, non-blocking year gate, Ayala Alpha lesson attribution
+- Students tab no longer renders TuitionSettingsCard; pricing lives only in Payments › תמחור. Student form highlights the original start date with a read-only tenure-discount preview (existing NIS mechanism in tuitionSettings.ts). Applying a calculated price requires an explicit confirm preview; nothing is rewritten automatically.
+- FinancialYearGate blocks only until the current school year's rollover is verified once (localStorage `toby_year_close_verified_<year>`); later entries open normally and re-run the idempotent check in background with a banner on failure.
+- Lesson.countedInSchoolYear overrides date-based year counting in calculateStudentYearSnapshot; Lesson.correctionAudit records approved re-attributions.
+- lessonAttributionCorrection(.core).ts: preview-first, idempotent re-attribution (AYALA_ALPHA_CORRECTION: lesson mta9jhzskkn6onmv7lj, mta9j48yncgyygkpbgm → mtiqnlocbewy2afa217, counted in 2027, date preserved). Blocks on missing source, duplicate slot, owner mismatch, closed target year. Payments are never moved; the 1600 Sept 2026 payment and other old-card lessons are listed as report-only exceptions. UI: Payments › שנים קודמות וסגירת שנה. Tests: scripts/lesson-attribution-correction.test.ts (bun test).

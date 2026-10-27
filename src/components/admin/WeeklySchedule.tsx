@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar, Edit, Plus, ArrowRight, ArrowLeft, Save, Settings, Trash2, Move } from 'lucide-react';
-import { getStudents, getLessons, addLesson, updateLesson, deleteLesson, deleteLessonCascade, getActiveScheduleTemplate, calculateLessonNumber } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, getLessons, addLesson, updateLesson, deleteLesson, deleteLessonCascade, getActiveScheduleTemplate, calculateLessonNumber } from '@/lib/storage';
 import { toast } from '@/hooks/use-toast';
 import ScheduleTemplateManager from './ScheduleTemplateManager';
 import { Lesson } from '@/lib/types';
@@ -20,7 +20,7 @@ const WeeklySchedule = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
-  const students = getStudents();
+  const students = getStudentsForCurrentYearLists();
   const lessons = getLessons();
   const activeTemplate = getActiveScheduleTemplate();
 

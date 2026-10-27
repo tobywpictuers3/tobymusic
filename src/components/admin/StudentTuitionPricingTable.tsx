@@ -3,7 +3,7 @@ import { Button } from '@/components/safe-ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
 import { Badge } from '@/components/safe-ui/badge';
-import { getStudents, updateStudent } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, updateStudent } from '@/lib/storage';
 import {
   calculateBaseAnnualTarget,
   getSchoolYearForDate,
@@ -26,7 +26,7 @@ const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100)
 export default function StudentTuitionPricingTable() {
   const [revision, setRevision] = useState(0);
   const settings = getTuitionSettings();
-  const students = getStudents().filter(student => student.paymentType !== 'per_lesson');
+  const students = getStudentsForCurrentYearLists().filter(student => student.paymentType !== 'per_lesson');
   const currentSchoolYear = getSchoolYearForDate();
 
   const rows = students.map(student => {
@@ -58,6 +58,12 @@ export default function StudentTuitionPricingTable() {
 
   const applyCalculatedPrice = (row: (typeof rows)[number]) => {
     const { student, currentRecord, startReason, startingLessonNumber, calculatedAnnualRate, currentYearTarget } = row;
+    const preview = `תצוגה מקדימה — ${student.firstName} ${student.lastName}\n`
+      + `מחיר שנתי שמור: ${money(row.storedFullAnnual)}\n`
+      + `מחיר שנתי חדש: ${money(calculatedAnnualRate)} (הנחת ותק ${money(row.cohortDiscount)})\n`
+      + `יעד השנה הנוכחית: ${money(currentYearTarget)}\n`
+      + `תשלומים קיימים ושנים סגורות אינם משתנים. להחיל?`;
+    if (!window.confirm(preview)) return;
     try {
       const calculatedAmount = Math.abs(currentYearTarget - calculatedAnnualRate) > 0.009
         ? currentYearTarget

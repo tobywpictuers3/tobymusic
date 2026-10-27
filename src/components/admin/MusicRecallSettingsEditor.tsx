@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Student } from '@/lib/types';
-import { getStudents, updateStudent } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, updateStudent } from '@/lib/storage';
 import { NATURAL_PITCHES, getRecallLevels, getInitialRecallProfile, normalizeRecallProfile, validateRecallProfile, type RecallProfile, type RecallPlacement } from '@/lib/musicRecall';
 import { noteName } from '@/lib/musicPlay';
 import { Button } from '@/components/ui/button';
@@ -53,7 +53,7 @@ export default function MusicRecallSettingsEditor({student,onSaved}:{student:Stu
   const enableBoth=normalized.clefs==='both';
   const store=()=>{
     if(saving)return;
-    const existing=getStudents().find(s=>s.id===student.id);
+    const existing=getStudentsForCurrentYearLists().find(s=>s.id===student.id);
     if(!existing){setError('התלמידה לא נמצאה בנתונים המקומיים');return;}
     const all=getRecallLevels(existing.musicPlaySettings);
     const profile:RecallProfile=normalizeRecallProfile({...normalized,
