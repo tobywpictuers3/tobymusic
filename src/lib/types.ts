@@ -53,6 +53,8 @@ export interface Lesson {
   lastModified?: string; // Optimistic locking timestamp
   /** Accounting override: school year whose contract counts this lesson (date stays original). */
   countedInSchoolYear?: number;
+  /** Original overlapping lesson retained for audit, excluded from billed/numbered totals. */
+  mergedDuplicateOf?: string;
   /** Audit marker for an approved lesson re-attribution correction. */
   correctionAudit?: {
     correctionId: string;
