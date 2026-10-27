@@ -67,7 +67,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const refreshFromCloud=async()=>{
     setRefreshingFiles(true);
     try{
-      const result=await hybridSync.downloadFromWorker();
+      const result=await hybridSync.pullCanonicalLatest();
       if(!result.success)throw new Error(result.message||'קריאת קבצים נכשלה');
       setRefreshTick(tick=>tick+1);
       toast({title:'עודכן',description:'רשימת הקבצים עודכנה מתוך Dropbox'});
