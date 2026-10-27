@@ -58,6 +58,8 @@ const rawAdminConsumers = new Set([
   'FinancialYearGate.tsx',
   'InactiveStudentStatusDecorator.tsx',
   'PaymentManagementShell.tsx',
+  // Year-close ledger must include ALL historical and inactive student records.
+  'PriorYearBalancesCard.tsx',
   'StudentActiveToggleDecorator.tsx',
   'StudentLessonHistory.tsx',
   'StudentSchoolYearSummary.tsx',
@@ -122,7 +124,7 @@ replaceInFileOrVerify(
   'src/components/admin/PriorYearBalancesCard.tsx',
   `  const actionable = useMemo(\n    () => rows.filter(row => row.signedBalance !== 0 || row.requiresVerification),\n    [rows],\n  );\n  const balancedCount = rows.length - actionable.length;`,
   `  const visibleStudentIds = new Set(students.map(student => student.id));\n  const displayRows = rows.filter(row => visibleStudentIds.has(row.studentId));\n  const actionable = displayRows.filter(row => row.signedBalance !== 0 || row.requiresVerification);\n  const balancedCount = displayRows.length - actionable.length;`,
-  'const displayRows = rows.filter(row => visibleStudentIds.has(row.studentId));',
+  'const displayRows = rows;',
 );
 
 replaceInFileOrVerify(
