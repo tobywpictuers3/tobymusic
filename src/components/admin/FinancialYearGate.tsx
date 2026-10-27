@@ -13,9 +13,6 @@ const verifiedKey = (year: number) => `toby_year_close_verified_${year}`;
  */
 export default function FinancialYearGate({ children }: { children: ReactNode }) {
   const currentSchoolYear = getSchoolYearForDate();
-  const alreadyVerified = (() => {
-    try { return localStorage.getItem(verifiedKey(currentSchoolYear)) === '1'; } catch { return false; }
-  })();
   const [state, setState] = useState<'pending' | 'ready' | 'error'>('pending');
   const [errorCode, setErrorCode] = useState('');
   const [retry, setRetry] = useState(0);
