@@ -5,6 +5,7 @@ export interface WorkerResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+  source?: 'canonical_latest' | 'historical_fallback';
 }
 
 const WORKER_BASE_URL = "https://lovable-dropbox-api.w0504124161.workers.dev";
@@ -246,17 +247,17 @@ export const workerApi = {
         const fallback = await workerApi.downloadLastHealthyVersion();
         if (fallback.success) {
           logger.info("✅ Recovered data from previous Dropbox version");
-          return fallback;
+          return { ...fallback, source: 'historical_fallback' };
         }
         return { success: false, error: err, data };
       }
-      return { success: true, data: unwrapDataEnvelope(data) };
+      return { success: true, data: unwrapDataEnvelope(data), source: 'canonical_latest' };
     } catch (err) {
       logger.error("downloadLatest error:", err);
       const message = (err as Error).message;
       logger.warn("⚠️ downloadLatest threw, attempting historic fallback:", message);
       const fallback = await workerApi.downloadLastHealthyVersion();
-      if (fallback.success) return fallback;
+      if (fallback.success) return { ...fallback, source: 'historical_fallback' };
       return { success: false, error: message };
     }
   },

@@ -3,11 +3,13 @@ import { hybridSync } from './hybridSync';
 import { logger } from './logger';
 import { isDevMode, setDevMode } from './devMode';
 import { calculateEarnedCopper, formatPriceCompact } from './storeCurrency';
+import { filterStudentsForCurrentSchoolYearLists, sortStudentsByLastNameInPlace, sortStudentsForStudentCards } from './studentSort';
 
 // In-Memory Storage - No localStorage for sensitive data
 // Track which top-level buckets changed so sync can persist only the changed
 // bucket locally instead of stringifying the whole database on every keystroke.
 const dirtyStorageKeys = new Set<string>();
+let dirtyTrackingSuppressionDepth = 0;
 
 const storageKeyToDataKey = (key: string): string => {
   if (key === 'oneTimePayments') return 'oneTimePayments';
@@ -40,7 +42,7 @@ export const clearDirtyDataKeys = (dataKeys?: string[]): void => {
 const inMemoryStorage: Record<string, any> = new Proxy<Record<string, any>>({}, {
   set(target, prop, value) {
     target[prop as string] = value;
-    if (typeof prop === 'string') markStorageKeyDirty(prop);
+    if (typeof prop === 'string' && dirtyTrackingSuppressionDepth === 0) markStorageKeyDirty(prop);
     return true;
   },
   deleteProperty(target, prop) {
@@ -106,8 +108,10 @@ export const initializeStorage = (data: any) => {
     return;
   }
   
-  let initialized = false;
-  let keysFound = 0;
+  dirtyTrackingSuppressionDepth += 1;
+  try {
+    let initialized = false;
+    let keysFound = 0;
   
   Object.keys(data).forEach(key => {
     if (key.startsWith('musicSystem_') || key === 'oneTimePayments') {
@@ -148,6 +152,9 @@ export const initializeStorage = (data: any) => {
   const currentUser = localStorage.getItem('musicSystem_currentUser');
   if (currentUser) {
     sessionStorage.setItem('musicSystem_currentUser', currentUser);
+  }
+  } finally {
+    dirtyTrackingSuppressionDepth = Math.max(0, dirtyTrackingSuppressionDepth - 1);
   }
 };
 
@@ -219,9 +226,18 @@ export const getTombstones = (): Record<string, Record<string, string>> => {
 
 // Students
 export const getStudents = (): Student[] => {
-  if (isDevMode()) return devData['students'] || [];
-  return inMemoryStorage['students'] || [];
+  const students = isDevMode() ? (devData['students'] || []) : (inMemoryStorage['students'] || []);
+  return sortStudentsByLastNameInPlace(students);
 };
+
+// Ordinary operational lists hide students who were already inactive when the
+// current school year opened. A currently active/reactivated student is always
+// included. The Students index intentionally uses the separate all-students getter.
+export const getStudentsForCurrentYearLists = (): Student[] =>
+  filterStudentsForCurrentSchoolYearLists([...getStudents()]);
+
+export const getStudentsForStudentCards = (): Student[] =>
+  sortStudentsForStudentCards(getStudents());
 
 export const addStudent = (student: Omit<Student, 'id'>): Student => {
   const students = getStudents();

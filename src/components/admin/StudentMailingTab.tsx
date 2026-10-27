@@ -99,7 +99,7 @@ export default function StudentMailingTab() {
   const sendSync = (after?: BridgeMessage) => {
     if (after) afterSyncRef.current = after;
     setBusy(true);
-    setSyncResult('קוראת את התלמידות הפעילות מ-Airtable ומסנכרנת ל-Brevo 2…');
+    setSyncResult('קוראת את התלמידות הפעילות ממקור נתוני התלמידות ומסנכרנת ל-Brevo 2…');
     postToBridge({ type: 'TOBY_STUDENTS_SYNC' });
   };
 
@@ -150,7 +150,7 @@ export default function StudentMailingTab() {
         } else {
           afterSyncRef.current = null;
           setSyncResult(`הסנכרון נכשל: ${data.error || 'שגיאה לא ידועה'}`);
-          setState('הפעולה נעצרה כדי שלא תישלח תפוצה לרשימה לא מעודכנת.');
+          setState('הפעולה נעצרה כדי שלא תישלח הודעת תלמידות לרשימה לא מעודכנת.');
         }
         return;
       }
@@ -229,15 +229,15 @@ export default function StudentMailingTab() {
       postToBridge(message);
       return;
     }
-    setState('מסנכרנת קודם את Airtable לרשימת התלמידות ב-Brevo 2…');
+    setState('מסנכרנת קודם את רשימת התלמידות הפעילות ל-Brevo 2…');
     sendSync(message);
   };
 
   const sendFinal = () => {
     if (!draftId) { setState('קודם לחצי “הכן ב-Brevo 2”'); return; }
     const count = mailing?.list?.count ?? mailing?.desired ?? 0;
-    if (!window.confirm(`שליחה סופית לתלמידות בלבד (${count} כתובות ב-Brevo 2).\nהרשימה תסונכרן שוב מ-Airtable לפני השליחה.\n\nלשלוח עכשיו?`)) return;
-    setState('מסנכרנת שוב את Airtable לפני השליחה הסופית…');
+    if (!window.confirm(`שליחה סופית לתלמידות בלבד (${count} כתובות ב-Brevo 2).\nהרשימה תסונכרן שוב ממקור נתוני התלמידות לפני השליחה.\n\nלשלוח עכשיו?`)) return;
+    setState('מסנכרנת שוב את התלמידות הפעילות לפני השליחה הסופית…');
     sendSync({ type: 'TOBY_STUDENTS_MAIL', action: 'send', draftId, confirmSend: true });
   };
 
@@ -271,23 +271,23 @@ export default function StudentMailingTab() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex flex-wrap items-center justify-between gap-2">
-            <span>שליחה לתפוצת תלמידות</span>
+            <span>שליחה לתלמידות פעילות</span>
             <div className="flex flex-wrap gap-2 text-sm font-normal">
               <Button type="button" variant="outline" size="sm" onClick={requestStatus} disabled={busy}>
                 <ExternalLink className="h-4 w-4 ml-1" /> {bridgeReady ? 'מחובר לאתר' : 'חיבור מאובטח לאתר'}
               </Button>
               <Button type="button" variant="outline" size="sm" onClick={() => sendSync()} disabled={busy}>
-                <RefreshCw className={`h-4 w-4 ml-1 ${busy ? 'animate-spin' : ''}`} /> סנכרון Airtable
+                <RefreshCw className={`h-4 w-4 ml-1 ${busy ? 'animate-spin' : ''}`} /> סנכרון תלמידות
               </Button>
             </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Airtable הוא מקור האמת. האתר קורא את התלמידות הפעילות ומסנכרן אותן לרשימת “תלמידות” בחשבון Brevo 2 בלבד. מפתחות Airtable ו-Brevo נשארים בשרת ואינם נחשפים בפלטפורמה.
+            נתוני התלמידות הפעילות מגיעים ממקור הנתונים הקנוני של פלטפורמת התלמידות ומסונכרנים לרשימת “תלמידות” בחשבון Brevo 2 בלבד. פרטי הגישה ל-Brevo נשארים בשרת ואינם נחשפים בפלטפורמה.
           </p>
           <div className="grid gap-2 sm:grid-cols-4 text-sm">
-            <div className="rounded-md border p-3 text-center"><b>{mailing?.sourceCount ?? '—'}</b><br />פעילות ב-Airtable</div>
+            <div className="rounded-md border p-3 text-center"><b>{mailing?.sourceCount ?? '—'}</b><br />תלמידות פעילות</div>
             <div className="rounded-md border p-3 text-center"><b>{mailing?.desired ?? '—'}</b><br />כתובות תקינות</div>
             <div className="rounded-md border p-3 text-center"><b>{mailing?.list?.count ?? '—'}</b><br />ב-Brevo 2</div>
             <div className="rounded-md border p-3 text-center"><b>{mailing?.skippedWithoutEmail ?? '—'}</b><br />ללא מייל תקין</div>

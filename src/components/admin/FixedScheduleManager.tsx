@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Plus, Edit, Settings, Save, X, Eye, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { getScheduleTemplates, addScheduleTemplate, activateScheduleTemplate, getStudents, getLessons } from '@/lib/storage';
+import { getScheduleTemplates, addScheduleTemplate, activateScheduleTemplate, getStudentsForCurrentYearLists, getLessons } from '@/lib/storage';
 import { calculateEnhancedLessonNumber } from '@/lib/lessonNumbering';
 import { ScheduleTemplate, WeeklyScheduleData, Student, Lesson } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
@@ -44,7 +44,7 @@ const FixedScheduleManager = () => {
 
   const loadData = () => {
     setTemplates(getScheduleTemplates());
-    setStudents(getStudents());
+    setStudents(getStudentsForCurrentYearLists());
     setLessons(getLessons());
   };
 

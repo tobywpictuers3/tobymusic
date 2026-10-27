@@ -131,22 +131,11 @@ const runVerificationLoop = async () => {
         return;
       }
 
-      // Legacy repair remains a full-snapshot upload for now. The new write
-      // gateway cutover must replace this bypass before production cutover.
-      // Until then, canonical-only read-back prevents a historical fallback
-      // from ever being treated as a successful verification result.
-      const repairResult = await hybridSync.restoreData(snapshot, { uploadImmediately: true });
-      if (!repairResult.success || !repairResult.synced) {
-        pendingFingerprint = snapshotFingerprint;
-        emitWarning('שינוי כספי נשמר מקומית אך שמירתו ב-Dropbox לא אומתה. המערכת תנסה שוב אוטומטית.');
-        return;
-      }
-
-      if (!(await remoteMatchesFinancialProjection(snapshot))) {
-        pendingFingerprint = snapshotFingerprint;
-        emitWarning('שינוי כספי הועלה אך לא הצלחנו לאמת שהעותק האחרון ב-Dropbox תואם. המערכת תנסה שוב אוטומטית.');
-        return;
-      }
+      // Cutover safety: this layer verifies only. A failed verification must not
+      // bypass the canonical sync gateway by uploading a full database snapshot.
+      pendingFingerprint = snapshotFingerprint;
+      emitWarning('שינוי כספי נשמר מקומית אך העותק האחרון ב-Dropbox עדיין לא אומת. לא בוצעה העלאת תיקון עוקפת; יש להשאיר את המערכת פתוחה עד שהסנכרון הרגיל יושלם.');
+      return;
     }
   } catch {
     if (!isLocalJsonDraftActive()) {

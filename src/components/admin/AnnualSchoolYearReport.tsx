@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/safe-ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
-import { getStudents } from '@/lib/storage';
+import { getStudentsForCurrentYearLists } from '@/lib/storage';
 import { getPriorYearBalanceRecords } from '@/lib/priorYearBalances';
 import {
   calculateStudentYearSnapshot,
@@ -68,7 +68,7 @@ export default function AnnualSchoolYearReport() {
       )
       .map(row => row.studentId),
   );
-  const students = getStudents()
+  const students = getStudentsForCurrentYearLists()
     .filter(student => student.paymentType !== 'per_lesson')
     .sort((a, b) =>
       Number(pendingCreditIds.has(b.id)) - Number(pendingCreditIds.has(a.id)),

@@ -332,22 +332,10 @@ class HybridSyncManager {
 
         logger.warn('⚠️ User trying to leave with pending changes');
 
-        // Best-effort last sync (no UI guarantee)
-        if (this.syncState.isOnline) {
-          try {
-            const data = this.gatherAllData();
-            const dataSize = JSON.stringify(data).length;
-            if (dataSize >= 100) {
-              const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-              navigator.sendBeacon(
-                'https://lovable-dropbox-api.w0504124161.workers.dev/?action=upload_versioned',
-                blob
-              );
-            }
-          } catch (error) {
-            logger.error('❌ beforeunload sync prevented:', error);
-          }
-        }
+        // Cutover safety: never start an unauthenticated/unverified full-snapshot
+        // write from beforeunload. Local durable state is already persisted; the
+        // normal authenticated retry path will resume on the next session/online event.
+        logger.warn('⚠️ Exit blocked while cloud sync is pending; no unload snapshot upload is attempted');
 
         return warningMessage;
       }
@@ -399,6 +387,7 @@ class HybridSyncManager {
       ])) as any;
 
       if (result && result.success && result.data) {
+        const historicalFallback = result.source === 'historical_fallback';
         const dataKeys = Object.keys(result.data);
         const hasMeaningfulData =
           dataKeys.some((k) => k.startsWith('musicSystem_')) || dataKeys.length > 1;
@@ -418,9 +407,16 @@ class HybridSyncManager {
           this.updateInMemoryStorage(dataToLoad);
           this.persistLocalSnapshot({ full: true });
           // Treat init load as "cloud ok" (but do not reset pendingChanges)
-          this.syncState.lastSyncTime = new Date().toISOString();
-          this.emit();
-          if (snapshot) void this.directUpload();
+          if (historicalFallback) {
+            // Historical data is recovery/read-only. Never auto-upload a merge based
+            // on it, because that could overwrite a newer canonical Dropbox object.
+            this.syncState.lastSyncTime = null;
+            this.setCloudError('HISTORICAL_FALLBACK_READ_ONLY');
+          } else {
+            this.syncState.lastSyncTime = new Date().toISOString();
+            this.emit();
+            if (snapshot) void this.directUpload();
+          }
         }
       } else if (result && result.error === 'NO_VERSION_FOUND') {
         logger.info('ℹ️ No version found on Worker - starting fresh (first use)');
@@ -496,8 +492,6 @@ class HybridSyncManager {
     const remoteTomb = (remoteData[TOMB_KEY] && typeof remoteData[TOMB_KEY] === 'object') ? remoteData[TOMB_KEY] : {};
     const mergedTomb: Record<string, Record<string, string>> = {};
     const allCats = new Set([...Object.keys(localTomb), ...Object.keys(remoteTomb)]);
-    const TOMB_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-    const nowMs = Date.now();
     allCats.forEach((cat) => {
       const a = localTomb[cat] || {};
       const b = remoteTomb[cat] || {};
@@ -508,8 +502,8 @@ class HybridSyncManager {
         const tb = b[id] ? new Date(b[id]).getTime() : 0;
         const latest = Math.max(ta, tb);
         if (latest <= 0) return;
-        // Drop tombstones older than TTL — safe cleanup
-        if (nowMs - latest > TOMB_TTL_MS) return;
+        // Cutover safety: client wall-clock age is not proof that every offline
+        // client has observed this deletion. Keep the tombstone until server/revision-aware GC exists.
         out[id] = new Date(latest).toISOString();
       });
       if (Object.keys(out).length > 0) mergedTomb[cat] = out;
@@ -863,6 +857,12 @@ class HybridSyncManager {
 
       const remoteResult = await workerApi.downloadLatest();
       logger.info('📥 Downloaded latest version from server');
+
+      if (remoteResult.source === 'historical_fallback') {
+        logger.warn('⚠️ Historical Dropbox fallback is read-only; automatic merge/upload is blocked');
+        this.setCloudError('HISTORICAL_FALLBACK_READ_ONLY');
+        return false;
+      }
 
       const localData = this.gatherAllData();
 

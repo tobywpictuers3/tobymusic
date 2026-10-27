@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar, Clock, Save } from 'lucide-react';
-import { getStudents, getActiveScheduleTemplate, syncStudentWithTemplate } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, getActiveScheduleTemplate, syncStudentWithTemplate } from '@/lib/storage';
 import { toast } from '@/hooks/use-toast';
 import { clearClientCaches } from '@/lib/cacheManager';
 
@@ -16,7 +16,7 @@ const StudentScheduleView = ({ onSave }: StudentScheduleViewProps) => {
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [hasChanges, setHasChanges] = useState(false);
   
-  const students = getStudents();
+  const students = getStudentsForCurrentYearLists();
   const activeTemplate = getActiveScheduleTemplate();
   const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
   const timeSlots = Array.from({ length: 14 }, (_, i) => {

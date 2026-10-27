@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/s
 import { Label } from '@/components/safe-ui/label';
 import { CreditCard, ChevronRight, ChevronLeft, Download, Coins, Plus, Pencil, Trash2, Calendar } from 'lucide-react';
 import { NumberStepper } from '@/components/ui/number-stepper';
-import { getStudents, getPayments, savePayments, updateStudent, getPerformances, getOneTimePayments, saveOneTimePayments, updateOneTimePayment, deleteOneTimePayment, getTithePaid, saveTithePaid, getCompletedLessonsCount, recordPerLessonPayment, getPerLessonPayments, getStudentPerLessonPayments, getStudentPerLessonLedger, updatePerLessonPayment, deletePerLessonPayment, updatePerformance, deletePerformance, getPerformancePaidTotal, getPerformancePaymentStatus, addPerformancePayment, updatePerformancePayment, deletePerformancePayment } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, getPayments, savePayments, updateStudent, getPerformances, getOneTimePayments, saveOneTimePayments, updateOneTimePayment, deleteOneTimePayment, getTithePaid, saveTithePaid, getCompletedLessonsCount, recordPerLessonPayment, getPerLessonPayments, getStudentPerLessonPayments, getStudentPerLessonLedger, updatePerLessonPayment, deletePerLessonPayment, updatePerformance, deletePerformance, getPerformancePaidTotal, getPerformancePaymentStatus, addPerformancePayment, updatePerformancePayment, deletePerformancePayment } from '@/lib/storage';
 import { Payment, Student, OneTimePayment, Performance, PerLessonPayment } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import { Badge } from '@/components/safe-ui/badge';
@@ -97,6 +97,9 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
 
   useEffect(() => {
     loadData();
+    const handleStudentActiveStatusChanged = () => loadData();
+    window.addEventListener('student-active-status-changed', handleStudentActiveStatusChanged);
+    return () => window.removeEventListener('student-active-status-changed', handleStudentActiveStatusChanged);
   }, []);
 
   // סרגל גלילה עליון חדש ופשוט: סנכרון 1:1 בין המסילה העליונה לבין הטבלה
@@ -152,7 +155,7 @@ const academicYearOptions = Array.from({ length: 11 }, (_, i) => selectedYear - 
   }, []);
 
   const loadData = () => {
-    setStudents(getStudents());
+    setStudents(getStudentsForCurrentYearLists());
     setPayments(getPayments());
     setOneTimePayments(getOneTimePayments());
   };
@@ -659,11 +662,31 @@ const handleAddOneTimePayment = () => {
   });
 };
 
+  // For the current school year, exclude students who were already inactive on September 1.
+  // A student who became inactive only after September 1 remains in that year's payment roster,
+  // because she participated in the year. Reactivating a student makes her visible immediately.
+  // Historical years remain fully viewable and no historical payment rows are deleted.
+  const jerusalemYearMonth = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date());
+  const jerusalemYear = Number(jerusalemYearMonth.find(part => part.type === 'year')?.value);
+  const jerusalemMonth = Number(jerusalemYearMonth.find(part => part.type === 'month')?.value);
+  const currentAcademicBaseYear = jerusalemMonth >= 9 ? jerusalemYear : jerusalemYear - 1;
+  const currentSchoolYearStart = `${currentAcademicBaseYear}-09-01`;
+  const studentsVisibleInPayments = selectedYear === currentAcademicBaseYear
+    ? students.filter(student =>
+        student.isActive !== false ||
+        (typeof student.leftDate === 'string' && student.leftDate > currentSchoolYearStart)
+      )
+    : students;
+
   // Filter annual students (paymentType is 'annual' or undefined)
-  const annualStudents = students.filter(s => !s.paymentType || s.paymentType === 'annual');
+  const annualStudents = studentsVisibleInPayments.filter(s => !s.paymentType || s.paymentType === 'annual');
   
   // Filter per-lesson students
-  const perLessonStudents = students.filter(s => s.paymentType === 'per_lesson');
+  const perLessonStudents = studentsVisibleInPayments.filter(s => s.paymentType === 'per_lesson');
 
   const filteredStudents = annualStudents.filter(student => {
     const fullName = `${student.firstName} ${student.lastName}`.trim().toLowerCase();

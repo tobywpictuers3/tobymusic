@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MessageSquare, Send } from 'lucide-react';
-import { getStudents, getLessons, addSwapRequest } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, getLessons, addSwapRequest } from '@/lib/storage';
 import { toast } from '@/hooks/use-toast';
 import { addMessage } from '@/lib/messages';
 
@@ -20,7 +20,7 @@ const SwapRequestForm = ({ studentId }: SwapRequestFormProps) => {
   const [targetStudentId, setTargetStudentId] = useState('');
   const [reason, setReason] = useState('');
   
-  const students = getStudents().filter(s => s.id !== studentId);
+  const students = getStudentsForCurrentYearLists().filter(s => s.id !== studentId);
   const lessons = getLessons().filter(l => l.studentId === studentId);
   
   // Get upcoming lessons for the current student
@@ -59,7 +59,7 @@ const SwapRequestForm = ({ studentId }: SwapRequestFormProps) => {
     });
 
     // Send swap request message to admin
-    const allStudents = getStudents();
+    const allStudents = getStudentsForCurrentYearLists();
     const requester = allStudents.find(s => s.id === studentId);
     const target = allStudents.find(s => s.id === targetStudentId);
 

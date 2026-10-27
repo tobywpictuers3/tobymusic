@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Mail, Phone, Search, Users } from 'lucide-react';
-import { getStudents } from '@/lib/storage';
+import { getStudentsForCurrentYearLists } from '@/lib/storage';
 
 const ContactsList = () => {
   const [query, setQuery] = useState('');
-  const contacts = useMemo(() => getStudents()
+  const contacts = useMemo(() => getStudentsForCurrentYearLists()
     .filter(student => student.isActive !== false)
     .map(student => ({
       id: student.id,

@@ -3,7 +3,7 @@ import { Button } from '@/components/safe-ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
 import { Badge } from '@/components/safe-ui/badge';
-import { getStudents, updateStudent } from '@/lib/storage';
+import { getStudentsForCurrentYearLists, updateStudent } from '@/lib/storage';
 import {
   calculateBaseAnnualTarget,
   getSchoolYearForDate,
@@ -26,7 +26,7 @@ const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100)
 export default function StudentTuitionPricingTable() {
   const [revision, setRevision] = useState(0);
   const settings = getTuitionSettings();
-  const students = getStudents().filter(student => student.paymentType !== 'per_lesson');
+  const students = getStudentsForCurrentYearLists().filter(student => student.paymentType !== 'per_lesson');
   const currentSchoolYear = getSchoolYearForDate();
 
   const rows = students.map(student => {

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/safe-ui/badge';
 import { Grid, List, UserPlus, Edit, Trash2, Users, History, Coins, DoorOpen } from 'lucide-react';
 import { NumberStepper } from '@/components/ui/number-stepper';
-import { getStudents, addStudent, updateStudent, deleteStudentCascade, getCompletedLessonsCount, convertAnnualToPerLesson, getPayments } from '@/lib/storage';
+import { getStudentsForStudentCards, addStudent, updateStudent, deleteStudentCascade, getCompletedLessonsCount, convertAnnualToPerLesson, getPayments } from '@/lib/storage';
 import { deleteMessagesForStudentCascade } from '@/lib/messages';
 import { Student } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
@@ -97,7 +97,7 @@ const StudentsManagement = () => {
   const [tuitionSettings, setTuitionSettings] = useState<TuitionSettings>(() => getTuitionSettings());
   const [studentForm, setStudentForm] = useState<StudentForm>(() => createDefaultForm(getTuitionSettings()));
 
-  const refreshStudents = () => setStudents(getStudents());
+  const refreshStudents = () => setStudents(getStudentsForStudentCards());
 
   useEffect(() => {
     void ensureSchoolYearRollover().finally(refreshStudents);
@@ -204,7 +204,7 @@ const StudentsManagement = () => {
     }));
   };
 
-  const formSchoolYear = getSchoolYearForDate(studentForm.startDate || new Date());
+  const formSchoolYear = editingStudent ? getSchoolYearForDate() : getSchoolYearForDate(studentForm.startDate || new Date());
   const storedYearRecord = editingStudent ? getStudentSchoolYearRecord(editingStudent.id, formSchoolYear) : undefined;
   const inferredStartReason: SchoolYearStartReason = storedYearRecord?.startReason ||
     (studentForm.startingLessonNumber > 1 ? 'midyear_join' : 'regular');
@@ -242,7 +242,7 @@ const StudentsManagement = () => {
       return;
     }
 
-    const schoolYear = getSchoolYearForDate(studentForm.startDate || new Date());
+    const schoolYear = editingStudent ? getSchoolYearForDate() : getSchoolYearForDate(studentForm.startDate || new Date());
     const existingRecord = editingStudent ? getStudentSchoolYearRecord(editingStudent.id, schoolYear) : undefined;
     const startReason: SchoolYearStartReason = existingRecord?.startReason ||
       (studentForm.startingLessonNumber > 1 ? 'midyear_join' : 'regular');
@@ -560,7 +560,7 @@ const StudentsManagement = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><Label htmlFor="startDate">תאריך התחלה</Label><Input id="startDate" type="date" value={studentForm.startDate} onChange={(e) => setStudentForm({...studentForm, startDate: e.target.value})} /></div>
+              <div><Label htmlFor="startDate">תאריך הצטרפות</Label><Input id="startDate" type="date" value={studentForm.startDate} onChange={(e) => setStudentForm({...studentForm, startDate: e.target.value})} /></div>
               <div><Label htmlFor="startingLessonNumber">מספר שיעור התחלתי</Label><NumberStepper id="startingLessonNumber" value={studentForm.startingLessonNumber} onValueChange={(n) => setStudentForm({...studentForm, startingLessonNumber: Math.max(1, n)})} step={1} min={1} /></div>
             </div>
 

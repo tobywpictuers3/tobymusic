@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { toast } from '@/hooks/use-toast';
-import { getDevStore, getStudents, isDevMode } from '@/lib/storage';
+import { getDevStore, getStudentsForCurrentYearLists, isDevMode } from '@/lib/storage';
 import { hybridSync } from '@/lib/hybridSync';
 import { getSchoolYearBounds, getSchoolYearForDate } from '@/lib/schoolYear';
 import type { Payment, Student } from '@/lib/types';
@@ -29,7 +29,7 @@ const getMutableStore = (): Record<string, any> => {
 
 const currentStudents = (): StudentWithPaymentMethod[] => {
   const store = getMutableStore();
-  return Array.isArray(store.students) ? store.students : getStudents();
+  return Array.isArray(store.students) ? store.students : getStudentsForCurrentYearLists();
 };
 
 const paymentMonthKeysForSchoolYear = (schoolYear: number): string[] => {
