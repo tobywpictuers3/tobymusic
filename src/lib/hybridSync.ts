@@ -1026,6 +1026,16 @@ class HybridSyncManager {
         return true;
       }
 
+      // A historical fallback is recovery-only and must never become a merge base.
+      if (remoteResult.source === 'historical_fallback') {
+        this.setCloudError('HISTORICAL_FALLBACK_READ_ONLY');
+        return false;
+      }
+      if (!remoteResult.success) {
+        this.setCloudError('CANONICAL_READ_FAILED');
+        return false;
+      }
+
       const localData = this.gatherAllData();
       const changed = this.stableSyncFingerprint(localData) !== this.stableSyncFingerprint(remoteResult.data);
       if (changed) {
