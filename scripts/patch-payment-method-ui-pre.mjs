@@ -18,7 +18,7 @@ if (source.includes(priorYearScoped)) {
     const end = source.indexOf('const getAcademicMonthKey =', begin);
     if (begin < 0 || end < begin) throw new Error('payment-method-ui prepatch: student payment lookup function missing');
     const segment = source.slice(begin, end);
-    const line = /^\s*return [^\n]*paymentMethod[^\n]*;\s*$/m;
+    const line = /^[ \t]*return [^\r\n]*paymentMethod[^\r\n]*;[ \t]*$/m;
     if (!line.test(segment)) throw new Error('payment-method-ui prepatch: expected payment method return line missing');
     source = source.slice(0,begin)+segment.replace(line, '    '+baseLookup)+source.slice(end);
   }
