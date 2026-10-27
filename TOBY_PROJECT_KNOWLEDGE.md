@@ -416,3 +416,13 @@ The payment data model already contains all 12 academic months, September throug
 - GitHub `main` remains authoritative; never overwrite newer GitHub changes with a stale Lovable publication. Preserve existing functionality and student data.
 - Include the parity, Lovable publication, CI, and production verification outcomes in every completion report. Mark unverified items explicitly.
 - Shared student weekly timetable cards must show the lesson time alongside each student's name, using existing lesson start/end fields without changing schedule data.
+
+## Piano grand staff sight-reading trial — 2026-10-27
+
+- The teacher's sight-reading workspace has a piano/two-staff mode, preserving the original single-staff workflow. Top/keyboard right staff defaults to G clef; bottom/left defaults to F clef. Range, notes, melodic leap policy, short-note repetition and 74 allowed source rhythm patterns are independently selectable for both staves.
+- `src/lib/pianoSightReading.ts` produces one MusicXML piano part with two staves, distinct voices and a backup per measure, preserving the existing single-part PDF chunking/Verovio pipeline. Both staves are always present, including their rests.
+- Checked coordinated rules: no simultaneous hand notes, identical two-hand rhythms, a specified 10% minority hand and parallel (not contrary) melodic direction. When a rule requires common time slots, only the intersection of the two staves' selected rhythm patterns is used, and unsatisfiable combinations fail visibly rather than quietly changing settings.
+- The PDF exporter uses four grand-staff systems per A4 page (eight remains the unchanged single-staff default). A generated piano exercise opens in teacher notation preview and remains eligible for XML/PDF and the existing archive/assignment actions.
+- `scripts/test-piano-sight-reading.mjs` covers two clefs, two staves, exclusion, relative onset counts, matching rhythms and direction changes; GitHub PR validation invokes it.
+- Teacher trial is for visual musical feedback; student PDF assignment/Gmail are unchanged and require separate live-session validation before delivery can be claimed.
+- Legacy prebuild guards were repaired to recognize current student date-label wording, actual Dropbox canonical-read shape and changed payment getter syntax without bypassing canonical read safety. Do not treat passing CI alone as proof of Dropbox/Gmail behavior.
