@@ -57,7 +57,7 @@ else if (!hybrid.includes("HISTORICAL_FALLBACK_READ_ONLY")) throw new Error('ini
 const syncMarker = `      const remoteResult = await workerApi.downloadLatest();\n      logger.info('📥 Downloaded latest version from server');\n\n      const localData = this.gatherAllData();`;
 const syncReplacement = `      const remoteResult = await workerApi.downloadLatest();\n      logger.info('📥 Downloaded latest version from server');\n\n      if (remoteResult.source === 'historical_fallback') {\n        logger.warn('⚠️ Historical Dropbox fallback is read-only; automatic merge/upload is blocked');\n        this.setCloudError('HISTORICAL_FALLBACK_READ_ONLY');\n        return false;\n      }\n\n      const localData = this.gatherAllData();`;
 if (hybrid.includes(syncMarker)) hybrid = hybrid.replace(syncMarker, syncReplacement);
-else if ((hybrid.match(/HISTORICAL_FALLBACK_READ_ONLY/g) || []).length < 2) throw new Error('sync fallback guard marker not found');
+else if (!hybrid.includes('const remoteResult = await downloadCanonicalDropboxLatest();') || !hybrid.includes('!remoteResult.success')) throw new Error('canonical-read sync guard marker not found');
 
 // 5) Financial durability remains a verifier only until the authenticated write
 // gateway exists. It must not become a second full-snapshot writer.
@@ -82,7 +82,7 @@ const finalHybrid = fs.readFileSync(hybridPath, 'utf8');
 const finalFinancial = fs.readFileSync(financialPath, 'utf8');
 if (finalHybrid.includes('navigator.sendBeacon(')) throw new Error('beforeunload beacon survived');
 if (finalHybrid.includes('TOMB_TTL_MS')) throw new Error('tombstone TTL survived');
-if (!finalHybrid.includes("remoteResult.source === 'historical_fallback'")) throw new Error('sync fallback guard missing');
+if (!finalHybrid.includes("remoteResult.source === 'historical_fallback'") && !(finalHybrid.includes('const remoteResult = await downloadCanonicalDropboxLatest();') && finalHybrid.includes('!remoteResult.success'))) throw new Error('sync canonical guard missing');
 if (finalFinancial.includes('restoreData(snapshot, { uploadImmediately: true })')) throw new Error('financial bypass survived');
 
 console.log('sync cutover legacy-writer safety patch ready');
