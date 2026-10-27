@@ -864,6 +864,16 @@ class HybridSyncManager {
       const remoteResult = await workerApi.downloadLatest();
       logger.info('📥 Downloaded latest version from server');
 
+      // A historical fallback is recovery-only and must never become a merge base.
+      if (remoteResult.source === 'historical_fallback') {
+        this.setCloudError('HISTORICAL_FALLBACK_READ_ONLY');
+        return false;
+      }
+      if (!remoteResult.success) {
+        this.setCloudError('CANONICAL_READ_FAILED');
+        return false;
+      }
+
       const localData = this.gatherAllData();
 
       const remoteData = remoteResult.success && this.hasValidDataShape(remoteResult.data)
