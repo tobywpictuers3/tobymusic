@@ -10,7 +10,10 @@ if (source.includes(priorYearScoped)) {
   source = source.replace(priorYearScoped, baseLookup);
   fs.writeFileSync(path, source, 'utf8');
 } else if (!source.includes(baseLookup)) {
-  throw new Error('payment-method-ui prepatch: payment method lookup marker not found');
+  const scopedLookup = /return payments\.find\(p => p\.studentId === studentId[^;\n]*\)\?\.paymentMethod \|\| 'inactive';/;
+  if (!scopedLookup.test(source)) throw new Error('payment-method-ui prepatch: payment method lookup marker not found');
+  source = source.replace(scopedLookup, baseLookup);
+  fs.writeFileSync(path, source, 'utf8');
 }
 
 console.log('payment-method-ui prepatch ready');
