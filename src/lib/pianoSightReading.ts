@@ -41,6 +41,7 @@ export function generatePianoXml(config:{
   const choices=[notes(right),notes(left)],settings=[right,left];
   if(rules.oneHandAtATime&&rules.matchingRhythm)
     throw new Error('אי אפשר לבחור יחד נגינה ביד אחת בלבד ומקצבים זהים בשתי ידיים מנגנות');
+  if(rules.sameDirection)throw new Error('כלל התנועה באותו כיוון עדיין בפיתוח ולא ניתן להפעילו בגרסה זו');
   if(rules.oneHandAtATime&&rules.sameDirection)
     throw new Error('תנועה משותפת באותו כיוון מחייבת רגעים שבהם שתי הידיים מנגנות');
   if(rules.tenPercentHand!=='none'&&rules.matchingRhythm)
@@ -56,7 +57,7 @@ export function generatePianoXml(config:{
     if(rules.oneHandAtATime)rhythmic[1]=rhythmic[0].map(e=>({...e}));
     const rendered:Event[][]=[[],[]];
     for(let hand=0;hand<2;hand++)for(const e of rhythmic[hand]){
-      const ordinal=globalEvent++;
+      const ordinal=rules.oneHandAtATime?rendered[hand].length+ m*100:globalEvent++;
       let active=!e.rest;
       if(rules.oneHandAtATime&&active){
         const target=rules.tenPercentHand==='none'?(ordinal%2):(
