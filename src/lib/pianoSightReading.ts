@@ -8,7 +8,7 @@ export type PianoStaffSettings = {
 export type PianoRules = { oneHandAtATime: boolean; matchingRhythm: boolean;
   tenPercentHand: 'none' | 'right' | 'left'; sameDirection: boolean };
 const STEPS = ['C','D','E','F','G','A','B'];
-const TYPES: Record<number,string> = {1:'16th',2:'eighth',3:'eighth',4:'quarter',6:'quarter',8:'half'};
+const TYPES: Record<number,string> = {1:'16th',2:'eighth',3:'eighth',4:'quarter',6:'quarter',8:'half',12:'half',16:'whole'};
 const escapeXml=(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 type Tone = {step:string;octave:number;degree:number};
 type Event = RhythmEvent & {tone?:Tone};
@@ -22,12 +22,72 @@ const notes=(staff:PianoStaffSettings):Tone[]=>{
   return all;
 };
 const rest=(e:RhythmEvent):Event=>({...e,rest:true,beams:undefined});
-function encode(events:Event[],staff:number){
-  return events.map(e=>{
+
+/** Conventional engraving: all rests are compressed at beat boundaries and
+ * beams are reconstructed from actual sounding notes, never inherited from a
+ * different hand's rhythm (which would leave beams floating over rests).
+ */
+export function normalizePianoNotation(events:readonly Event[],beats:number):Event[]{
+  const full=beats*4;
+  if(events.reduce((n,e)=>n+e.units,0)!==full)throw new Error('משך התיבה אינו תואם למשקל');
+  const out:Event[]=[];
+  let position=0;
+  let i=0;
+  while(i<events.length){
+    const e=events[i];
+    if(!e.rest){out.push({...e,beams:undefined});position+=e.units;i++;continue;}
+    let run=0;
+    while(i<events.length&&events[i].rest){run+=events[i].units;i++;}
+    if(run===full){out.push({units:full,rest:true,sourceId:e.sourceId});position+=run;continue;}
+    // Split at quarter-beat boundaries. A 16th rest is retained only when
+    // a sounding note actually divides the beat; longer silence is consolidated.
+    while(run>0){
+      const leftInBeat=4-position%4;
+      let take=Math.min(run,leftInBeat);
+      const pieces:number[]=[];
+      while(take>0){
+        const value=take>=4?4:take>=3?3:take>=2?2:1;
+        pieces.push(value);take-=value;
+      }
+      for(const units of pieces){out.push({units,rest:true,sourceId:e.sourceId});position+=units;run-=units;}
+    }
+  }
+  // Make beams inside a single quarter-note beat; isolated short notes
+  // receive flags. No beam crosses a rest or a beat boundary.
+  const group=(indices:number[])=>{
+    if(indices.length<2)return;
+    indices.forEach((index,n)=>{
+      const event=out[index];
+      const beams:NonNullable<RhythmEvent['beams']>={1:n===0?'begin':n===indices.length-1?'end':'continue'};
+      // Pair consecutive 16ths inside the main beam. No dangling second beams.
+      if(event.units===1){
+        const prev=n>0&&out[indices[n-1]].units===1;
+        const next=n+1<indices.length&&out[indices[n+1]].units===1;
+        if(prev||next)beams[2]=prev?(next?'continue':'end'):'begin';
+      }
+      event.beams=beams;
+    });
+  };
+  let at=0,chunk:number[]=[];
+  for(let j=0;j<out.length;j++){
+    const e=out[j];
+    if(e.rest||e.units>2){group(chunk);chunk=[];}
+    else chunk.push(j);
+    at+=e.units;
+    if(at%4===0){group(chunk);chunk=[];}
+  }
+  group(chunk);
+  return out;
+}
+function encode(events:Event[],staff:number,beats:number){
+  return normalizePianoNotation(events,beats).map(e=>{
     let s='<note>';
-    if(e.rest)s+='<rest/>';else s+='<pitch><step>'+e.tone!.step+'</step><octave>'+e.tone!.octave+'</octave></pitch>';
+    if(e.rest){
+      if(e.units===beats*4)s+='<rest measure="yes"/>';
+      else s+='<rest/>';
+    }else s+='<pitch><step>'+e.tone!.step+'</step><octave>'+e.tone!.octave+'</octave></pitch>';
     s+='<duration>'+e.units+'</duration><voice>'+staff+'</voice><type>'+TYPES[e.units]+'</type>';
-    if(e.units===3||e.units===6)s+='<dot/>';
+    if(e.units===3||e.units===6||e.units===12)s+='<dot/>';
     s+='<staff>'+staff+'</staff>';
     if(!e.rest&&e.beams)for(const level of [1,2] as const)if(e.beams[level])s+='<beam number="'+level+'">'+e.beams[level]+'</beam>';
     return s+'</note>';
@@ -120,8 +180,8 @@ export function generatePianoXml(config:{
     let measure='<measure number="'+(m+1)+'">';
     if(m===0)measure+='<attributes><divisions>4</divisions><key><fifths>'+config.fifths+'</fifths></key><time><beats>'+beats+'</beats><beat-type>4</beat-type></time><staves>2</staves><clef number="1"><sign>'+right.clef+'</sign><line>'+(right.clef==='F'?4:2)+'</line></clef><clef number="2"><sign>'+left.clef+'</sign><line>'+(left.clef==='F'?4:2)+'</line></clef></attributes>';
     if(m>0&&m%bars===0)measure+='<print new-system="yes"/>';
-    measure+=encode(output[0],1)+'<backup><duration>'+(beats*4)+'</duration></backup>'+encode(output[1],2);
-    if(config.doubleBar&&m%bars===bars-1)measure+='<barline location="right"><bar-style>light-light</bar-style></barline>';
+    measure+=encode(output[0],1,beats)+'<backup><duration>'+(beats*4)+'</duration></backup>'+encode(output[1],2,beats);
+    if(config.doubleBar&&m===totalBars-1)measure+='<barline location="right"><bar-style>light-light</bar-style></barline>';
     measures.push(measure+'</measure>');
   }
   const sum=count[0]+count[1];
