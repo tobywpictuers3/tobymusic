@@ -8,7 +8,7 @@ export type PianoStaffSettings = {
 export type PianoRules = { oneHandAtATime: boolean; matchingRhythm: boolean;
   tenPercentHand: 'none' | 'right' | 'left'; sameDirection: boolean };
 const STEPS = ['C','D','E','F','G','A','B'];
-const TYPES: Record<number,string> = {1:'16th',2:'eighth',3:'eighth',4:'quarter',6:'quarter',8:'half',12:'half',16:'whole'};
+const TYPES: Record<number,string> = {1:'16th',2:'eighth',3:'eighth',4:'quarter',6:'quarter',8:'half',12:'half',16:'whole',20:'whole'};
 const escapeXml=(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 type Tone = {step:string;octave:number;degree:number};
 type Event = RhythmEvent & {tone?:Tone};
@@ -86,7 +86,7 @@ function encode(events:Event[],staff:number,beats:number){
       if(e.units===beats*4)s+='<rest measure="yes"/>';
       else s+='<rest/>';
     }else s+='<pitch><step>'+e.tone!.step+'</step><octave>'+e.tone!.octave+'</octave></pitch>';
-    s+='<duration>'+e.units+'</duration><voice>'+staff+'</voice><type>'+TYPES[e.units]+'</type>';
+    s+='<duration>'+e.units+'</duration><voice>'+staff+'</voice><type>'+(e.rest&&e.units===beats*4?'whole':TYPES[e.units])+'</type>';
     if(e.units===3||e.units===6||e.units===12)s+='<dot/>';
     s+='<staff>'+staff+'</staff>';
     if(!e.rest&&e.beams)for(const level of [1,2] as const)if(e.beams[level])s+='<beam number="'+level+'">'+e.beams[level]+'</beam>';
