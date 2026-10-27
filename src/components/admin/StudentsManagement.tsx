@@ -18,8 +18,7 @@ import { toast } from '@/hooks/use-toast';
 import StudentLessonHistory from './StudentLessonHistory';
 import StudentSchoolYearSummary from './StudentSchoolYearSummary';
 import MusicPlaySettingsEditor from './MusicPlaySettingsEditor';
-import TuitionSettingsCard from './TuitionSettingsCard';
-import { getTuitionSettings, type TuitionSettings } from '@/lib/tuitionSettings';
+import { calculateCohortAnnualRate, getCohortDiscountAmount, getCohortSchoolYear, getTuitionSettings, type TuitionSettings } from '@/lib/tuitionSettings';
 import {
   calculateBaseAnnualTarget,
   ensureSchoolYearRollover,
@@ -411,8 +410,6 @@ const StudentsManagement = () => {
 
   return (
     <div className="space-y-6">
-      <TuitionSettingsCard onSaved={handleTuitionSettingsSaved} />
-
       <Card className="card-gradient card-shadow">
         <CardHeader>
           <div className="flex justify-between items-center">
@@ -591,7 +588,16 @@ const StudentsManagement = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><Label htmlFor="startDate">תאריך הצטרפות</Label><Input id="startDate" type="date" value={studentForm.startDate} onChange={(e) => setStudentForm({...studentForm, startDate: e.target.value})} /></div>
+              <div className="rounded-lg border-2 border-primary/40 bg-primary/5 p-3 md:col-span-2">
+                <Label htmlFor="startDate" className="font-semibold">תאריך תחילת לימודים מקורי (קובע שנת הצטרפות והנחת ותק)</Label>
+                <Input id="startDate" type="date" value={studentForm.startDate} onChange={(e) => setStudentForm({...studentForm, startDate: e.target.value})} />
+                {studentForm.startDate && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    שנת הצטרפות: {getCohortSchoolYear(studentForm.startDate) ?? 'לא ידוע'} · הנחת ותק: ₪{getCohortDiscountAmount(tuitionSettings, studentForm.startDate)} · תעריף מחושב: ₪{calculateCohortAnnualRate(tuitionSettings, studentForm.startDate)}.
+                    המחיר השמור לא משתנה אוטומטית — החלה מתבצעת בתשלומים › תמחור, עם תצוגה מקדימה.
+                  </p>
+                )}
+              </div>
               <div><Label htmlFor="startingLessonNumber">מספר שיעור התחלתי</Label><NumberStepper id="startingLessonNumber" value={studentForm.startingLessonNumber} onValueChange={(n) => setStudentForm({...studentForm, startingLessonNumber: Math.max(1, n)})} step={1} min={1} /></div>
             </div>
 
