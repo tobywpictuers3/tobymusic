@@ -27,8 +27,15 @@ replaceOrVerify(
   studentsPath,
   '<Label htmlFor="startDate">תאריך התחלה</Label>',
   '<Label htmlFor="startDate">תאריך הצטרפות</Label>',
-  '<Label htmlFor="startDate">תאריך הצטרפות</Label>',
+  '<Label htmlFor="startDate" className="font-semibold">תאריך תחילת לימודים מקורי (קובע שנת הצטרפות והנחת ותק)</Label>',
 );
+
+const currentStartDateLabel = '<Label htmlFor="startDate" className="font-semibold">תאריך תחילת לימודים מקורי (קובע שנת הצטרפות והנחת ותק)</Label>';
+// Later tuition UI revisions intentionally expanded the original label.
+// Accept that exact newer state without replacing it with stale copy.
+if (!fs.readFileSync(studentsPath, 'utf8').includes(currentStartDateLabel)) {
+  throw new Error('Current student start-date label is missing');
+}
 
 const paymentsPath = 'src/components/admin/PaymentManagement.tsx';
 replaceOrVerify(

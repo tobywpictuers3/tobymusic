@@ -29,6 +29,8 @@ jobs:
         run: npx tsc --noEmit --pretty false
       - name: Sight-reading source and Bravura rendering regression
         run: node scripts/test-sight-reading-engraving.mjs
+      - name: Piano grand-staff notation and musical rule regression
+        run: node scripts/test-piano-sight-reading.mjs
       - name: Sight-reading rhythm selection taxonomy
         run: node scripts/test-sight-reading-rhythm-filters.mjs
       - name: Sight-reading A4 print paging regression

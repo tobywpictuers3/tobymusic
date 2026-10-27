@@ -139,13 +139,13 @@ function replaceBetween(content, startMarker, endMarker, replacement, label) {
 
   source = replaceOnce(source, "    const paymentMethod = payments.find(p => p.studentId === editingCell.studentId)?.paymentMethod || 'cash';", "    const paymentMethod = getStudentPaymentMethod(editingCell.studentId);", 'payment edit method');
 
-  source = replaceOnce(
+  source = replaceBetween(
     source,
-    "  const getStudentPaymentMethod = (studentId: string): Payment['paymentMethod'] => {\n    return payments.find(p => p.studentId === studentId)?.paymentMethod || 'inactive';\n  };",
-    "  const getStudentPaymentMethod = (studentId: string): Payment['paymentMethod'] => {\n    const selectedYearPayment = academicMonths\n      .map(month => getPaymentForMonth(studentId, month.key))\n      .find((payment): payment is Payment => Boolean(payment));\n    if (selectedYearPayment) return selectedYearPayment.paymentMethod;\n    return students.find(student => student.id === studentId)?.paymentMethod || 'inactive';\n  };",
+    "  const getStudentPaymentMethod = (studentId: string): Payment['paymentMethod'] => {",
+    '  const getAcademicMonthKey =',
+    "  const getStudentPaymentMethod = (studentId: string): Payment['paymentMethod'] => {\n    const selectedYearPayment = academicMonths\n      .map(month => getPaymentForMonth(studentId, month.key))\n      .find((payment): payment is Payment => Boolean(payment));\n    if (selectedYearPayment) return selectedYearPayment.paymentMethod;\n    return students.find(student => student.id === studentId)?.paymentMethod || 'inactive';\n  };\n\n",
     'year scoped method',
   );
-
   source = replaceOnce(source, "<th className=\"sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border w-[5%] text-center px-0 py-2 font-bold text-xs\">אמצ'ת</th>", "<th className=\"sticky top-0 z-30 bg-muted/95 dark:bg-muted/80 text-foreground border-b border-border w-[8%] text-center px-0 py-2 font-bold text-xs\">אמצעי</th>", 'annual header');
 
   source = replaceOnce(

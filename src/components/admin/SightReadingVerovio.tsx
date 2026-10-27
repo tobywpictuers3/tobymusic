@@ -180,7 +180,9 @@ export async function makeSightReadingPdf(xml:string):Promise<Blob>{
   const {jsPDF}=await import('jspdf');
   const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
   const blank=await renderOfficialBlank();
-  const rowsPerPage=8;
+  // A piano grand staff is roughly twice as tall as a single staff.
+  // Four spacious systems per A4 page prevent shrinking it into an unreadable slot.
+  const rowsPerPage=xml.includes('<staves>2</staves>')?4:8;
   const topY=26,bottomY=254;
   const slot=(bottomY-topY)/rowsPerPage;
   for(let i=0;i<chunks.length;i++){
