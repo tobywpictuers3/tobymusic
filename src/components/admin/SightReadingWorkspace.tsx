@@ -337,7 +337,7 @@ export default function SightReadingWorkspace() {
   };
   return <div className="rounded-xl border bg-background p-3 sm:p-4 space-y-3" dir="rtl">
     <h2 className="font-bold text-lg">מחולל קריאה מהדף</h2>
-    <label className="flex gap-2 items-center"><input type="checkbox" checked={piano} onChange={e=>setPiano(e.target.checked)}/>פסנתר — שתי חמשות</label>
+    <label className="flex gap-2 items-center"><input type="checkbox" checked={piano} onChange={e=>{setPiano(e.target.checked);setBars(e.target.checked?2:4);}}/>פסנתר — שתי חמשות</label>
     {piano&&<p className="text-sm text-muted-foreground">ההגדרות הראשיות שלהלן מיועדות לחמשה העליונה (יד ימין). בהמשך הדף תמצאי הגדרות עצמאיות לחמשה התחתונה (יד שמאל).</p>}
     
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-sm [&_select]:py-1 [&_input]:py-1">
