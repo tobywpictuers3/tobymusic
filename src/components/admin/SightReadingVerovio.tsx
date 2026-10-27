@@ -61,7 +61,8 @@ export function EngravedScore({xml}:{xml:string}) {
     setPages([]);setError('');
     verovioClass().then(C=>{
       if(!active)return;
-      const t=makeToolkit(C,xml,{pageWidth:2250,pageHeight:3050,scale:42,breaks:'encoded',adjustPageHeight:false,svgViewBox:true});
+      const isPiano=xml.includes('<staves>2</staves>');
+      const t=makeToolkit(C,xml,{pageWidth:2250,pageHeight:3050,scale:isPiano?48.3:42,breaks:'encoded',adjustPageHeight:false,svgViewBox:true});
       const count=t.getPageCount();
       if(!count||count>30)throw new Error('לא התקבלו דפי תיווי תקינים');
       const imgs=Array.from({length:count},(_,i)=>svgImageUrl(t.renderToSVG(i+1)));
@@ -182,8 +183,9 @@ export async function makeSightReadingPdf(xml:string):Promise<Blob>{
   const blank=await renderOfficialBlank();
   // A piano grand staff is roughly twice as tall as a single staff.
   // Four spacious systems per A4 page prevent shrinking it into an unreadable slot.
-  const rowsPerPage=xml.includes('<staves>2</staves>')?4:8;
-  const topY=26,bottomY=254;
+  const isPiano=xml.includes('<staves>2</staves>');
+  const rowsPerPage=isPiano?3:8;
+  const topY=isPiano?13:26,bottomY=isPiano?262:254;
   const slot=(bottomY-topY)/rowsPerPage;
   for(let i=0;i<chunks.length;i++){
     if(i>0&&i%rowsPerPage===0)pdf.addPage();
@@ -192,9 +194,9 @@ export async function makeSightReadingPdf(xml:string):Promise<Blob>{
       // A 42mm page caused Verovio to split some busy systems across
       // two internal pages, aborting ALL PDF generation. Give the renderer
       // enough vertical room and let it crop to notation height.
-      pageWidth:2100,pageHeight:1500,scale:76,breaks:'none',
+      pageWidth:2100,pageHeight:1500,scale:isPiano?87.4:76,breaks:'none',
       adjustPageHeight:true,svgViewBox:true,
-      pageMarginLeft:125,pageMarginRight:125,pageMarginTop:30,pageMarginBottom:30,
+      pageMarginLeft:isPiano?65:125,pageMarginRight:isPiano?65:125,pageMarginTop:30,pageMarginBottom:30,
       noJustification:true,header:'none',footer:'none',
     });
     const count=toolkit.getPageCount();
@@ -239,7 +241,7 @@ export async function makeSightReadingPdf(xml:string):Promise<Blob>{
     ctx.drawImage(canvas,sx,sy,sw,sh,0,0,sw,sh);
     const png=cropped.toDataURL('image/png');
     const ratio=sh/sw;
-    const width=Math.min(185,(slot-2)/ratio);
+    const width=Math.min(isPiano?195:185,(slot-2)/ratio);
     const height=width*ratio;
     const y=topY+(i%rowsPerPage)*slot+(slot-height)/2;
     pdf.addImage(png,'PNG',(210-width)/2,y,width,height,undefined,'FAST');

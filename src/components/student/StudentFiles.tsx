@@ -1,5 +1,5 @@
 // StudentFiles.tsx
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import type { FileEntry } from "@/lib/types";
 import { addFile, deleteFile, getFiles, getSightReadingArchive } from "@/lib/storage";
 import { EngravedScore } from "@/components/admin/SightReadingVerovio";
 import { workerApi } from "@/lib/workerApi";
+import { hybridSync } from "@/lib/hybridSync";
 
 import DocumentEditor, { editorSourceFromFile } from "./DocumentEditor";
 
@@ -57,6 +58,23 @@ async function fetchBlob(url: string): Promise<Blob> {
 export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [refreshTick, setRefreshTick] = useState(0);
   const [visibleReadingId,setVisibleReadingId] = useState<string | null>(null);
+  const [refreshingFiles,setRefreshingFiles]=useState(false);
+  useEffect(()=>{
+    const refresh=()=>setRefreshTick(tick=>tick+1);
+    window.addEventListener('toby:canonical-sync-applied',refresh);
+    return()=>window.removeEventListener('toby:canonical-sync-applied',refresh);
+  },[]);
+  const refreshFromCloud=async()=>{
+    setRefreshingFiles(true);
+    try{
+      const result=await hybridSync.pullCanonicalLatest();
+      if(!result.success)throw new Error(result.message||'קריאת קבצים נכשלה');
+      setRefreshTick(tick=>tick+1);
+      toast({title:'עודכן',description:'רשימת הקבצים עודכנה מתוך Dropbox'});
+    }catch(e){toast({title:'לא ניתן לרענן מהענן',description:String(e instanceof Error?e.message:e),variant:'destructive'});}
+    finally{setRefreshingFiles(false);}
+  };
+
 
   const files = useMemo(() => {
     const all = getFiles();
@@ -305,8 +323,8 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>קבצים</CardTitle>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setRefreshTick((x) => x + 1)}>
-            רענון
+          <Button variant="secondary" disabled={refreshingFiles} onClick={() => void refreshFromCloud()}>
+            {refreshingFiles ? "טוען מהענן…" : "רענון מ-Dropbox"}
           </Button>
           <Button variant="secondary" onClick={handleOpenEditPicker}>
             עריכת קובץ

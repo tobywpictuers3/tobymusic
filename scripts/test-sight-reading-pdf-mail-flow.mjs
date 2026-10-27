@@ -3,10 +3,10 @@ import fs from 'node:fs';
 const pdf=fs.readFileSync('src/components/admin/SightReadingVerovio.tsx','utf8');
 const workspace=fs.readFileSync('src/components/admin/SightReadingWorkspace.tsx','utf8');
 assert.match(pdf,/paginateSightReadingXml\(xml,1\)/,'one musical system per render');
-assert.match(pdf,/const rowsPerPage=xml\.includes\('<staves>2<\/staves>'\)\?4:8/,'four grand-staff or eight single-staff systems per A4');
+assert.match(pdf,/const rowsPerPage=isPiano\?3:8/,'three grand-staff or eight single-staff systems per A4');
 assert.match(pdf,/const slot=\(bottomY-topY\)\/rowsPerPage/,'distribute systems vertically');
 assert.match(pdf,/getImageData/,'crop glyph ink instead of empty SVG page');
-assert.ok(pdf.includes('const width=Math.min(185,(slot-2)/ratio);'),'scale cropped score into A4 slot');
+assert.ok(pdf.includes('const width=Math.min(isPiano?195:185,(slot-2)/ratio);'),'maximize cropped piano music width while preserving ratio');
 assert.match(pdf,/pdf\.addImage\(blank,'PNG'/,'letterhead on every sheet');
 assert.match(pdf,/toby-music-logo\.png/,'use in-repository logo');
 const mail=workspace.slice(workspace.indexOf('const sendReadingEmail='),workspace.indexOf('const assignPdf='));
@@ -18,3 +18,9 @@ assert.ok(mail.indexOf('addMessage(')>mail.indexOf('teacherDirectSend('),'intern
 assert.ok(mail.indexOf('hybridSync.manualSync()')>mail.indexOf('addFile('),'cloud sync must precede Gmail');
 assert.ok(mail.includes('window.confirm('),'explicit recipient send confirmation required');
 console.log('PASS A4 print slots, TOBY stationery and one-action assign-then-mail ordering');
+
+const studentFiles=fs.readFileSync('src/components/student/StudentFiles.tsx','utf8');
+assert.ok(workspace.includes('await verifyAssignedFiles(item,targetStudents.map(student=>student.id))'),'assignment must have canonical Dropbox read-back');
+assert.ok(mail.includes('await verifyAssignedFiles(item,recipients.map(student=>student.id))'),'Gmail is gated by verified canonical association');
+assert.ok(studentFiles.includes('hybridSync.pullCanonicalLatest()'),'student refresh reads canonical storage rather than a local state tick');
+console.log('PASS: PDF delivery checks canonical student association and refresh');

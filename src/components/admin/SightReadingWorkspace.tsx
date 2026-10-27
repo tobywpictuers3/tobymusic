@@ -4,6 +4,7 @@ import { EngravedPattern, EngravedScore, makeSightReadingPdf } from './SightRead
 import { addSightReadingArchiveItem, getSightReadingArchive, getStudentsForCurrentYearLists, getFiles, addFile, isDevMode, type SightReadingArchiveItem } from '@/lib/storage';
 import { workerApi, teacherDirectMailStatus, teacherDirectSend, teacherDirectReceipt, probeStudentsGmailOauth } from '@/lib/workerApi';
 import { hybridSync } from '@/lib/hybridSync';
+import { downloadCanonicalDropboxLatest } from '@/lib/canonicalDropboxRead';
 import { addMessage, getMessages } from '@/lib/messages';
 import { RHYTHM_GROUPS, updatePatternSelection } from '@/lib/sightReadingRhythmGroups';
 import { searchSightReadingArchive } from '@/lib/sightReadingSearch';
@@ -203,6 +204,8 @@ export default function SightReadingWorkspace() {
       stage='אימות שמירה בענן';
       const synced=await hybridSync.manualSync();
       if(!synced)throw new Error('השמירה ב-Dropbox לא אומתה');
+      stage='אימות שיוך קבצים ב-Dropbox';
+      await verifyAssignedFiles(item,recipients.map(student=>student.id));
       for(const student of recipients){
         stage='Gmail';
         const subject='תרגיל קריאה מהדף — TOBY Music';
@@ -239,6 +242,26 @@ export default function SightReadingWorkspace() {
         ' אין לנסות שוב לפני בדיקת אישור השליחה בשרת.');
     }finally{setBusy(false);}
   };
+  /** A cloud upload ACK is not a student assignment receipt. Read back the
+   * canonical latest snapshot and verify each student/attachment association.
+   * No PII or private URLs are logged.
+   */
+  const verifyAssignedFiles=async(item:SightReadingArchiveItem,studentIdsToVerify:string[])=>{
+    const result=await downloadCanonicalDropboxLatest();
+    if(!result.success||!result.data)throw new Error('לא ניתן לקרוא חזרה את נתוני Dropbox העדכניים');
+    const raw=result.data as Record<string,unknown>;
+    const files=(raw.musicSystem_files??raw.files) as unknown;
+    if(!Array.isArray(files))throw new Error('רשימת הקבצים אינה זמינה בגיבוי הקנוני; השיוך לא אומת');
+    const marker='sight-reading:'+item.id;
+    const missing=studentIdsToVerify.filter(studentId=>!files.some((entry:unknown)=>{
+      if(!entry||typeof entry!=='object')return false;
+      const file=entry as Record<string,unknown>;
+      return file.studentId===studentId&&typeof file.description==='string'&&file.description.includes(marker)&&
+        typeof file.dropboxPath==='string'&&file.dropboxPath.length>0&&
+        typeof file.webViewLink==='string'&&file.webViewLink.length>0;
+    }));
+    if(missing.length)throw new Error('השיוך לא אושר ב-Dropbox עבור '+missing.length+' תלמידות. אין אישור מסירה.');
+  };
   const assignPdf=async(item:SightReadingArchiveItem)=>{
     if(isDevMode()){setDeliveryStatus('לא ניתן לשלוח מתוך סביבת פיתוח');return;}
     if(!studentIds.length){setDeliveryStatus('בחרי לפחות תלמידה אחת');return;}
@@ -271,7 +294,8 @@ export default function SightReadingWorkspace() {
       setDeliveryStatus('מאמת שמירה של '+added+' שיוכים בענן…');
       const synced=await hybridSync.manualSync();
       if(!synced)throw new Error('הקובץ הועלה, אך שיוך התלמידה עדיין לא נשמר בענן. אין לשלוח לפני תיקון הסנכרון.');
-      setDeliveryStatus('שיוך '+added+' קבצים סונכרן ל-Dropbox. נדרש אימות צפייה מתוך חשבון תלמידה.');
+      await verifyAssignedFiles(item,targetStudents.map(student=>student.id));
+      setDeliveryStatus('אומת ב-Dropbox שיוך התרגיל ל-'+targetStudents.length+' תלמידות. יש לבדוק פתיחה בחשבון התלמידה.');
     }catch(e){setDeliveryStatus('לא ניתן להשלים שיתוף: '+String(e instanceof Error?e.message:e));}
     finally{setBusy(false);}
   };
