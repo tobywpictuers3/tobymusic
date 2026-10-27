@@ -338,6 +338,7 @@ export default function SightReadingWorkspace() {
   return <div className="rounded-xl border bg-background p-3 sm:p-4 space-y-3" dir="rtl">
     <h2 className="font-bold text-lg">מחולל קריאה מהדף</h2>
     <label className="flex gap-2 items-center"><input type="checkbox" checked={piano} onChange={e=>setPiano(e.target.checked)}/>פסנתר — שתי חמשות</label>
+    {piano&&<p className="text-sm text-muted-foreground">ההגדרות הראשיות שלהלן מיועדות לחמשה העליונה (יד ימין). בהמשך הדף תמצאי הגדרות עצמאיות לחמשה התחתונה (יד שמאל).</p>}
     
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-sm [&_select]:py-1 [&_input]:py-1">
       <label>כותרת<input className="block w-full border rounded p-2" value={title} onChange={e=>setTitle(e.target.value)}/></label>
@@ -379,7 +380,7 @@ export default function SightReadingWorkspace() {
       <label className="flex gap-2"><input type="checkbox" checked={pianoRules.matchingRhythm} onChange={e=>changePianoRules({matchingRhythm:e.target.checked})}/>מקצבים זהים בשתי החמשות</label>
       <label className="flex gap-2"><input type="checkbox" checked={pianoRules.tenPercentHand!=='none'} onChange={e=>changePianoRules({tenPercentHand:e.target.checked?'right':'none'})}/>חלוקה 10%–90%</label>
       {pianoRules.tenPercentHand!=='none'&&<select className="border rounded p-2" value={pianoRules.tenPercentHand} onChange={e=>changePianoRules({tenPercentHand:e.target.value as PianoRules['tenPercentHand']})}><option value="right">10% ביד ימין</option><option value="left">10% ביד שמאל</option></select>}
-      <label className="flex gap-2"><input type="checkbox" checked={pianoRules.sameDirection} onChange={e=>changePianoRules({sameDirection:e.target.checked})}/>תנועה באותו כיוון (בפיתוח)</label>
+      <label className="flex gap-2"><input type="checkbox" checked={pianoRules.sameDirection} onChange={e=>changePianoRules({sameDirection:e.target.checked})}/>תנועה מלודית באותו כיוון</label>
     </fieldset>}
     <section className="border rounded px-2 py-1">
       <div className="flex items-center justify-between gap-2 text-sm">
@@ -428,9 +429,9 @@ export default function SightReadingWorkspace() {
       
     </div>
     {error&&<p className="text-red-600" role="alert">{error}</p>}
-    {lines&&<details className="border rounded p-2" id="sight-reading-preview">
-       <summary className="cursor-pointer font-medium">הצגת התרגיל החדש — {documentTitle} (16 שורות)</summary>
-       <EngravedScore xml={makeXML(lines,documentTitle,beats,clef,fifths,doubleBar)}/>
+    {selectedArchive&&<details open className="border rounded p-2" id="sight-reading-preview">
+       <summary className="cursor-pointer font-medium">תצוגת התרגיל — {selectedArchive.title}</summary>
+       <EngravedScore xml={selectedArchive.xml}/>
      </details>}
     <section className="border rounded p-2 space-y-2">
       <h3 className="font-bold text-sm">מאגר התרגילים ({archive.length})</h3>
@@ -457,6 +458,6 @@ export default function SightReadingWorkspace() {
       {archiveStatus&&<p role="status">{archiveStatus}</p>}
       <p className="text-xs text-muted-foreground">שיוך PDF משתמש במנגנון הקבצים הקיים; שליחה כצרופה במייל ואימות סנכרון בענן טרם הושלמו.</p>
     </section>
-    <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">תרגול פסנתר בשתי חמשות (בפיתוח)</summary>בהמשך, לאחר הגדרת כללי שתי הידיים והמקצב.</details>
+
   </div>;
 }
