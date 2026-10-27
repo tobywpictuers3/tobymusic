@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/c
 import { Input } from '@/components/safe-ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
 import { Button } from '@/components/ui/button';
-import { getStudentsForCurrentYearLists } from '@/lib/storage';
+import { getStudents } from '@/lib/storage';
 import { getPriorYearBalanceRecords } from '@/lib/priorYearBalances';
 import {
   editPriorYearBalanceDurably,
@@ -53,7 +53,8 @@ export default function PriorYearBalancesCard({ selectedBaseYear }: Props) {
   const [cashModeId, setCashModeId] = useState<string | null>(null);
   const [cashDates, setCashDates] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
-  const students = getStudentsForCurrentYearLists();
+  // Closed-year balances must include inactive/former students, not only the current-year roster.
+  const students = getStudents();
 
   const reload = () => {
     setRows((getPriorYearBalanceRecords() as ManagedPriorYearBalanceRecord[])
@@ -67,8 +68,7 @@ export default function PriorYearBalancesCard({ selectedBaseYear }: Props) {
     return () => window.removeEventListener('toby:storage-imported', imported);
   }, [targetSchoolYear]);
 
-  const visibleStudentIds = new Set(students.map(student => student.id));
-  const displayRows = rows.filter(row => visibleStudentIds.has(row.studentId));
+  const displayRows = rows;
   const actionable = displayRows.filter(row => row.signedBalance !== 0 || row.requiresVerification);
   const balancedCount = displayRows.length - actionable.length;
   const creditTotal = actionable
