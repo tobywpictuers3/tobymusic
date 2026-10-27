@@ -7,6 +7,7 @@ import { hybridSync } from '@/lib/hybridSync';
 import { addMessage, getMessages } from '@/lib/messages';
 import { RHYTHM_GROUPS, updatePatternSelection } from '@/lib/sightReadingRhythmGroups';
 import { searchSightReadingArchive } from '@/lib/sightReadingSearch';
+import { generatePianoXml, type PianoRules } from '@/lib/pianoSightReading';
 
 type Note = RhythmEvent & { step?: string; octave?: number; alter?: number };
 const STEPS = ['C','D','E','F','G','A','B'];
@@ -56,6 +57,16 @@ export default function SightReadingWorkspace() {
   const [beats,setBeats]=useState<2|3|4|5>(4);
   const [bars,setBars]=useState(4);
   const [clef,setClef]=useState<'G'|'F'>('G');
+  const [piano,setPiano]=useState(false);
+  const [leftClef,setLeftClef]=useState<'G'|'F'>('F');
+  const [leftLow,setLeftLow]=useState('C3');
+  const [leftHigh,setLeftHigh]=useState('G4');
+  const [leftAllowed,setLeftAllowed]=useState<number[]>([0,1,2,3,4,5,6]);
+  const [leftInterval,setLeftInterval]=useState<'steps'|'thirds'|'fifth'|'wide'>('fifth');
+  const [leftRepeatShort,setLeftRepeatShort]=useState(false);
+  const [leftPatterns,setLeftPatterns]=useState<string[]>(RHYTHM_PATTERNS.map(p=>p.id));
+  const [pianoRules,setPianoRules]=useState<PianoRules>({oneHandAtATime:false,matchingRhythm:false,tenPercentHand:'none',sameDirection:false});
+  const changePianoRules=(rules:Partial<PianoRules>)=>setPianoRules(prev=>({...prev,...rules}));
   const [fifths,setFifths]=useState(0);
   const [title,setTitle]=useState('');
   const [allowed,setAllowed]=useState<number[]>([0,1,2,3,4,5,6]);
@@ -266,6 +277,18 @@ export default function SightReadingWorkspace() {
   };
   const generate=()=>{
     try {
+      if(piano){
+        const nextSerial=Math.max(0,...getSightReadingArchive().map(item=>item.serial))+1;
+        const nextTitle=title.trim()||'תרגיל פסנתר מספר '+nextSerial;
+        const xml=generatePianoXml({title:nextTitle,beats,bars,rows:16,fifths,doubleBar,
+          right:{clef,low,high,allowed,intervalMode,repeatShort,patterns:approved},
+          left:{clef:leftClef,low:leftLow,high:leftHigh,allowed:leftAllowed,intervalMode:leftInterval,repeatShort:leftRepeatShort,patterns:leftPatterns},
+          rules:pianoRules});
+        const item:SightReadingArchiveItem={id:randomId(),serial:nextSerial,createdAt:new Date().toISOString(),title:nextTitle,xml,
+          metadata:{meter:beats+'/4',barsPerLine:bars,clef:'piano',low,high,allowedSteps:allowed.map(i=>STEPS[i]),patternIds:approved,intervalMode,repeatedShortNotes:repeatShort}};
+        addSightReadingArchiveItem(item);setArchive(getSightReadingArchive());setSelectedArchive(item);
+        setArchiveStatus('התרגיל נוצר. נדרש אימות שמירה בענן.');setLines(null);setDocumentTitle(nextTitle);setError('');return;
+      }
       const lowNote=NOTE_OPTIONS.find(n=>n.value===low),highNote=NOTE_OPTIONS.find(n=>n.value===high);
       if(!lowNote||!highNote||lowNote.degree>highNote.degree||!allowed.length) throw new Error('יש לבחור תווים ומנעד תקין');
       const pitchChoices=[] as {step:string;octave:number;degree:number}[];
@@ -314,6 +337,7 @@ export default function SightReadingWorkspace() {
   };
   return <div className="rounded-xl border bg-background p-3 sm:p-4 space-y-3" dir="rtl">
     <h2 className="font-bold text-lg">מחולל קריאה מהדף</h2>
+    <label className="flex gap-2 items-center"><input type="checkbox" checked={piano} onChange={e=>setPiano(e.target.checked)}/>פסנתר — שתי חמשות</label>
     
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-sm [&_select]:py-1 [&_input]:py-1">
       <label>כותרת<input className="block w-full border rounded p-2" value={title} onChange={e=>setTitle(e.target.value)}/></label>
@@ -337,6 +361,26 @@ export default function SightReadingWorkspace() {
       <label className="flex gap-2 items-center"><input type="checkbox" checked={repeatShort} onChange={e=>setRepeatShort(e.target.checked)}/>שמיניות ושש־עשריות רצופות באותו צליל בלבד</label>
       
     </fieldset>
+    {piano&&<fieldset className="border rounded p-3 space-y-2 text-sm">
+      <legend className="font-bold">חמשה תחתונה — יד שמאל</legend>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <label>מפתח<select className="block w-full border rounded p-2" value={leftClef} onChange={e=>setLeftClef(e.target.value as 'G'|'F')}><option value="G">סול</option><option value="F">פה</option></select></label>
+        <label>צליל נמוך<select className="block w-full border rounded p-2" value={leftLow} onChange={e=>setLeftLow(e.target.value)}>{NOTE_OPTIONS.map(n=><option key={n.value} value={n.value}>{n.label} ({n.value})</option>)}</select></label>
+        <label>צליל גבוה<select className="block w-full border rounded p-2" value={leftHigh} onChange={e=>setLeftHigh(e.target.value)}>{NOTE_OPTIONS.map(n=><option key={n.value} value={n.value}>{n.label} ({n.value})</option>)}</select></label>
+        <label>מרווחים<select className="block w-full border rounded p-2" value={leftInterval} onChange={e=>setLeftInterval(e.target.value as typeof leftInterval)}><option value="steps">עד סקונדה</option><option value="thirds">עד טרצה</option><option value="fifth">עד קווינטה</option><option value="wide">עד אוקטבה</option></select></label>
+      </div>
+      <div className="flex flex-wrap gap-3">{LABELS.map((label,i)=><label key={i} className="flex gap-1 items-center"><input type="checkbox" checked={leftAllowed.includes(i)} onChange={e=>setLeftAllowed(prev=>e.target.checked?[...prev,i].sort():prev.filter(n=>n!==i))}/>{label}</label>)}</div>
+      <label className="flex gap-2"><input type="checkbox" checked={leftRepeatShort} onChange={e=>setLeftRepeatShort(e.target.checked)}/>שמיניות ושש־עשריות רצופות באותו צליל בלבד</label>
+      <details><summary>מקצבי יד שמאל ({leftPatterns.length})</summary><div className="grid grid-cols-4 md:grid-cols-8 gap-1">{RHYTHM_PATTERNS.map(p=><label key={p.id}><input type="checkbox" checked={leftPatterns.includes(p.id)} onChange={e=>setLeftPatterns(prev=>e.target.checked?[...prev,p.id]:prev.filter(id=>id!==p.id))}/>{p.id}</label>)}</div></details>
+    </fieldset>}
+    {piano&&<fieldset className="border rounded p-3 space-y-2 text-sm">
+      <legend className="font-bold">כללי התיאום בין הידיים</legend>
+      <label className="flex gap-2"><input type="checkbox" checked={pianoRules.oneHandAtATime} onChange={e=>changePianoRules({oneHandAtATime:e.target.checked})}/>רק יד אחת מנגנת בכל רגע</label>
+      <label className="flex gap-2"><input type="checkbox" checked={pianoRules.matchingRhythm} onChange={e=>changePianoRules({matchingRhythm:e.target.checked})}/>מקצבים זהים בשתי החמשות</label>
+      <label className="flex gap-2"><input type="checkbox" checked={pianoRules.tenPercentHand!=='none'} onChange={e=>changePianoRules({tenPercentHand:e.target.checked?'right':'none'})}/>חלוקה 10%–90%</label>
+      {pianoRules.tenPercentHand!=='none'&&<select className="border rounded p-2" value={pianoRules.tenPercentHand} onChange={e=>changePianoRules({tenPercentHand:e.target.value as PianoRules['tenPercentHand']})}><option value="right">10% ביד ימין</option><option value="left">10% ביד שמאל</option></select>}
+      <label className="flex gap-2"><input type="checkbox" checked={pianoRules.sameDirection} onChange={e=>changePianoRules({sameDirection:e.target.checked})}/>תנועה באותו כיוון (בפיתוח)</label>
+    </fieldset>}
     <section className="border rounded px-2 py-1">
       <div className="flex items-center justify-between gap-2 text-sm">
         <strong>תבניות מקצב: {approved.length}/74</strong>
