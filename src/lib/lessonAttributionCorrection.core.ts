@@ -13,6 +13,7 @@ export interface CorrectionLesson {
   endTime?: string;
   status: string;
   countedInSchoolYear?: number;
+  mergedDuplicateOf?: string;
   correctionAudit?: { correctionId: string; originalStudentId: string; targetSchoolYear: number };
 }
 
@@ -41,12 +42,13 @@ export interface LessonAttributionSpec {
   reason: string;
 }
 
-export type CorrectionAction = 'reattribute' | 'already_applied';
+export type CorrectionAction = 'reattribute' | 'merged_duplicate' | 'already_applied';
 
 export interface CorrectionPlanItem {
   lessonId: string;
   date: string;
   action: CorrectionAction;
+  duplicateOf?: string;
 }
 
 export interface CorrectionPlan {
@@ -70,7 +72,7 @@ export const AYALA_ALPHA_CORRECTION: LessonAttributionSpec = {
   fromStudentId: 'mta9j48yncgyygkpbgm',
   toStudentId: 'mtiqnlocbewy2afa217',
   targetSchoolYear: 2027,
-  lessonIds: ['mta9jhzskkn6onmv7lj'],
+  lessonIds: ['mta9jhzskkn6onmv7lj', 'mti96cdrqxtnu5qb0d', 'mtia7ee1a0yk934tp05'],
   reason: 'אושר ע"י בעלת המערכת: שיעורים שבוצעו בשנה שעברה נספרים בחוזה תשפ"ז',
 };
 
@@ -117,8 +119,8 @@ export const planLessonAttribution = (
       exceptions.push(`LESSON_OWNER_MISMATCH:${lessonId}`);
       continue;
     }
-    if (lesson.status !== 'completed') {
-      exceptions.push(`LESSON_NOT_COMPLETED:${lessonId}`);
+    if (lesson.status !== 'completed' && lesson.status !== 'cancelled') {
+      exceptions.push(`LESSON_STATUS_UNEXPECTED:${lessonId}`);
       continue;
     }
     // Guard against double counting: the active card must not already hold a
@@ -127,11 +129,12 @@ export const planLessonAttribution = (
       l.id !== lesson.id &&
       l.studentId === spec.toStudentId &&
       l.status === 'completed' &&
+      lesson.status === 'completed' &&
       l.date === lesson.date &&
       (l.startTime || '') === (lesson.startTime || ''),
     );
     if (twin) {
-      exceptions.push(`DUPLICATE_LESSON_ON_TARGET:${lessonId}~${twin.id}`);
+      items.push({ lessonId, date: lesson.date, action: 'merged_duplicate', duplicateOf: twin.id });
       continue;
     }
     items.push({ lessonId, date: lesson.date, action: 'reattribute' });
@@ -153,7 +156,7 @@ export const planLessonAttribution = (
   }
 
   const blocking = exceptions.filter(e => !e.includes('(report only'));
-  const pendingCount = items.filter(i => i.action === 'reattribute').length;
+  const pendingCount = items.filter(i => i.action !== 'already_applied').length;
   return { spec, items, candidateLessonIds, exceptions, canApply: blocking.length === 0, pendingCount };
 };
 
@@ -164,13 +167,15 @@ export const applyLessonAttributionToLessons = <L extends CorrectionLesson>(
   appliedAt: string,
 ): L[] => {
   if (!plan.canApply) throw new Error('CORRECTION_BLOCKED');
-  const ids = new Set(plan.items.filter(i => i.action === 'reattribute').map(i => i.lessonId));
+  const pending = new Map(plan.items.filter(i => i.action !== 'already_applied').map(i => [i.lessonId, i]));
   return lessons.map(lesson => {
-    if (!ids.has(lesson.id)) return lesson;
+    const action = pending.get(lesson.id);
+    if (!action) return lesson;
     return {
       ...lesson,
       studentId: plan.spec.toStudentId,
       countedInSchoolYear: plan.spec.targetSchoolYear,
+      ...(action.duplicateOf ? { mergedDuplicateOf: action.duplicateOf } : {}),
       correctionAudit: {
         correctionId: plan.spec.correctionId,
         originalStudentId: lesson.studentId,

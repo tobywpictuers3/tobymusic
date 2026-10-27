@@ -7,7 +7,12 @@ import {
 
 const lesson = { id: 'mta9jhzskkn6onmv7lj', studentId: 'mta9j48yncgyygkpbgm', date: '2026-08-26', startTime: '16:00', status: 'completed' };
 const base = () => ({
-  lessons: [{ ...lesson }],
+  lessons: [
+    { ...lesson },
+    { id: 'mti96cdrqxtnu5qb0d', studentId: 'mta9j48yncgyygkpbgm', date: '2026-09-01', startTime: '08:45', status: 'completed' },
+    { id: 'mtia7ee1a0yk934tp05', studentId: 'mta9j48yncgyygkpbgm', date: '2026-09-02', startTime: '16:45', status: 'cancelled' },
+    { id: 'active-duplicate', studentId: 'mtiqnlocbewy2afa217', date: '2026-09-01', startTime: '08:45', status: 'completed' },
+  ],
   payments: [{ id: 'p1', studentId: 'mtiqnlocbewy2afa217', month: '2026-09', amount: 1600, status: 'paid' }],
   studentIds: ['mtiqnlocbewy2afa217', 'mta9j48yncgyygkpbgm'],
   yearRecords: [],
@@ -31,13 +36,19 @@ describe('Ayala Alpha lesson attribution', () => {
     const plan2 = planLessonAttribution(spec, { ...data, lessons: once });
     expect(plan2.pendingCount).toBe(0);
     expect(applyLessonAttributionToLessons(plan2, once, 't2')).toEqual(once);
-    expect(once.length).toBe(1);
+    expect(once.length).toBe(4);
+    expect((once.find(l => l.id === 'mti96cdrqxtnu5qb0d') as any)?.mergedDuplicateOf).toBe('active-duplicate');
   });
 
-  test('blocks when the active card already has the same completed lesson', () => {
+  test('merges overlapping old lessons without double-counting and preserves cancelled sessions', () => {
     const data = base();
-    data.lessons.push({ ...lesson, id: 'twin', studentId: 'mtiqnlocbewy2afa217' });
-    expect(planLessonAttribution(spec, data).canApply).toBe(false);
+    const plan = planLessonAttribution(spec, data);
+    expect(plan.pendingCount).toBe(3);
+    expect(plan.items.find(i => i.lessonId === 'mti96cdrqxtnu5qb0d')?.action).toBe('merged_duplicate');
+    const result = applyLessonAttributionToLessons(plan, data.lessons, 't');
+    expect((result.find(l => l.id === 'mti96cdrqxtnu5qb0d') as any)?.mergedDuplicateOf).toBe('active-duplicate');
+    expect(result.find(l => l.id === 'mtia7ee1a0yk934tp05')?.status).toBe('cancelled');
+    expect(result.filter(l => l.status === 'completed' && !l.mergedDuplicateOf).length).toBe(2);
   });
 
   test('blocks when source lesson is missing', () => {

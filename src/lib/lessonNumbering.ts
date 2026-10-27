@@ -31,7 +31,8 @@ export const calculateSchoolYearLessonNumber = (
   const student = getStudents().find(item => item.id === studentId);
   if (!student) return { lessonNumber: 0, isBankTimeLesson: false, isSkippedLesson: false };
 
-  const schoolYear = getSchoolYearForDate(lessonDate);
+  const targetLesson = lessonId ? getLessons().find(lesson => lesson.id === lessonId) : undefined;
+  const schoolYear = targetLesson?.countedInSchoolYear ?? getSchoolYearForDate(lessonDate);
   const bounds = getSchoolYearBounds(schoolYear);
   const yearRecord = getStudentSchoolYearRecord(studentId, schoolYear);
   const studentStartSchoolYear = getSchoolYearForDate(student.startDate);
@@ -41,7 +42,6 @@ export const calculateSchoolYearLessonNumber = (
       (studentStartSchoolYear === schoolYear ? (student.startingLessonNumber || 1) : 1),
   );
 
-  const targetLesson = lessonId ? getLessons().find(lesson => lesson.id === lessonId) : undefined;
   if (targetLesson?.lockedNumber) {
     return {
       lessonNumber: targetLesson.lockedNumber,
@@ -62,9 +62,10 @@ export const calculateSchoolYearLessonNumber = (
     .filter(lesson =>
       lesson.studentId === studentId &&
       lesson.status === 'completed' &&
-      lesson.date >= bounds.start &&
-      lesson.date <= bounds.end &&
-      lesson.date <= lessonDate &&
+      !lesson.mergedDuplicateOf &&
+      (lesson.countedInSchoolYear === schoolYear ||
+        (lesson.countedInSchoolYear == null && lesson.date >= bounds.start && lesson.date <= bounds.end)) &&
+      (lesson.countedInSchoolYear === schoolYear || lesson.date <= lessonDate) &&
       !isSkippedForNumbering(lesson),
     )
     .sort((a, b) =>
