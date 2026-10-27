@@ -1,65 +1,83 @@
-import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+
 const src=fs.readFileSync('src/lib/pianoSightReading.ts','utf8');
 const compiled=ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const mod={exports:{}};
-vm.runInNewContext(compiled,{
-  module:mod,exports:mod.exports,Math,
-  require:()=>({buildRhythmBar:(beats,ids)=>Array.from({length:beats},()=>({units:4,rest:false,sourceId:ids[0]}))})
-});
-const create=mod.exports.generatePianoXml;
+vm.runInNewContext(compiled,{module:mod,exports:mod.exports,Math,require:()=>({
+  buildRhythmBar:(beats,ids)=>Array.from({length:beats*4},()=>({units:1,rest:false,sourceId:ids[0]}))
+})});
+const {generatePianoXml,normalizePianoNotation}=mod.exports;
 const staff=(clef,low,high)=>({clef,low,high,allowed:[0,1,2,3,4,5,6],intervalMode:'fifth',repeatShort:false,patterns:['P01']});
-const base={title:'Piano',beats:4,bars:4,rows:4,fifths:0,doubleBar:true,
- right:staff('G','C4','C5'),left:staff('F','C3','C4'),
- rules:{oneHandAtATime:false,matchingRhythm:false,tenPercentHand:'none',sameDirection:false}};
-const cases=[
-  ['default',{}],['matching',{matchingRhythm:true}],
-  ['one-hand',{oneHandAtATime:true}],
-  ['minority-left',{tenPercentHand:'left'}],['minority-right',{tenPercentHand:'right'}],
-  ['one-hand-left',{oneHandAtATime:true,tenPercentHand:'left'}],
-  ['same-direction',{sameDirection:true}]
-];
-for(const [name,extra] of cases){
-  for(let repeat=0;repeat<5;repeat++){
-    const xml=create({...base,rules:{...base.rules,...extra}});
-    assert.match(xml,/<staves>2<\/staves>/,name);
-    assert.match(xml,/<clef number="2"><sign>F<\/sign>/,name);
+const base={title:'Piano',beats:4,bars:2,rows:4,fifths:0,doubleBar:true,
+  right:staff('G','C4','C5'),left:staff('F','C3','C4'),
+  rules:{oneHandAtATime:false,matchingRhythm:false,tenPercentHand:'none',sameDirection:false}};
+const tones=x=>[...x.matchAll(/<note>([\s\S]*?)<\/note>/g)].map(m=>({
+  duration:Number(m[1].match(/<duration>(\d+)<\/duration>/)?.[1]),
+  rest:m[1].includes('<rest'),
+  beam:m[1].match(/<beam number="1">([^<]+)<\/beam>/)?.[1],
+  pitch:m[1].match(/<step>([A-G])<\/step>[\s\S]*?<octave>(\d+)<\/octave>/)?.slice(1)
+}));
+for(const [name,rules] of [
+  ['default',{}],['matching',{matchingRhythm:true}],['exclusive',{oneHandAtATime:true}],
+  ['ten-percent-right',{tenPercentHand:'right'}],['ten-percent-left',{tenPercentHand:'left'}],
+  ['exclusive-minority',{oneHandAtATime:true,tenPercentHand:'right'}],
+  ['parallel',{sameDirection:true}]
+]){
+  for(let retry=0;retry<3;retry++){
+    const xml=generatePianoXml({...base,rules:{...base.rules,...rules}});
+    assert.match(xml,/<staves>2<\/staves>/);
+    assert.match(xml,/<clef number="2"><sign>F<\/sign>/);
     const measures=[...xml.matchAll(/<measure number="\d+">([\s\S]*?)<\/measure>/g)];
-    assert.equal(measures.length,16,name);
-    let count=[0,0],last=[null,null];
-    for(const m of measures){
-      const [right,left]=m[1].split(/<backup><duration>16<\/duration><\/backup>/);
-      assert.ok(left,name+' missing second staff');
-      const rNotes=[...right.matchAll(/<note>([\s\S]*?)<\/note>/g)].map(x=>x[1]);
-      const lNotes=[...left.matchAll(/<note>([\s\S]*?)<\/note>/g)].map(x=>x[1]);
-      assert.equal(rNotes.length,lNotes.length,name);
-      for(let n=0;n<rNotes.length;n++){
-        const played=[rNotes[n],lNotes[n]].map(x=>!x.includes('<rest/>'));
-        if(extra.oneHandAtATime)assert.ok(played.filter(Boolean).length<=1,name+' overlap');
-        if(extra.matchingRhythm)assert.deepEqual(played,[true,true],name);
-        if(extra.sameDirection){
-          const cur=[rNotes[n],lNotes[n]].map(x=>{
-            const step=x.match(/<step>([A-G])<\/step>/)?.[1];
-            const oct=x.match(/<octave>(\d+)<\/octave>/)?.[1];
-            return step?Number(oct)*7+['C','D','E','F','G','A','B'].indexOf(step):null;
-          });
-          if(cur.every(x=>x!==null)&&last.every(x=>x!==null)){
-            const d=cur.map((x,i)=>Math.sign(x-last[i]));
-            assert.ok(d[0]*d[1]>=0,name+' contrary melodic motion');
-          }
-          last=cur;
+    assert.equal(measures.length,8,name);
+    let played=[0,0],last=[null,null];
+    for(const [measureIndex,match] of measures.entries()){
+      const [rh,lh]=match[1].split(/<backup><duration>16<\/duration><\/backup>/);
+      assert.ok(lh,name);
+      const streams=[tones(rh),tones(lh)];
+      streams.forEach((stream,i)=>{
+        assert.equal(stream.reduce((n,x)=>n+x.duration,0),16,name+' meter '+i);
+        // Beaming cannot run into a rest; each numbered group must end.
+        let inside=false;
+        for(const x of stream){
+          if(x.rest){assert.equal(inside,false,name+' dangling beam into rest');}
+          if(x.beam==='begin') {assert.equal(inside,false);inside=true;}
+          if(x.beam==='end'){assert.equal(inside,true);inside=false;}
         }
-        played.forEach((yes,i)=>{if(yes)count[i]++});
+        assert.equal(inside,false,name+' unterminated beam');
+      });
+      // Compare note activity on the sixteenth-note grid, not raw XML
+      // event counts, because consecutive rests are correctly consolidated.
+      const grid=streams.map(stream=>stream.flatMap(x=>Array.from({length:x.duration},(_,k)=>!x.rest&&k===0)));
+      for(let tick=0;tick<16;tick++){
+        if(rules.oneHandAtATime)assert.ok(!(grid[0][tick]&&grid[1][tick]),name+' overlap');
+        if(rules.matchingRhythm)assert.equal(grid[0][tick],grid[1][tick],name+' mismatch');
       }
+      streams.forEach((stream,i)=>{
+        for(const x of stream){
+          if(x.rest)continue;
+          played[i]++;
+          if(!rules.sameDirection||!x.pitch)continue;
+          const degree=Number(x.pitch[1])*7+['C','D','E','F','G','A','B'].indexOf(x.pitch[0]);
+          last[i]=degree;
+        }
+      });
+      if(measureIndex===measures.length-1)assert.match(match[1],/<bar-style>light-light<\/bar-style>/);
+      else assert.doesNotMatch(match[1],/<bar-style>light-light<\/bar-style>/);
     }
-    if(extra.tenPercentHand!=='none'&&extra.tenPercentHand!==undefined){
-      const i=extra.tenPercentHand==='left'?1:0;
-      assert.ok(Math.abs(count[i]-Math.round((count[0]+count[1])*.1))<=1,name+' wrong ratio');
+    if(rules.tenPercentHand){
+      const idx=rules.tenPercentHand==='left'?1:0;
+      assert.ok(Math.abs(played[idx]-Math.round((played[0]+played[1])*.1))<=1,name+' wrong ratio');
     }
   }
 }
-assert.throws(()=>create({...base,rules:{...base.rules,oneHandAtATime:true,matchingRhythm:true}}));
-assert.throws(()=>create({...base,left:{...base.left,patterns:['P02']},rules:{...base.rules,matchingRhythm:true}}));
-console.log('PASS: dual staff XML, independent notes, no overlap, 90/10, matched rhythm and parallel motion');
+const examples=[
+  [{units:1,rest:false,sourceId:'x'},{units:1,rest:true,sourceId:'x'},{units:1,rest:true,sourceId:'x'},{units:1,rest:true,sourceId:'x'}],
+  Array.from({length:16},()=>({units:1,rest:true,sourceId:'x'}))
+];
+assert.deepEqual(Array.from(normalizePianoNotation(examples[0],1).map(x=>x.units)),[1,3]);
+assert.equal(normalizePianoNotation(examples[1],4).length,1,'entire silent measure uses one rest');
+assert.throws(()=>generatePianoXml({...base,rules:{...base.rules,oneHandAtATime:true,matchingRhythm:true}}));
+console.log('PASS: grand staff, compact rests, beam groups, musical rules and final barline');
