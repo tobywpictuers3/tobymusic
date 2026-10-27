@@ -3,7 +3,7 @@ import fs from 'node:fs';
 const pdf=fs.readFileSync('src/components/admin/SightReadingVerovio.tsx','utf8');
 const workspace=fs.readFileSync('src/components/admin/SightReadingWorkspace.tsx','utf8');
 assert.match(pdf,/paginateSightReadingXml\(xml,1\)/,'one musical system per render');
-assert.match(pdf,/const rowsPerPage=8/,'eight systems per A4');
+assert.match(pdf,/const rowsPerPage=xml\.includes\('<staves>2<\/staves>'\)\?4:8/,'four grand-staff or eight single-staff systems per A4');
 assert.match(pdf,/const slot=\(bottomY-topY\)\/rowsPerPage/,'distribute systems vertically');
 assert.match(pdf,/getImageData/,'crop glyph ink instead of empty SVG page');
 assert.ok(pdf.includes('const width=Math.min(185,(slot-2)/ratio);'),'scale cropped score into A4 slot');
