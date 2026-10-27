@@ -16,13 +16,13 @@ export default function FinancialYearGate({ children }: { children: ReactNode })
   const alreadyVerified = (() => {
     try { return localStorage.getItem(verifiedKey(currentSchoolYear)) === '1'; } catch { return false; }
   })();
-  const [state, setState] = useState<'pending' | 'ready' | 'error'>(alreadyVerified ? 'ready' : 'pending');
+  const [state, setState] = useState<'pending' | 'ready' | 'error'>('pending');
   const [errorCode, setErrorCode] = useState('');
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let active = true;
-    if (!alreadyVerified) setState('pending');
+    setState('pending');
     setErrorCode('');
 
     void (async () => {
@@ -34,8 +34,8 @@ export default function FinancialYearGate({ children }: { children: ReactNode })
       } catch (error) {
         if (!active) return;
         setErrorCode(error instanceof Error ? error.message : 'FINANCIAL_YEAR_GATE_FAILED');
-        // Critical guard: block only when this year's close was never verified.
-        if (!alreadyVerified) setState('error');
+        // Fail closed on every visit: a stale device-local marker is not a canonical cloud receipt.
+        setState('error');
       }
     })();
 
@@ -75,7 +75,7 @@ export default function FinancialYearGate({ children }: { children: ReactNode })
     <div className="min-h-screen flex items-center justify-center p-6" dir="rtl">
       <div className="rounded-xl border bg-background p-6 text-center shadow-sm">
         <div className="font-semibold">מכינה את סגירת שנת הלימודים…</div>
-        <div className="mt-2 text-sm text-muted-foreground">אימות חד-פעמי לשנה זו; כניסות הבאות לא ייחסמו.</div>
+        <div className="mt-2 text-sm text-muted-foreground">אימות נתונים מול Dropbox לפני פתיחת אפשרויות עריכה.</div>
       </div>
     </div>
   );
