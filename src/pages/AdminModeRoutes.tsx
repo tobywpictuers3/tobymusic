@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FlaskConical, RotateCcw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,13 @@ import DevAdminDashboard from './DevAdminDashboard';
 export const NormalAdminRoute = () => {
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
+  const [syncGeneration, setSyncGeneration] = useState(0);
+
+  useEffect(() => {
+    const handleCanonicalDataApplied = () => setSyncGeneration((value) => value + 1);
+    window.addEventListener('toby:canonical-sync-applied', handleCanonicalDataApplied);
+    return () => window.removeEventListener('toby:canonical-sync-applied', handleCanonicalDataApplied);
+  }, []);
 
   useLayoutEffect(() => {
     sessionStorage.removeItem('musicSystem_devMode');
@@ -23,7 +30,7 @@ export const NormalAdminRoute = () => {
 
   const isAdmin = getCurrentUser()?.type === 'admin';
 
-  const dashboard = <AdminDashboard />;
+  const dashboard = <AdminDashboard key={syncGeneration} />;
 
   return (
     <div className="relative">

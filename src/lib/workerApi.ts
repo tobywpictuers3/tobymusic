@@ -40,6 +40,11 @@ const buildWorkerUrl = (
   return `${WORKER_BASE_URL}?${params.toString()}`;
 };
 
+const buildCanonicalWorkerUrl = (action: 'download_latest' | 'upload_versioned') => {
+  const params = new URLSearchParams({ action });
+  return `${WORKER_BASE_URL}?${params.toString()}`;
+};
+
 const getWorkerError = (data: any, fallback = "Worker request failed") => {
   if (data && typeof data === "object") {
     return data.error || data.message || fallback;
@@ -225,7 +230,7 @@ export const workerApi = {
     }
 
     try {
-      const r = await fetch(buildWorkerUrl("download_latest"), {
+      const r = await fetch(buildCanonicalWorkerUrl("download_latest"), {
         method: "GET",
         headers: {
           "Cache-Control": "no-store",
@@ -293,12 +298,12 @@ export const workerApi = {
           if (result.success && result.data && typeof result.data === "object") {
             const keys = Object.keys(result.data);
             if (keys.some((k) => k.startsWith("musicSystem_"))) {
-              logger.info(`✅ Fallback succeeded with version ${version.path}`);
+              logger.info("✅ Historical fallback candidate loaded successfully");
               return result;
             }
           }
         } catch (e) {
-          logger.warn(`⚠️ Fallback version ${version.path} failed:`, e);
+          logger.warn("⚠️ Historical fallback candidate failed");
         }
       }
 
@@ -319,7 +324,7 @@ export const workerApi = {
     }
 
     try {
-      const r = await fetch(buildWorkerUrl("upload_versioned"), {
+      const r = await fetch(buildCanonicalWorkerUrl("upload_versioned"), {
         method: "POST",
         headers: getJsonHeaders(),
         body: JSON.stringify(db),
@@ -356,11 +361,7 @@ export const workerApi = {
       const formData = new FormData();
       formData.append("file", file);
 
-      logger.info("Uploading attachment:", {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-      });
+      logger.info("Uploading attachment");
 
       const response = await fetch(buildWorkerUrl("upload_attachment"), {
         method: "POST",
@@ -379,10 +380,8 @@ export const workerApi = {
       }
 
       const result = await response.json();
-      logger.info("Attachment uploaded (raw):", result);
-
       const normalized = normalizeUploadAttachmentResult(result);
-      logger.info("Attachment uploaded (normalized):", normalized);
+      logger.info("Attachment uploaded successfully");
 
       return { success: true, data: normalized };
     } catch (error) {
@@ -419,7 +418,7 @@ export const workerApi = {
       }
 
       const data = await r.json();
-      logger.info("Attachment deleted:", data);
+      logger.info("Attachment deleted successfully");
       return { success: true, data };
     } catch (err) {
       logger.error("deleteAttachment error:", err);
@@ -460,7 +459,7 @@ export const workerApi = {
         return { success: false, error: getWorkerError(data, "LIST_VERSIONS_FAILED"), data };
       }
       const unwrapped = unwrapDataEnvelope(data);
-      logger.info("listVersions success:", unwrapped);
+      logger.info("listVersions succeeded");
       return { success: true, data: unwrapped };
     } catch (err) {
       logger.error("listVersions error:", err);

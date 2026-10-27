@@ -9,6 +9,7 @@ import {
 } from './storage';
 import { recalculateAllMonthlyAchievements } from './recalculateAchievements';
 import { getManagerCode } from './devMode';
+import { downloadCanonicalDropboxLatest } from './canonicalDropboxRead';
 
 /**
  * Hybrid Sync Manager - Worker as source of truth, in-memory storage as app state
@@ -48,6 +49,7 @@ const LS_LOCAL_SNAPSHOT = 'musicSystem_localSnapshot';
 const LS_LOCAL_SNAPSHOT_INDEX = 'musicSystem_localSnapshotIndex';
 const LS_LOCAL_SNAPSHOT_PREFIX = 'musicSystem_localSnapshot:';
 const LS_HAS_UNSYNCED = 'musicSystem_hasUnsyncedChanges';
+const LS_PENDING_DIRTY_KEYS = 'musicSystem_pendingDirtyDataKeys';
 const WORKER_BASE_URL = 'https://lovable-dropbox-api.w0504124161.workers.dev';
 
 type SyncListener = (state: SyncUiState) => void;
@@ -87,7 +89,9 @@ class HybridSyncManager {
   // Background full-merge sync (download+merge+upload). Heavy, so it runs at
   // long intervals — NOT on every save.
   private backgroundMergeInterval: ReturnType<typeof setInterval> | null = null;
-  private readonly BACKGROUND_MERGE_MS = 3 * 60 * 1000; // 3 minutes
+  private lastVisibilityReconcileAt = 0;
+  private pendingDirtyDataKeys = new Set<string>();
+  private readonly BACKGROUND_MERGE_MS = 60 * 1000; // visible read-only cross-device reconciliation
 
   // Deferred achievements recalc — coalesced so rapid saves don't trigger it
   // multiple times.
@@ -95,9 +99,11 @@ class HybridSyncManager {
   private readonly ACHIEVEMENTS_RECALC_DEBOUNCE_MS = 2500;
 
   constructor() {
+    this.restorePendingDirtyDataKeys();
     this.setupNetworkListeners();
     this.setupUnloadListener();
     this.startOfflineRetry();
+    this.setupVisibilityReconcile();
     this.startBackgroundMergeSync();
   }
 
@@ -251,6 +257,68 @@ class HybridSyncManager {
     }
   }
 
+  private restorePendingDirtyDataKeys() {
+    try {
+      const raw = localStorage.getItem(LS_PENDING_DIRTY_KEYS);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        parsed.filter((key): key is string => typeof key === 'string' && key.length > 0)
+          .forEach((key) => this.pendingDirtyDataKeys.add(key));
+      }
+
+      // One-time compatibility for changes created before the dirty-key journal existed.
+      // Preserve them rather than silently discarding them on the first upgraded session.
+      if (this.pendingDirtyDataKeys.size === 0 && localStorage.getItem(LS_HAS_UNSYNCED) === 'true') {
+        const indexRaw = localStorage.getItem(LS_LOCAL_SNAPSHOT_INDEX);
+        const index = indexRaw ? JSON.parse(indexRaw) : [];
+        if (Array.isArray(index)) {
+          index.filter((key): key is string => typeof key === 'string' && key.length > 0)
+            .forEach((key) => this.pendingDirtyDataKeys.add(key));
+        }
+      }
+
+      if (this.pendingDirtyDataKeys.size > 0) {
+        this.syncState.pendingChanges = Math.max(1, this.syncState.pendingChanges);
+        this.persistPendingDirtyDataKeys();
+      }
+    } catch (error) {
+      logger.warn('⚠️ Could not restore pending dirty-key journal:', error);
+    }
+  }
+
+  private persistPendingDirtyDataKeys() {
+    try {
+      localStorage.setItem(LS_PENDING_DIRTY_KEYS, JSON.stringify(Array.from(this.pendingDirtyDataKeys)));
+    } catch {}
+  }
+
+  private rememberPendingDirtyDataKeys(keys: string[]) {
+    keys.forEach((key) => {
+      if (key && key !== 'timestamp') this.pendingDirtyDataKeys.add(key);
+    });
+    this.persistPendingDirtyDataKeys();
+  }
+
+  private clearVerifiedDirtyDataKeys(keys: string[]) {
+    keys.forEach((key) => this.pendingDirtyDataKeys.delete(key));
+    this.persistPendingDirtyDataKeys();
+  }
+
+  private buildLocalDelta(localData: Record<string, any>, dirtyKeys: string[]): Record<string, any> {
+    const delta: Record<string, any> = {};
+    dirtyKeys.forEach((key) => {
+      if (key in localData) delta[key] = localData[key];
+    });
+    delta.timestamp = localData.timestamp || new Date().toISOString();
+    return delta;
+  }
+
+  private emitCanonicalDataApplied() {
+    try {
+      window.dispatchEvent(new CustomEvent('toby:canonical-sync-applied'));
+    } catch {}
+  }
+
   /* =======================
      Network / unload
      ======================= */
@@ -273,11 +341,28 @@ class HybridSyncManager {
     });
   }
 
+  private setupVisibilityReconcile() {
+    const maybeReconcile = () => {
+      if (isDevMode()) return;
+      if (document.visibilityState !== 'visible') return;
+      if (!this.syncState.isOnline || this.isSyncingInternal || this.uploadInFlight) return;
+      if (this.debounceTimer !== null) return;
+      const now = Date.now();
+      if (now - this.lastVisibilityReconcileAt < 5_000) return;
+      this.lastVisibilityReconcileAt = now;
+      void this.syncToWorker();
+    };
+
+    document.addEventListener('visibilitychange', maybeReconcile);
+    window.addEventListener('focus', maybeReconcile);
+  }
+
   private startBackgroundMergeSync() {
     if (this.backgroundMergeInterval) return;
     this.backgroundMergeInterval = setInterval(() => {
       if (isDevMode()) return;
       if (!this.syncState.isOnline) return;
+      if (document.visibilityState !== 'visible') return;
       if (this.isSyncingInternal) return;
       // Don't fight an active debounce / fresh user save.
       if (this.debounceTimer !== null) return;
@@ -382,7 +467,7 @@ class HybridSyncManager {
       );
 
       const result = (await Promise.race([
-        workerApi.downloadLatest(),
+        downloadCanonicalDropboxLatest(),
         timeout,
       ])) as any;
 
@@ -653,6 +738,7 @@ class HybridSyncManager {
 
     this.dataVersion += 1;
     this.setLastLocalSaveNow();
+    this.rememberPendingDirtyDataKeys(peekDirtyDataKeys());
     // Persist only changed buckets immediately. This keeps refresh-safe local
     // durability without blocking the UI with a full database stringify.
     this.persistLocalSnapshot();
@@ -703,6 +789,7 @@ class HybridSyncManager {
 
     this.dataVersion += 1;
     this.setLastLocalSaveNow();
+    this.rememberPendingDirtyDataKeys(peekDirtyDataKeys());
     this.persistLocalSnapshot();
     this.syncState.pendingChanges = Math.max(1, this.dataVersion - this.cloudVersion);
     this.emit();
@@ -724,6 +811,25 @@ class HybridSyncManager {
      Sync implementations
      ======================= */
 
+  private stableSyncFingerprint(value: any): string {
+    const normalize = (input: any, topLevel = false): any => {
+      if (Array.isArray(input)) return input.map(item => normalize(item, false));
+      if (!input || typeof input !== 'object') return input;
+      const out: Record<string, any> = {};
+      for (const key of Object.keys(input).sort()) {
+        if (topLevel && key === 'timestamp') continue;
+        out[key] = normalize(input[key], false);
+      }
+      return out;
+    };
+    return JSON.stringify(normalize(value, true));
+  }
+
+  private localDeltaSatisfied(localDelta: Record<string, any>, canonicalData: Record<string, any>): boolean {
+    const reconciled = this.mergeDataWithConflictResolution(localDelta, canonicalData);
+    return this.stableSyncFingerprint(reconciled) === this.stableSyncFingerprint(canonicalData);
+  }
+
   private async directUpload(): Promise<boolean> {
     if (isDevMode()) {
       logger.info('🔧 DEV MODE: directUpload disabled');
@@ -734,46 +840,98 @@ class HybridSyncManager {
       this.pendingUploadAfterCurrent = true;
       return true;
     }
+    if (this.isSyncingInternal) {
+      this.pendingResync = true;
+      return true;
+    }
 
     this.uploadInFlight = true;
     const uploadVersion = this.dataVersion;
+    const dirtyKeys = Array.from(this.pendingDirtyDataKeys);
     this.setSyncing(true);
 
     try {
-      const data = this.gatherAllData();
+      const localData = this.gatherAllData();
       this.persistLocalSnapshot();
 
-      // Cheap structural sanity check (no full stringify just to measure size).
-      if (!this.hasValidDataShape(data)) {
-        logger.error('❌ PREVENTED UPLOAD - data shape invalid, refusing to overwrite cloud');
+      if (!this.hasValidDataShape(localData)) {
         this.setCloudError('DATA_SHAPE_INVALID');
         return false;
       }
 
-      const result = await this.uploadVersionedOffMainThread(data);
-
-      if (result.success) {
-        this.setCloudSuccessNow(uploadVersion);
-        logger.info('✅ Direct upload to worker completed');
-
-        // Heavy recompute — push off the critical path and coalesce.
-        this.scheduleAchievementsRecalc();
-
-        return true;
-      } else {
-        logger.warn('⚠️ Direct upload failed:', result.error);
-        this.setCloudError(result.error || 'DIRECT_UPLOAD_FAILED');
+      const canonicalRead = await downloadCanonicalDropboxLatest();
+      if (!canonicalRead.success || !canonicalRead.data || !this.hasValidDataShape(canonicalRead.data)) {
+        this.setCloudError(canonicalRead.error || 'CANONICAL_READ_FAILED');
         return false;
       }
+
+      // Nothing local to write: this is a safe read-only reconciliation.
+      if (dirtyKeys.length === 0) {
+        const changed = this.stableSyncFingerprint(localData) !== this.stableSyncFingerprint(canonicalRead.data);
+        if (changed) {
+          this.updateInMemoryStorage(canonicalRead.data);
+          this.persistLocalSnapshot({ full: true });
+          this.emitCanonicalDataApplied();
+        }
+        this.setCloudSuccessNow(uploadVersion);
+        return true;
+      }
+
+      const localDelta = this.buildLocalDelta(localData, dirtyKeys);
+      let candidate = this.mergeDataWithConflictResolution(localDelta, canonicalRead.data);
+      if (!this.hasValidDataShape(candidate)) {
+        this.setCloudError('MERGED_DATA_SHAPE_INVALID');
+        return false;
+      }
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const uploadResult = await this.uploadVersionedOffMainThread(candidate);
+        if (!uploadResult.success) {
+          this.setCloudError(uploadResult.error || 'DIRECT_UPLOAD_FAILED');
+          return false;
+        }
+
+        const readBack = await downloadCanonicalDropboxLatest();
+        if (!readBack.success || !readBack.data || !this.hasValidDataShape(readBack.data)) {
+          this.setCloudError(readBack.error || 'CANONICAL_READBACK_FAILED');
+          return false;
+        }
+
+        if (this.localDeltaSatisfied(localDelta, readBack.data)) {
+          const cloudContainsOtherChanges =
+            this.stableSyncFingerprint(localData) !== this.stableSyncFingerprint(readBack.data);
+
+          // Never overwrite a newer local edit that happened while this upload was in flight.
+          if (this.dataVersion === uploadVersion) {
+            this.clearVerifiedDirtyDataKeys(dirtyKeys);
+            this.updateInMemoryStorage(readBack.data);
+            this.persistLocalSnapshot({ full: true });
+            if (cloudContainsOtherChanges) this.emitCanonicalDataApplied();
+          }
+
+          this.setCloudSuccessNow(uploadVersion);
+          logger.info('✅ Canonical Dropbox write verified by read-back');
+          this.scheduleAchievementsRecalc();
+          return true;
+        }
+
+        // Another device wrote between our upload and read-back. Merge again against
+        // the new canonical latest; never replay unrelated stale buckets from this device.
+        candidate = this.mergeDataWithConflictResolution(localDelta, readBack.data);
+        logger.warn(`⚠️ Canonical read-back changed during write; retrying merge (${attempt}/3)`);
+      }
+
+      this.setCloudError('CANONICAL_WRITE_NOT_VERIFIED');
+      return false;
     } catch (error) {
-      logger.error('❌ Direct upload error:', error);
+      logger.error('❌ Canonical direct upload error:', error);
       this.setCloudError(error);
       return false;
     } finally {
       this.uploadInFlight = false;
       this.setSyncing(false);
 
-      if (this.pendingUploadAfterCurrent || this.cloudVersion < this.dataVersion) {
+      if (this.pendingUploadAfterCurrent || this.cloudVersion < this.dataVersion || this.pendingDirtyDataKeys.size > 0) {
         this.pendingUploadAfterCurrent = false;
         this.scheduleCloudUpload(250);
       }
@@ -843,71 +1001,53 @@ class HybridSyncManager {
     }
 
     if (this.isSyncingInternal) {
-      // Don't drop — mark that we need a re-upload after current one finishes
-      logger.info('⏳ Sync in progress — marking pending resync');
       this.pendingResync = true;
-      return true; // optimistic: it will be synced
+      return true;
+    }
+
+    if (this.pendingDirtyDataKeys.size > 0) {
+      return await this.directUpload();
     }
 
     this.isSyncingInternal = true;
     this.setSyncing(true);
 
     try {
-      logger.info('🔄 Starting Worker sync with conflict resolution...');
-
-      const remoteResult = await workerApi.downloadLatest();
-      logger.info('📥 Downloaded latest version from server');
-
-      if (remoteResult.source === 'historical_fallback') {
-        logger.warn('⚠️ Historical Dropbox fallback is read-only; automatic merge/upload is blocked');
-        this.setCloudError('HISTORICAL_FALLBACK_READ_ONLY');
+      const remoteResult = await downloadCanonicalDropboxLatest();
+      if (!remoteResult.success || !remoteResult.data || !this.hasValidDataShape(remoteResult.data)) {
+        this.setCloudError(remoteResult.error || 'CANONICAL_READ_FAILED');
         return false;
+      }
+
+      // A user edit may have arrived while the network read was in flight. Do not
+      // hydrate over it; hand control back to the verified writer in finally.
+      if (this.pendingDirtyDataKeys.size > 0 || this.debounceTimer !== null) {
+        this.pendingResync = true;
+        return true;
       }
 
       const localData = this.gatherAllData();
-
-      const remoteData = remoteResult.success && this.hasValidDataShape(remoteResult.data)
-        ? remoteResult.data
-        : {};
-      const mergedData = this.mergeDataWithConflictResolution(localData, remoteData);
-      logger.info('🔀 Merged local and remote changes');
-
-      if (!this.hasValidDataShape(mergedData)) {
-        logger.error('❌ PREVENTED SYNC - merged data shape invalid');
-        this.setCloudError('DATA_SHAPE_INVALID');
-        return false;
-      }
-
-      const result = await workerApi.uploadVersioned(mergedData);
-
-      if (result.success) {
-        this.updateInMemoryStorage(mergedData);
+      const changed = this.stableSyncFingerprint(localData) !== this.stableSyncFingerprint(remoteResult.data);
+      if (changed) {
+        this.updateInMemoryStorage(remoteResult.data);
         this.persistLocalSnapshot({ full: true });
-        this.setCloudSuccessNow();
-        logger.info('✅ Worker sync completed with conflict resolution');
-
-        this.scheduleAchievementsRecalc();
-
-        return true;
-      } else {
-        logger.warn('⚠️ Sync failed:', result.error);
-        this.setCloudError(result.error || 'SYNC_FAILED');
-        return false;
+        this.emitCanonicalDataApplied();
+        logger.info('✅ Canonical remote delta applied without upload');
       }
+
+      this.setCloudSuccessNow();
+      return true;
     } catch (error) {
-      logger.error('❌ Sync error:', error);
+      logger.error('❌ Canonical reconciliation error:', error);
       this.setCloudError(error);
       return false;
     } finally {
       this.isSyncingInternal = false;
       this.setSyncing(false);
 
-      // If another change came in while we were syncing, just upload the
-      // current state — no need to repeat the full download+merge.
       if (this.pendingResync) {
         this.pendingResync = false;
-        logger.info('🔄 Running pending re-upload (data changed during sync)...');
-        await this.directUpload();
+        if (this.pendingDirtyDataKeys.size > 0) await this.directUpload();
       }
     }
   }
@@ -933,6 +1073,32 @@ class HybridSyncManager {
     }
 
     await this.syncToWorker();
+  }
+
+  async pullCanonicalLatest(): Promise<SyncResult> {
+    if (isDevMode()) return { success: false, synced: false, message: 'מצב בדיקה מבודד' };
+
+    if (this.pendingDirtyDataKeys.size > 0 || this.syncState.pendingChanges > 0) {
+      const uploaded = await this.directUpload();
+      if (!uploaded) {
+        return { success: false, synced: false, message: 'יש שינויים מקומיים שלא אומתו עדיין בדרופבוקס' };
+      }
+    }
+
+    const result = await downloadCanonicalDropboxLatest();
+    if (!result.success || !result.data || !this.hasValidDataShape(result.data)) {
+      const message = result.error || 'הורדת canonical latest נכשלה';
+      this.setCloudError(message);
+      return { success: false, synced: false, message };
+    }
+
+    const localData = this.gatherAllData();
+    const changed = this.stableSyncFingerprint(localData) !== this.stableSyncFingerprint(result.data);
+    this.updateInMemoryStorage(result.data);
+    this.persistLocalSnapshot({ full: true });
+    this.setCloudSuccessNow();
+    if (changed) this.emitCanonicalDataApplied();
+    return { success: true, synced: true, message: 'הנתונים האחרונים אומתו ונטענו מדרופבוקס' };
   }
 
   async manualSync(): Promise<boolean> {

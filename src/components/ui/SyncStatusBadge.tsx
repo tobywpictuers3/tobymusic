@@ -70,7 +70,7 @@ export default function SyncStatusBadge() {
     if (state.lastCloudSyncAt) {
       return {
         icon: <Check className="w-4 h-4" />,
-        text: `סונכרן ${formatRelative(state.lastCloudSyncAt)} (${formatTime(state.lastCloudSyncAt)})`,
+        text: `אומת בדרופבוקס ${formatRelative(state.lastCloudSyncAt)} (${formatTime(state.lastCloudSyncAt)})`,
         className: "text-green-300",
       };
     }

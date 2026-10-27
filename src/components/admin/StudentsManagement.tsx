@@ -13,7 +13,7 @@ import { Grid, List, UserPlus, Edit, Trash2, Users, History, Coins, DoorOpen } f
 import { NumberStepper } from '@/components/ui/number-stepper';
 import { getStudentsForStudentCards, addStudent, updateStudent, deleteStudentCascade, getCompletedLessonsCount, convertAnnualToPerLesson, getPayments } from '@/lib/storage';
 import { deleteMessagesForStudentCascade } from '@/lib/messages';
-import { Student } from '@/lib/types';
+import { Payment, Student } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 import StudentLessonHistory from './StudentLessonHistory';
 import StudentSchoolYearSummary from './StudentSchoolYearSummary';
@@ -35,6 +35,18 @@ import {
 const DEFAULT_SCHOOL_YEAR = getSchoolYearForDate();
 const DEFAULT_START_DATE = getSchoolYearBounds(DEFAULT_SCHOOL_YEAR).start;
 const money = (value: number) => `₪${Number(value || 0).toLocaleString('he-IL', { maximumFractionDigits: 2 })}`;
+type PaymentMethod = Payment['paymentMethod'];
+
+const getStudentPaymentMethodPreference = (student: Student): PaymentMethod => {
+  if (student.paymentMethod) return student.paymentMethod;
+  const schoolYear = getSchoolYearForDate();
+  const { start, end } = getSchoolYearBounds(schoolYear);
+  const startMonth = start.slice(0, 7);
+  const endMonth = end.slice(0, 7);
+  return getPayments().find(payment =>
+    payment.studentId === student.id && payment.month >= startMonth && payment.month <= endMonth,
+  )?.paymentMethod || 'inactive';
+};
 const fixedDiscountRate = (rate: number, discount: number) =>
   Math.round(Math.max(0, Math.max(0, rate) - Math.max(0, discount)) * 100) / 100;
 
@@ -56,6 +68,7 @@ type StudentForm = {
   startingLessonNumber: number;
   annualAmount: number;
   paymentMonths: number;
+  paymentMethod: PaymentMethod;
   notes: string;
   additionalPhones: string[];
   additionalEmails: string[];
@@ -73,6 +86,7 @@ const createDefaultForm = (settings: TuitionSettings): StudentForm => ({
   startingLessonNumber: 1,
   annualAmount: settings.annualRate,
   paymentMonths: 12,
+  paymentMethod: 'inactive',
   notes: '',
   additionalPhones: [],
   additionalEmails: [],
@@ -150,6 +164,7 @@ const StudentsManagement = () => {
       startingLessonNumber: student.startingLessonNumber,
       annualAmount: student.annualAmount,
       paymentMonths: student.paymentMonths,
+      paymentMethod: getStudentPaymentMethodPreference(student),
       notes: student.notes || '',
       additionalPhones: student.additionalPhones || [],
       additionalEmails: student.additionalEmails || [],
@@ -303,6 +318,7 @@ const StudentsManagement = () => {
         startingLessonNumber: studentForm.startingLessonNumber,
         annualAmount: studentForm.annualAmount,
         paymentMonths: studentForm.paymentMonths,
+        paymentMethod: studentForm.paymentMethod,
         calculatedAmount: studentForm.paymentType === 'annual' ? calculatedAmount : undefined,
         monthlyAmount: studentForm.paymentType === 'annual' ? monthlyAmount : 0,
         notes: studentForm.notes,
@@ -341,6 +357,7 @@ const StudentsManagement = () => {
         startingLessonNumber: studentForm.startingLessonNumber,
         annualAmount: studentForm.annualAmount,
         paymentMonths: studentForm.paymentMonths,
+        paymentMethod: studentForm.paymentMethod,
         calculatedAmount: studentForm.paymentType === 'annual' ? calculatedAmount : undefined,
         monthlyAmount: studentForm.paymentType === 'annual' ? monthlyAmount : 0,
         notes: studentForm.notes,
@@ -541,8 +558,22 @@ const StudentsManagement = () => {
               <Label className="text-base font-semibold mb-3 block">מסלול תשלום</Label>
               <Select value={studentForm.paymentType} onValueChange={(value: 'annual' | 'per_lesson') => setStudentForm({...studentForm, paymentType: value})}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="annual">תשלום שנתי</SelectItem><SelectItem value="per_lesson">שיעורים חד-פעמיים (מזומן)</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="annual">תשלום שנתי</SelectItem><SelectItem value="per_lesson">שיעורים חד-פעמיים / לפי שיעור</SelectItem></SelectContent>
               </Select>
+
+              <div className="mt-3">
+                <Label htmlFor="paymentMethod">אמצעי תשלום</Label>
+                <Select value={studentForm.paymentMethod} onValueChange={(value: PaymentMethod) => setStudentForm({...studentForm, paymentMethod: value})}>
+                  <SelectTrigger id="paymentMethod" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inactive">לא הוגדר</SelectItem>
+                    <SelectItem value="bank">העברה בנקאית</SelectItem>
+                    <SelectItem value="check">צ׳ק</SelectItem>
+                    <SelectItem value="cash">מזומן</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">ניתן לשנות גם ישירות בלוח התשלומים השנתי.</p>
+              </div>
 
               {studentForm.paymentType === 'per_lesson' && (
                 <div className="mt-3 space-y-3">

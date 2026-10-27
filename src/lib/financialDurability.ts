@@ -54,6 +54,7 @@ const financialProjection = (data: Record<string, any>): Record<string, any> => 
   perLessonLedger: data?.musicSystem_perLessonLedger || [],
   performances: data?.musicSystem_performances || [],
   schoolYearRecords: data?.musicSystem_schoolYearRecords || [],
+  priorYearBalances: data?.musicSystem_priorYearBalances || [],
 });
 
 const fingerprintProjection = (data: Record<string, any>): string =>
