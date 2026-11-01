@@ -271,7 +271,16 @@ export const preparePriorYearSettlementRowsDurably = async (
   const prepared = preparePriorYearSettlementRows(targetSchoolYear);
   const rows = prepared.rows.filter(row => row.targetSchoolYear === targetSchoolYear);
   if (isDevMode()) return { rows, changed: prepared.changed, verified: true };
-  if (!prepared.changed && !options.forceSync) return { rows, changed: false, verified: true };
+  if (!prepared.changed && !options.forceSync) {
+    // A local no-op is NOT proof of a durable cloud close. Never mark an
+    // accounting year verified from in-memory fields alone.
+    const canonical = await downloadCanonicalDropboxLatest();
+    if (!canonical.success || !canonical.data ||
+        !rows.every(row => verifyRemoteRecord(canonical.data!, row))) {
+      throw new Error('PRIOR_YEAR_CANONICAL_VERIFICATION_MISMATCH');
+    }
+    return { rows, changed: false, verified: true };
+  }
 
   const verified = await syncAndVerify(rows);
   if (!verified) throw new Error('PRIOR_YEAR_PREPARE_READBACK_MISMATCH');
