@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { ensureSchoolYearRollover, getSchoolYearForDate } from '@/lib/schoolYear';
 import { preparePriorYearSettlementRowsDurably } from '@/lib/priorYearSettlementFlow';
+import { reconcileApproved2026CloseDurably } from '@/lib/approved2026CloseReconciliation';
 
 /**
  * Year-close is a task inside Payments, not an entry requirement.
@@ -23,6 +24,11 @@ export default function FinancialYearGate({ children }: { children: ReactNode })
     void (async () => {
       try {
         const rollover = await ensureSchoolYearRollover();
+        // Recover manager-approved 2026 close decisions before reconciling 2027 cash/credit openings.
+        if (currentSchoolYear === 2027) {
+          const approved = await reconcileApproved2026CloseDurably();
+          if (!approved.verified) throw new Error('APPROVED_2026_CLOSE_NOT_VERIFIED');
+        }
         const verification = await preparePriorYearSettlementRowsDurably(currentSchoolYear, { forceSync: rollover.changed });
         if (!verification.verified) throw new Error('PRIOR_YEAR_PREPARE_READBACK_MISMATCH');
         if (active) setState('ready');
