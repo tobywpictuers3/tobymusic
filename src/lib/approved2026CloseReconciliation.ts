@@ -151,13 +151,13 @@ const verify = (data: Record<string, any>): boolean => {
   } catch { return false; }
 };
 
-export type Approved2026CloseResult = { changed: boolean; verified: boolean; updatedFields: number; transfers: number };
+export type Approved2026CloseResult = { changed: boolean; verified: boolean; updatedFields: number; transfers: number; correctedCashDate: boolean };
 
 let inFlight: Promise<Approved2026CloseResult> | undefined;
 
 const execute = async (): Promise<Approved2026CloseResult> => {
   // Never mutate the isolated demo environment; use its normal fixture mechanism.
-  if (isDevMode()) return { changed: false, verified: false, updatedFields: 0, transfers: 0 };
+  if (isDevMode()) return { changed: false, verified: false, updatedFields: 0, transfers: 0, correctedCashDate: false };
 
   const store = (window as any).__musicSystemStorage as Record<string, any> | undefined;
   if (!store) throw new Error('CLOSE_STORAGE_NOT_INITIALIZED');
@@ -171,6 +171,7 @@ const execute = async (): Promise<Approved2026CloseResult> => {
   const balances = recordsOf(store, 'priorYearBalances').map(x => ({ ...x }));
   let updatedFields = 0;
   let transfers = 0;
+  let correctedCashDate = false;
   for (const patch of changes) {
     const row = pickUnique(yearRecords, patch.studentId + ':2027', 'year');
     if (row[patch.field] === patch.after) continue;
@@ -191,7 +192,7 @@ const execute = async (): Promise<Approved2026CloseResult> => {
     datedRow.updatedAt = now;
     datedRow.lastModified = now;
     // Preserve the manager's original confirmation time and the original cash receipt.
-    transfers += 1;
+    correctedCashDate = true;
   }
   for (const transfer of approvedTransfers) {
     const row = pickUnique(balances, transfer.studentId + ':2027', 'balance');
@@ -209,7 +210,7 @@ const execute = async (): Promise<Approved2026CloseResult> => {
     transfers += 1;
   }
 
-  const changed = updatedFields + transfers > 0;
+  const changed = updatedFields + transfers > 0 || correctedCashDate;
   if (changed) {
     if (updatedFields) {
       store.schoolYearRecords = yearRecords;
@@ -217,7 +218,7 @@ const execute = async (): Promise<Approved2026CloseResult> => {
       markStorageKeyDirty('schoolYearRecords');
       markStorageKeyDirty('students');
     }
-    if (transfers) {
+    if (transfers || correctedCashDate) {
       store.priorYearBalances = balances;
       markStorageKeyDirty('priorYearBalances');
     }
@@ -229,7 +230,7 @@ const execute = async (): Promise<Approved2026CloseResult> => {
     const after = await downloadCanonicalDropboxLatest();
     if (after.success && after.data && verify(after.data)) {
       if (changed) window.dispatchEvent(new Event('toby:year-close-reconciled'));
-      return { changed, verified: true, updatedFields, transfers };
+      return { changed, verified: true, updatedFields, transfers, correctedCashDate };
     }
     if (attempt === 2 || attempt === 5) await hybridSync.manualSync();
     await new Promise(resolve => setTimeout(resolve, 500));
