@@ -65,7 +65,11 @@ export default function PriorYearBalancesCard({ selectedBaseYear }: Props) {
     reload();
     const imported = () => reload();
     window.addEventListener('toby:storage-imported', imported);
-    return () => window.removeEventListener('toby:storage-imported', imported);
+    window.addEventListener('toby:year-close-reconciled', imported);
+    return () => {
+      window.removeEventListener('toby:storage-imported', imported);
+      window.removeEventListener('toby:year-close-reconciled', imported);
+    };
   }, [targetSchoolYear]);
 
   const displayRows = rows;
