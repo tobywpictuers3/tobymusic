@@ -1,6 +1,6 @@
 import { downloadCanonicalDropboxLatest } from './canonicalDropboxRead';
 import { hybridSync } from './hybridSync';
-import { getStudents, isDevMode, markStorageKeyDirty } from './storage';
+import { isDevMode, markStorageKeyDirty } from './storage';
 
 /**
  * Oct 14 manager-approved school-year corrections. The reconciler intentionally
@@ -44,6 +44,13 @@ const approvedTransfers = [
   { studentId: 'meu4l7fdpse9511pmt', amount: 103.86 },
 ] as const;
 
+/** The actual receipt is dated Sep 23; the confirmation was made Oct 8.
+ * Correct only the settlement's event date, never the existing cash receipt. */
+const cashReceiptDateCorrection = {
+  studentId: 'mle4l7wymb16dhqcqtk', balance: -421,
+  before: '2026-10-08', after: '2026-09-23',
+} as const;
+
 const money = (value: unknown) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const recordsOf = (data: Record<string, any>, bucket: string): Record<string, any>[] => {
   const value = data[bucket];
@@ -83,6 +90,23 @@ const assertSameApprovedFields = (
   }
   const localBalances = recordsOf(local, 'priorYearBalances');
   const remoteBalances = recordsOf(remote, 'musicSystem_priorYearBalances');
+  const cashDate = cashReceiptDateCorrection;
+  const correctionId = cashDate.studentId + ':2027';
+  const localCashDate = pickUnique(localBalances, correctionId, 'cashBalance');
+  const remoteCashDate = pickUnique(remoteBalances, correctionId, 'cashBalance');
+  if (money(localCashDate.signedBalance) !== cashDate.balance ||
+      money(remoteCashDate.signedBalance) !== cashDate.balance ||
+      localCashDate.settlementMethod !== 'cash' || !localCashDate.settled ||
+      localCashDate.settlementDate !== remoteCashDate.settlementDate ||
+      (localCashDate.settlementDate !== cashDate.before && localCashDate.settlementDate !== cashDate.after)) {
+    throw new Error('CLOSE_RECEIPT_SETTLEMENT_CONFLICT:' + correctionId);
+  }
+  const receipt = pickUnique(recordsOf(remote, 'oneTimePayments'),
+    'prior-year-balance:2027:' + cashDate.studentId, 'cashReceipt');
+  if (money(receipt.amount) !== -cashDate.balance ||
+      receipt.paidDate !== cashDate.after || receipt.month !== cashDate.after.slice(0, 7)) {
+    throw new Error('CLOSE_ORIGINAL_RECEIPT_CONFLICT:' + correctionId);
+  }
   for (const transfer of approvedTransfers) {
     const id = transfer.studentId + ':2027';
     const left = pickUnique(localBalances, id, 'priorYearBalances');
@@ -113,6 +137,9 @@ const verify = (data: Record<string, any>): boolean => {
     for (const patch of profileChanges) {
       if (pickUnique(recordsOf(data, 'musicSystem_students'), patch.studentId, 'student')[patch.field] !== patch.after) return false;
     }
+    const correctedCashDate = pickUnique(recordsOf(data, 'musicSystem_priorYearBalances'),
+      cashReceiptDateCorrection.studentId + ':2027', 'cashBalance');
+    if (correctedCashDate.settlementDate !== cashReceiptDateCorrection.after) return false;
     for (const target of approvedTransfers) {
       const record = pickUnique(recordsOf(data, 'musicSystem_priorYearBalances'), target.studentId + ':2027', 'balance');
       const opening = pickUnique(recordsOf(data, 'musicSystem_schoolYearRecords'), target.studentId + ':2027', 'year');
@@ -157,6 +184,14 @@ const execute = async (): Promise<Approved2026CloseResult> => {
     row[patch.field] = patch.after;
     row.lastModified = now;
     updatedFields += 1;
+  }
+  const datedRow = pickUnique(balances, cashReceiptDateCorrection.studentId + ':2027', 'cashBalance');
+  if (datedRow.settlementDate === cashReceiptDateCorrection.before) {
+    datedRow.settlementDate = cashReceiptDateCorrection.after;
+    datedRow.updatedAt = now;
+    datedRow.lastModified = now;
+    // Preserve the manager's original confirmation time and the original cash receipt.
+    transfers += 1;
   }
   for (const transfer of approvedTransfers) {
     const row = pickUnique(balances, transfer.studentId + ':2027', 'balance');
