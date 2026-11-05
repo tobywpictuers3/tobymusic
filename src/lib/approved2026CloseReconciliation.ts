@@ -49,6 +49,8 @@ const approvedTransfers = [
 const cashReceiptDateCorrection = {
   studentId: 'mle4l7wymb16dhqcqtk', balance: -421,
   before: '2026-10-08', after: '2026-09-23',
+  /** Manager-approved 05.11.2026: actually received 400 of the 421 (21 remains open). */
+  approvedReceiptAmount: 400,
 } as const;
 
 const money = (value: unknown) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -103,7 +105,7 @@ const assertSameApprovedFields = (
   }
   const receipt = pickUnique(recordsOf(remote, 'oneTimePayments'),
     'prior-year-balance:2027:' + cashDate.studentId, 'cashReceipt');
-  if (money(receipt.amount) !== -cashDate.balance ||
+  if (money(receipt.amount) !== cashDate.approvedReceiptAmount ||
       receipt.paidDate !== cashDate.after || receipt.month !== cashDate.after.slice(0, 7)) {
     throw new Error('CLOSE_ORIGINAL_RECEIPT_CONFLICT:' + correctionId);
   }
@@ -226,14 +228,15 @@ const execute = async (): Promise<Approved2026CloseResult> => {
     await hybridSync.manualSync();
   }
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  // A verified canonical write takes ~10-15s (upload + read-back), so poll for up to ~60s.
+  for (let attempt = 0; attempt < 20; attempt += 1) {
     const after = await downloadCanonicalDropboxLatest();
     if (after.success && after.data && verify(after.data)) {
       if (changed) window.dispatchEvent(new Event('toby:year-close-reconciled'));
       return { changed, verified: true, updatedFields, transfers, correctedCashDate };
     }
-    if (attempt === 2 || attempt === 5) await hybridSync.manualSync();
-    await new Promise(resolve => setTimeout(resolve, 500));
+    if (attempt === 2 || attempt === 8 || attempt === 14) await hybridSync.manualSync();
+    await new Promise(resolve => setTimeout(resolve, 3000));
   }
   throw new Error('CLOSE_READBACK_NOT_VERIFIED');
 };
