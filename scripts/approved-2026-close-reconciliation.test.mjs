@@ -76,7 +76,7 @@ function harness() {
     musicSystem_students: clone(local.students),
     musicSystem_priorYearBalances: clone(local.priorYearBalances),
     oneTimePayments: [{ id: 'prior-year-balance:2027:mle4l7wymb16dhqcqtk',
-      month: '2026-09', amount: 421, paidDate: '2026-09-23' }],
+      month: '2026-09', amount: 400, paidDate: '2026-09-23' }],
   };
 
   return {
