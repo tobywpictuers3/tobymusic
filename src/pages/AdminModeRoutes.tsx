@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FlaskConical, RotateCcw, ShieldCheck } from 'lucide-react';
+import { RotateCcw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getCurrentUser, setDevMode } from '@/lib/storage';
 import { clearDevFakeDate, restoreNativeClock } from '@/lib/devFakeClock';
@@ -9,7 +9,6 @@ import AdminDashboard from './AdminDashboard';
 import DevAdminDashboard from './DevAdminDashboard';
 
 export const NormalAdminRoute = () => {
-  const navigate = useNavigate();
   const [ready, setReady] = useState(false);
   const [syncGeneration, setSyncGeneration] = useState(0);
 
@@ -34,26 +33,6 @@ export const NormalAdminRoute = () => {
 
   return (
     <div className="relative">
-      {isAdmin && (
-        <div className="relative z-40 border-b border-red-300/70 bg-red-50/95 px-3 py-2 shadow-sm dark:bg-red-950/60">
-          <div className="container mx-auto flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-red-800 dark:text-red-200">
-              <FlaskConical className="h-4 w-4" />
-              בדיקת מעבר שנה וטעינת JSON מבודדת
-            </div>
-            <Button
-              type="button"
-              onClick={() => navigate('/dev-admin')}
-              className="border border-red-400 bg-red-700 text-white hover:bg-red-800"
-              size="sm"
-              title="פתיחת סביבת בדיקה מבודדת ללא שמירה ל-Dropbox"
-            >
-              <FlaskConical className="ml-2 h-4 w-4" />
-              פתחי מצב בדיקה
-            </Button>
-          </div>
-        </div>
-      )}
       {isAdmin ? <FinancialYearGate>{dashboard}</FinancialYearGate> : dashboard}
     </div>
   );
