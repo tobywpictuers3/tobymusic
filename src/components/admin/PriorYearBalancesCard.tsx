@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/safe-ui/c
 import { Input } from '@/components/safe-ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/safe-ui/table';
 import { Button } from '@/components/ui/button';
+import { FlaskConical } from 'lucide-react';
 import { getStudents } from '@/lib/storage';
 import { getPriorYearBalanceRecords } from '@/lib/priorYearBalances';
 import {
@@ -134,6 +135,22 @@ export default function PriorYearBalancesCard({ selectedBaseYear }: Props) {
     <Card className="mt-5 border-primary/30 shadow-sm" data-prior-year-balances>
       <CardHeader className="pb-3">
         <CardTitle className="text-lg">יתרות שנותרו משנת הלימודים {getSchoolYearLabel(sourceSchoolYear)}</CardTitle>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="border-red-300 text-red-800"
+            title="פתיחת סביבת בדיקה מבודדת ללא שמירה ל-Dropbox (לבדיקת מעבר השנה הבאה)"
+            onClick={() => {
+              window.history.pushState({}, '', '/dev-admin');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+          >
+            <FlaskConical className="ml-2 h-4 w-4" />
+            בדיקת מעבר שנה במצב בדיקה מבודד
+          </Button>
+        </div>
         <p className="text-sm text-muted-foreground leading-6">
           כאן מחליטים במפורש מה עושים בכל זכות או חוב. כסף נכנס לחישובים רק בתאריך הביצוע בפועל; העברה לשנה הבאה משפיעה על כרטסת השנה החדשה רק לאחר אישור שלך. שורות התשלום הישנות אינן מועברות.
         </p>
