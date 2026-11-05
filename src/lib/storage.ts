@@ -1638,7 +1638,7 @@ export const getCurrentMonthAchievement = (studentId: string): MonthlyAchievemen
 const recalcMonthlyAchievementFromSessions = (
   studentId: string,
   month: string // YYYY-MM
-): void => {
+): boolean => {
   const sessions = getPracticeSessions().filter(
     (s) => s.studentId === studentId && s.date.startsWith(month)
   );
@@ -1679,6 +1679,18 @@ const recalcMonthlyAchievementFromSessions = (
 
   const achievements = getMonthlyAchievements();
   const index = achievements.findIndex(a => a.studentId === studentId && a.month === month);
+
+  // Unchanged values: do not touch timestamps or mark the bucket dirty. Rewriting
+  // lastModified on every recalc caused an endless upload -> recalc -> upload loop.
+  if (
+    index !== -1 &&
+    achievements[index].maxDailyAverage === dailyAverage &&
+    achievements[index].maxDailyMinutes === maxDailyMinutes &&
+    achievements[index].maxStreak === maxStreak
+  ) {
+    return false;
+  }
+
   const now = new Date().toISOString();
 
   const next = {
@@ -1701,6 +1713,7 @@ const recalcMonthlyAchievementFromSessions = (
   } else {
     inMemoryStorage['monthlyAchievements'] = achievements;
   }
+  return true;
 };
 
 export const updateMonthlyAchievement = (
@@ -1709,9 +1722,9 @@ export const updateMonthlyAchievement = (
 ): void => {
   const currentMonth = new Date().toISOString().slice(0, 7);
 
-  recalcMonthlyAchievementFromSessions(studentId, currentMonth);
+  const changed = recalcMonthlyAchievementFromSessions(studentId, currentMonth);
 
-  if (!isDevMode()) {
+  if (changed && !isDevMode()) {
     hybridSync.onDataChange();
   }
 };
