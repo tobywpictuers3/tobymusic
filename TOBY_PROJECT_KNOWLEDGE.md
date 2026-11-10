@@ -467,3 +467,14 @@ The payment data model already contains all 12 academic months, September throug
 - For Bati Cohana: archived manager-approved 2026 annual price 6120 NIS and expected closing charge 2335.26 NIS currently conflict with the canonical student profile annual amount 2295 NIS and frozen financial target 936.22 NIS. Do not silently rewrite this major financial discrepancy without reconciling historical payment provenance.
 - `preparePriorYearSettlementRowsDurably` must never call a local no-op “verified”; a canonical read-back and field-level comparison are required even if no in-memory mutation occurred.
 - Production migration remains **unverified until a canonical Dropbox read-back shows every approved field and both transfers**. GitHub CI/Cloudflare deploy alone are not accounting proof.
+
+## Student files workspace — feature branch 2026-11-10 (not yet production)
+
+- Work in progress on `feature/student-files-library-20261110`; PR #86 is draft and must not be merged until end-to-end verification.
+- Existing `musicSystem_files` / `FileEntry` records remain the single source for student assignments and the teacher-facing catalog. The new teacher library reads these existing records rather than copying Dropbox attachments.
+- Optional backward-compatible `subject` and `tags` fields are added to file metadata; older files continue to load.
+- Student files default to newest first and may sort by name, subject or type. Open actions show edit, device-open and download; editor support varies by file kind.
+- New document editor results are stored only as one A4 PDF attachment record, not as both PNG and PDF. The editor now offers ink color including opaque white and editable subject/tags.
+- **Known gap:** legacy `DocumentEditor` does not render/import an existing PDF. The new open menu explicitly blocks PDF-to-editor rather than accidentally saving a blank page. PDF annotation/import is required before claiming support for editing existing PDFs.
+- In-browser microphone recording uses MediaRecorder on supported devices and uploads the resulting audio as an attachment.
+- Still to verify: Cloudflare Worker attachment endpoints for student-side permissions, device download behavior, audio-browser support, persistence read-back, template-brand integration, notation-generator attachment integration and real PDF editing.
