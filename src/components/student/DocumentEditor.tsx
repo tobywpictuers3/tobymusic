@@ -220,7 +220,7 @@ export default function DocumentEditor(props: {
   initialTemplate?: EditorTemplate;
   source?: { kind: Exclude<EditorSourceKind, "blank">; blob: Blob };
   onCancel: () => void;
-  onSave: (result: { fileNameBase: string; png: Blob; pdf: Blob; subject: string; tags: string[] }) => Promise<void> | void;
+  onSave: (result: { fileNameBase: string; pdf: Blob; subject: string; tags: string[] }) => Promise<void> | void;
 }) {
   const { w, h } = useMemo(() => formatA4Px(2), []);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -507,16 +507,13 @@ export default function DocumentEditor(props: {
 
   const save = async () => {
     const baseName = safeBaseName(fileNameBase);
-    if (!baseName) return;
+    if (!baseName || pdfNotSupported) return;
 
     const merged = await exportMergedCanvas();
 
-    const pngBlob: Blob | null = await new Promise((resolve) => merged.toBlob((b) => resolve(b), "image/png", 1));
-    if (!pngBlob) return;
-
     const pdfBlob = await canvasToPdfBlob(merged);
 
-    await props.onSave({ fileNameBase: baseName, png: pngBlob, pdf: pdfBlob, subject: subject.trim(), tags });
+    await props.onSave({ fileNameBase: baseName, pdf: pdfBlob, subject: subject.trim(), tags });
   };
 
   const printPage = async () => {
