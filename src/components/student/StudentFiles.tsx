@@ -22,6 +22,17 @@ interface StudentFilesProps {
 type AddMode = "upload" | "link" | "newpage";
 type NewPageTemplate = "blank" | "lines" | "staff";
 type EditPickMode = "from_app" | "from_device";
+type FileSort = "date" | "name" | "topic" | "type";
+
+function getFileCategory(f: FileEntry): string {
+  const mime = (f.mimeType || "").toLowerCase();
+  const name = f.name.toLowerCase();
+  if (f.kind === "handwrite") return "דף שנוצר בעורך";
+  if (mime.startsWith("audio/") || /\.(mp3|wav|m4a|ogg|webm)$/.test(name)) return "קובץ שמע";
+  if (mime === "application/pdf" || name.endsWith(".pdf")) return "PDF";
+  if (f.kind === "link") return "קישור";
+  return "העלאה";
+}
 
 function nowStamp() {
   const d = new Date();
@@ -57,6 +68,8 @@ async function fetchBlob(url: string): Promise<Blob> {
 
 export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [refreshTick, setRefreshTick] = useState(0);
+  const [sortBy, setSortBy] = useState<FileSort>("date");
+  const [openChoices, setOpenChoices] = useState<FileEntry | null>(null);
   const [visibleReadingId,setVisibleReadingId] = useState<string | null>(null);
   const [refreshingFiles,setRefreshingFiles]=useState(false);
   useEffect(()=>{
@@ -78,10 +91,14 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
 
   const files = useMemo(() => {
     const all = getFiles();
-    return all
-      .filter((f) => f.studentId === studentId)
-      .sort((a, b) => (b.uploadDate || "").localeCompare(a.uploadDate || ""));
-  }, [studentId, refreshTick]);
+    const collator = new Intl.Collator("he");
+    return all.filter(f => f.studentId === studentId).sort((a, b) => {
+      if (sortBy === "name") return collator.compare(a.name, b.name);
+      if (sortBy === "topic") return collator.compare(a.description || "", b.description || "") || collator.compare(a.name, b.name);
+      if (sortBy === "type") return collator.compare(getFileCategory(a), getFileCategory(b)) || collator.compare(a.name, b.name);
+      return (b.uploadDate || "").localeCompare(a.uploadDate || "");
+    });
+  }, [studentId, refreshTick, sortBy]);
 
   // ---- Add dialog ----
   const [addOpen, setAddOpen] = useState(false);
@@ -270,14 +287,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       const stamp = nowStamp();
       const finalBase = editorMode === "edit" ? `${base} - ערוך ${stamp}` : base;
 
-      const pngFile = new File([payload.png], `${finalBase}.png`, { type: "image/png" });
       const pdfFile = new File([payload.pdf], `${finalBase}.pdf`, { type: "application/pdf" });
-
-      const upPng = await workerApi.uploadAttachment(pngFile);
-      if (!upPng.success || !upPng.data) {
-        toast({ title: "שגיאה", description: upPng.error || "העלאת PNG נכשלה", variant: "destructive" });
-        return;
-      }
 
       const upPdf = await workerApi.uploadAttachment(pdfFile);
       if (!upPdf.success || !upPdf.data) {
@@ -298,18 +308,6 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
         uploadDate: new Date().toISOString(),
       });
 
-      addFile({
-        studentId,
-        name: `${finalBase}.png`,
-        webViewLink: upPng.data.webViewLink,
-        dropboxPath: upPng.data.path,
-        mimeType: upPng.data.type || "image/png",
-        size: upPng.data.size,
-        kind: editorMode === "edit" ? "upload" : "handwrite",
-        template: editorMode === "edit" ? undefined : editorTemplate,
-        uploadDate: new Date().toISOString(),
-      });
-
       toast({ title: "נשמר", description: editorMode === "edit" ? "נשמרה גרסה חדשה" : "נשמר קובץ חדש" });
       setEditorOpen(false);
       setRefreshTick((x) => x + 1);
@@ -321,7 +319,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>קבצים</CardTitle>
+        <CardTitle>הקבצים שלי</CardTitle>
         <div className="flex gap-2">
           <Button variant="secondary" disabled={refreshingFiles} onClick={() => void refreshFromCloud()}>
             {refreshingFiles ? "טוען מהענן…" : "רענון מ-Dropbox"}
@@ -334,6 +332,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        <div className="flex items-center gap-2"><Label htmlFor="student-file-sort">מיון לפי</Label><select id="student-file-sort" aria-label="מיון קבצים" value={sortBy} onChange={e => setSortBy(e.target.value as FileSort)} className="rounded-md border bg-background text-foreground p-2"><option value="date">תאריך — החדשים תחילה</option><option value="name">שם</option><option value="topic">נושא</option><option value="type">סוג</option></select></div>
         {files.length === 0 ? (
           <div className="text-sm opacity-70">אין קבצים שמורים לתלמידה</div>
         ) : (
@@ -347,11 +346,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate font-medium">{f.name}</div>
-                    <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} {f.mimeType ? `• ${f.mimeType}` : ""}</div>
+                    <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} • {getFileCategory(f)}</div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {isReading && <Button variant="secondary" onClick={() => setVisibleReadingId(isOpen ? null : f.id)}>{isOpen ? 'סגירת תווים' : 'הצגת התווים כאן'}</Button>}
-                    <Button variant="secondary" onClick={() => window.open(f.webViewLink, "_blank", "noopener,noreferrer")}>פתיחה / הורדה</Button>
+                    <Button variant="secondary" onClick={() => setOpenChoices(f)}>פתיחה / הורדה</Button>
                     <Button variant="destructive" onClick={() => void handleDelete(f)}>מחיקה</Button>
                   </div>
                 </div>
@@ -367,6 +366,31 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
             })}          </div>
         )}
       </CardContent>
+
+      <Dialog open={!!openChoices} onOpenChange={open => { if (!open) setOpenChoices(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>פתיחת קובץ: {openChoices?.name}</DialogTitle></DialogHeader>
+          <div className="grid gap-2">
+            <Button variant="secondary" onClick={async () => {
+              if (!openChoices) return;
+              try {
+                const blob = await fetchBlob(openChoices.webViewLink);
+                const kind = inferKindFromNameOrMime(openChoices.name, openChoices.mimeType);
+                if (getFileCategory(openChoices) === "קובץ שמע" || openChoices.kind === "link") {
+                  toast({title:"סוג קובץ שאינו נתמך",description:"אפשר לפתוח במכשיר או להוריד קובץ זה",variant:"destructive"}); return;
+                }
+                openEditorForEdit(baseNameWithoutExt(openChoices.name), {kind, blob});
+                setOpenChoices(null);
+              } catch (e) { toast({title:"לא ניתן לפתוח בעורך",description:String(e),variant:"destructive"}); }
+            }}>פתיחה בעורך לעריכה</Button>
+            <Button variant="secondary" onClick={() => { if (openChoices) window.open(openChoices.webViewLink, "_blank", "noopener,noreferrer"); setOpenChoices(null); }}>פתיחה במכשיר</Button>
+            <Button variant="secondary" onClick={() => {
+              if (!openChoices) return;
+              const a = document.createElement("a"); a.href = openChoices.webViewLink; a.download = openChoices.name; a.rel = "noopener noreferrer"; document.body.appendChild(a); a.click(); a.remove(); setOpenChoices(null);
+            }}>הורדה</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
