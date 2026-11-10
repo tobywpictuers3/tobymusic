@@ -83,3 +83,34 @@ test("student identity never uses the teacher manager credential to write Dropbo
  assert.match(text,/שמירת קבצים בענן לתלמידות אינה זמינה עדיין/);
  assert.match(text,/הסרת שיוך בענן אינה זמינה ללא הרשאה מאובטחת/);
 });
+
+
+test("student personal files only expose download; teacher receives the editor",()=>{
+  const dashboard=read("src/pages/StudentDashboard.tsx");
+  const downloads=read("src/components/student/StudentFileDownloads.tsx");
+  const teacher=read("src/components/admin/TeacherFileLibrary.tsx");
+  assert.match(dashboard,/import StudentFileDownloads/);
+  assert.match(dashboard,/<StudentFileDownloads studentId=\{student\.id\}/);
+  assert.doesNotMatch(dashboard,/<StudentFiles studentId=/);
+  assert.match(downloads,/getCurrentUser\(\)/);
+  assert.match(downloads,/currentUser\.studentId === studentId/);
+  assert.match(downloads,/file\.studentId === studentId/);
+  assert.match(downloads,/downloadFile\(file\)/);
+  assert.doesNotMatch(downloads,/from [\"']\.\/DocumentEditor/);
+  assert.doesNotMatch(downloads,/workerApi/);
+  assert.doesNotMatch(downloads,/\baddFile\s*\(/);
+  assert.doesNotMatch(downloads,/\bdeleteFile\s*\(/);
+  assert.doesNotMatch(downloads,/MediaRecorder|<DocumentEditor|<PdfAnnotationEditor/);
+  assert.match(teacher,/import StudentFiles from/);
+  assert.match(teacher,/<StudentFiles key=\{editingStudentId\} studentId=\{editingStudentId\}/);
+  assert.match(teacher,/בחרי תלמידה לניהול קבצים/);
+});
+
+test("teacher has independent full-library metadata search and student workspace",()=>{
+  const teacher=read("src/components/admin/TeacherFileLibrary.tsx");
+  for(const field of ["filterStudentId","filterType","filterTag","dateFrom","dateTo","row.file.subject","row.file.tags","row.file.uploadDate"])
+    assert.ok(teacher.includes(field), "Missing teacher metadata filter: "+field);
+  assert.match(teacher,/getTeacherFileMasters\(\)/);
+  assert.match(teacher,/setEditingStudentId\(file.studentId\)/);
+  assert.match(read("src/components/student/StudentFiles.tsx"),/if \(!isTeacher\) \{/);
+});
