@@ -294,11 +294,8 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
 
   const handleDelete = async (file: FileEntry) => {
     try {
-      if (file.dropboxPath) {
-        const r = await workerApi.deleteAttachment(file.dropboxPath);
-        if (!r.success) toast({ title: "אזהרה", description: "מחיקה מהדרופבוקס נכשלה (מוחק מהרשימה בלבד)" });
-      }
-
+      // Remove only this student assignment. Do not delete the shared Dropbox attachment:
+      // the same source may still be referenced by another student or the teacher library.
       const ok = await deleteFile(file.id);
       if (!ok) {
         toast({ title: "שגיאה", description: "לא נמצא למחיקה", variant: "destructive" });
