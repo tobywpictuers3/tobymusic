@@ -72,3 +72,14 @@ test("audio can be recorded or uploaded and linked to a file",()=>{
  assert.match(student,/parentFileId:associated/);
  assert.match(student,/attachAudioFromDevice/);
 });
+
+
+test("student identity never uses the teacher manager credential to write Dropbox",()=>{
+ const text=read("src/components/student/StudentFiles.tsx");
+ assert.match(text,/cloudWriteAuthorized = isTeacher && Boolean\(getManagerCode\(\)\)/);
+ assert.match(text,/if \(!cloudWriteAuthorized\)/);
+ assert.match(text,/downloadLocal\(pdfFile, pdfFile.name\)/);
+ assert.match(text,/downloadLocal\(file, file.name\)/);
+ assert.match(text,/שמירת קבצים בענן לתלמידות אינה זמינה עדיין/);
+ assert.match(text,/הסרת שיוך בענן אינה זמינה ללא הרשאה מאובטחת/);
+});
