@@ -35,6 +35,7 @@ import FixedScheduleTab from '@/components/admin/FixedScheduleTab';
 import YemotSettingsCard from '@/components/admin/YemotSettingsCard';
 import MusicPlaySandbox from '@/components/admin/MusicPlaySandbox';
 import SightReadingWorkspace from '@/components/admin/SightReadingWorkspace';
+import TeacherFileLibrary from '@/components/admin/TeacherFileLibrary';
 
 /** רקעי סקשן מותג — אותה תמונת "במה ריקה" המשמשת באתר הראשי (tobymusic.club),
     כדי לשמור על שפה עיצובית אחידה בין הפלטפורמות (במקום 4 תמונות רקע שלא קיימות באתר) */
@@ -244,6 +245,8 @@ const AdminDashboard = () => {
                   תלמידות
                 </TabsTrigger>
 
+                <TabsTrigger value="teacher-files" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]"><FileText className="h-4 w-4" />ספריית קבצים</TabsTrigger>
+
                 <TabsTrigger value="music-play" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]">🎹 TOBY PLAY · התנסות</TabsTrigger>
 
                 <TabsTrigger value="sight-reading" className="shrink-0 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs sm:text-sm px-2 sm:px-3 py-2 min-h-[40px]"><Music className="h-4 w-4" />קריאה מהדף</TabsTrigger>
@@ -293,6 +296,8 @@ const AdminDashboard = () => {
                   היסטוריה
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="teacher-files" className="fade-slide-in"><TeacherFileLibrary /></TabsContent>
 
               <TabsContent value="students" className="fade-slide-in">
                 <BrandSection index={0}>
