@@ -54,13 +54,16 @@ test("branded A4 templates include ordinary and piano staves",()=>{
 });
 
 test("teacher files share one attachment and verify new assignment",()=>{
- assert.match(library,/getFiles\(\)/);
+ assert.match(library,/getTeacherFileMasters\(\)/);
  assert.match(library,/sourceFileId/);
  assert.match(library,/downloadCanonicalDropboxLatest/);
  assert.match(library,/makeSightReadingPdf/);
  assert.match(types,/parentFileId\?: string/);
  assert.match(types,/tags\?: string\[\]/);
  assert.ok(!student.includes("workerApi.deleteAttachment("));
+ const storage=read("src/lib/storage.ts");
+ assert.match(storage,/export const getTeacherFileMasters/);
+ assert.match(storage,/trackTeacherFileMaster\(existingFile\)/);
 });
 
 test("audio can be recorded or uploaded and linked to a file",()=>{
