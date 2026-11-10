@@ -6,6 +6,7 @@ type SortKey = "date" | "name" | "student" | "topic" | "type";
 const typeOf = (f: FileEntry) => {
   const mime = (f.mimeType || "").toLowerCase();
   if (f.kind === "handwrite") return "דף מהעורך";
+  if (f.kind === "recording") return "הקלטה";
   if (mime.startsWith("audio/") || /\.(mp3|wav|m4a|ogg|webm)$/i.test(f.name)) return "שמע / הקלטה";
   if (mime === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) return "PDF";
   return f.kind === "link" ? "קישור" : "העלאה";
