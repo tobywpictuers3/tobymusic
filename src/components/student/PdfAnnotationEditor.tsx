@@ -86,11 +86,18 @@ export default function PdfAnnotationEditor(props: {
   useEffect(()=>{
     let live=true;
     let pdf:PDFDocumentProxy | undefined;
-    const task = getDocument({data:props.blob.arrayBuffer().then(buffer=>new Uint8Array(buffer)), isEvalSupported:false});
-    // PDF.js accepts promise-based Uint8Array data; no external URL is loaded.
-    void task.promise.then(doc=>{pdf=doc;if(live)setDocument(doc);else void doc.destroy();})
-      .catch(e=>{if(live)setError("לא ניתן לטעון PDF: "+String(e));});
-    return ()=>{live=false;void pdf?.destroy();void task.destroy();};
+    let task:ReturnType<typeof getDocument> | undefined;
+    void (async()=>{
+      try {
+        const data = new Uint8Array(await props.blob.arrayBuffer());
+        if(!live)return;
+        task=getDocument({data,isEvalSupported:false});
+        const doc=await task.promise;
+        pdf=doc;
+        if(live)setDocument(doc);else void doc.destroy();
+      }catch(e){if(live)setError("לא ניתן לטעון PDF: "+String(e));}
+    })();
+    return ()=>{live=false;void pdf?.destroy();void task?.destroy();};
   },[props.blob]);
 
   useEffect(()=>{
@@ -167,13 +174,13 @@ export default function PdfAnnotationEditor(props: {
       const pdfPage=await document.getPage(n);
       const v=pdfPage.getViewport({scale:1});
       const viewport=pdfPage.getViewport({scale:Math.min(2.4,1750/v.width)});
-      const c=document.createElement("canvas");
+      const c=window.document.createElement("canvas");
       c.width=Math.max(1,Math.round(viewport.width));c.height=Math.max(1,Math.round(viewport.height));
       const ctx=c.getContext("2d",{alpha:false});if(!ctx)throw new Error("לא ניתן לייצא עמוד");
       ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
       await pdfPage.render({canvasContext:ctx,viewport}).promise;
       // Render the annotation layer on its own canvas so the eraser never deletes original PDF text.
-      const overlay=document.createElement("canvas");overlay.width=c.width;overlay.height=c.height;
+      const overlay=window.document.createElement("canvas");overlay.width=c.width;overlay.height=c.height;
       const ink=overlay.getContext("2d");if(!ink)throw new Error("לא ניתן לייצא סימונים");
       paint(ink,layersRef.current[n]||[],c.width,c.height);
       ctx.drawImage(overlay,0,0);
