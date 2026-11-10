@@ -179,6 +179,8 @@ export interface FileEntry {
   // Display
   name: string;
   description?: string; // optional description/explanation for the file
+  subject?: string; // teacher library topic
+  tags?: string[]; // searchable multi-label classification
 
   // Where to open the file (worker serve_attachment or external URL)
   webViewLink: string;
