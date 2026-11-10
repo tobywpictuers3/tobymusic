@@ -1,7 +1,7 @@
 // DocumentEditor.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-export type EditorTemplate = "blank" | "lines" | "staff";
+export type EditorTemplate = "blank" | "lines" | "staff" | "piano";
 export type EditorSourceKind = "blank" | "image" | "pdf";
 type ToolMode = "pen" | "marker" | "eraser" | "text";
 const DEFAULT_TAGS = ["פסנתר","חליל","קריאה","שליפה","יצירה","מקצבים","קואורדינציה","רמה 1","רמה 2","רמה 3","דואט","ליווי","עיבוד"];
@@ -13,71 +13,42 @@ function formatA4Px(scale = 2) {
 
 function drawTemplate(ctx: CanvasRenderingContext2D, w: number, h: number, template: EditorTemplate) {
   ctx.save();
-  ctx.clearRect(0, 0, w, h);
-
-  // page background
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, w, h);
-
-  // page frame
-  ctx.strokeStyle = "rgba(0,0,0,0.10)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(20, 20, w - 40, h - 40);
-
-  if (template === "lines") {
-    // stronger than before (still subtle)
-    ctx.strokeStyle = "rgba(0,0,0,0.18)";
-    ctx.lineWidth = 2.5;
-
-    const top = 90;
-    const gap = 64;
-    for (let y = top; y < h - 90; y += gap) {
-      ctx.beginPath();
-      ctx.moveTo(50, y);
-      ctx.lineTo(w - 50, y);
-      ctx.stroke();
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle="#fff";
+  ctx.fillRect(0,0,w,h);
+  const k=w/900, left=64*k, right=w-left;
+  // Consistent TOBY ivory / warm gold printed stationery, drawn locally for offline reliability.
+  ctx.fillStyle="#846e49";
+  ctx.font=`${18*k}px Georgia, serif`;
+  ctx.fillText("TOBY MUSIC",left,52*k);
+  ctx.strokeStyle="#bf9b5d";ctx.lineWidth=1.4*k;
+  ctx.beginPath();ctx.moveTo(left,67*k);ctx.lineTo(right,67*k);ctx.stroke();
+  ctx.fillStyle="#6b5d54";
+  ctx.font=`${12*k}px Arial, sans-serif`;
+  ctx.textAlign="right";
+  ctx.fillText(template==="piano"?"PIANO" : template==="staff"?"MUSIC MANUSCRIPT" : "",right,52*k);
+  ctx.textAlign="left";
+  const staff=(top:number,x1:number=left,x2:number=right)=>{
+    ctx.strokeStyle="#252525";ctx.lineWidth=1.4*k;
+    for(let j=0;j<5;j++){let y=top+j*16*k;ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();}
+  };
+  if(template==="staff"){
+    for(let top=135*k;top<h-135*k;top+=145*k)staff(top);
+  }else if(template==="piano"){
+    for(let top=134*k;top+232*k<h-115*k;top+=302*k){
+      const x1=left+22*k;
+      staff(top,x1,right);staff(top+142*k,x1,right);
+      ctx.strokeStyle="#252525";ctx.lineWidth=1.6*k;
+      ctx.beginPath();ctx.moveTo(x1,top);ctx.lineTo(x1,top+206*k);ctx.stroke();
+      ctx.font=`${62*k}px Georgia, serif`;ctx.fillStyle="#816846";
+      ctx.fillText("{",left-4*k,top+131*k);
     }
+  }else if(template==="lines"){
+    ctx.strokeStyle="rgba(0,0,0,.2)";ctx.lineWidth=1.4*k;
+    for(let top=138*k;top<h-110*k;top+=52*k){ctx.beginPath();ctx.moveTo(left,top);ctx.lineTo(right,top);ctx.stroke();}
   }
-
-  if (template === "staff") {
-    // MUCH stronger staff lines
-    ctx.strokeStyle = "rgba(0,0,0,0.38)";
-    ctx.lineWidth = 3.2;
-
-    const left = 70;
-    const right = w - 70;
-    const groupTopStart = 95;
-    const lineGap = 18;
-    const groupGap = 88;
-
-    for (let top = groupTopStart; top < h - 150; top += lineGap * 4 + groupGap) {
-      for (let i = 0; i < 5; i++) {
-        const y = top + i * lineGap;
-        ctx.beginPath();
-        ctx.moveTo(left, y);
-        ctx.lineTo(right, y);
-        ctx.stroke();
-      }
-    }
-
-    // optional: faint barlines (very subtle)
-    ctx.strokeStyle = "rgba(0,0,0,0.10)";
-    ctx.lineWidth = 2;
-    for (let top = groupTopStart; top < h - 150; top += lineGap * 4 + groupGap) {
-      const yTop = top;
-      const yBot = top + 4 * lineGap;
-      // a few barlines across the width
-      const bars = 4;
-      for (let b = 1; b <= bars; b++) {
-        const x = left + (b * (right - left)) / (bars + 1);
-        ctx.beginPath();
-        ctx.moveTo(x, yTop);
-        ctx.lineTo(x, yBot);
-        ctx.stroke();
-      }
-    }
-  }
-
+  ctx.fillStyle="#b5a183";ctx.font=`${10*k}px Georgia, serif`;
+  ctx.textAlign="center";ctx.fillText("TOBY MUSIC",w/2,h-38*k);
   ctx.restore();
 }
 
@@ -614,8 +585,8 @@ export default function DocumentEditor(props: {
                   }}
                 >
                   <option value="blank">דף ריק</option>
-                  <option value="lines">דף שורות</option>
-                  <option value="staff">דף חמשות</option>
+                  <option value="staff">דף תווים רגיל</option>
+                  <option value="piano">דף תווים לפסנתר</option>
                 </select>
               </div>
             ) : null}
