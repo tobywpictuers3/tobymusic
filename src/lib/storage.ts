@@ -65,6 +65,7 @@ const devData: Record<string, any> = {
   scheduleTemplates: [],
   swapRequests: [], // New field for swap requests
   files: [],
+  teacherFileMasters: [],
   integrationSettings: {},
   performances: [],
   oneTimePayments: [],
@@ -697,6 +698,50 @@ export const getFiles = (): FileEntry[] => {
   return inMemoryStorage['files'] || [];
 };
 
+/** Teacher catalog uses durable metadata only; Dropbox file bytes are shared. */
+const storedTeacherFileMasters = (): FileEntry[] => {
+  const store = isDevMode() ? devData : inMemoryStorage;
+  return Array.isArray(store['teacherFileMasters']) ? store['teacherFileMasters'] : [];
+};
+
+const trackTeacherFileMaster = (file: FileEntry): void => {
+  const rootId = file.sourceFileId || file.id;
+  const masters = storedTeacherFileMasters();
+  const index = masters.findIndex(item => item.id === rootId);
+  // A reused assignment must not overwrite the original master metadata.
+  if (index !== -1 && file.sourceFileId) return;
+  const snapshot: FileEntry = { ...file, id: rootId, sourceFileId: undefined };
+  const updated = [...masters];
+  if (index === -1) updated.push(snapshot);
+  else if (file.id === rootId) updated[index] = snapshot;
+  else return;
+  if (isDevMode()) devData['teacherFileMasters'] = updated;
+  else inMemoryStorage['teacherFileMasters'] = updated;
+};
+
+/** Backward-compatible teacher view: existing legacy assignments remain visible. */
+export const getTeacherFileMasters = (): FileEntry[] => {
+  const map = new Map(storedTeacherFileMasters().map(item => [item.id, item]));
+  for (const file of getFiles()) {
+    const rootId = file.sourceFileId || file.id;
+    if (!map.has(rootId)) map.set(rootId, { ...file, id: rootId, sourceFileId: undefined });
+  }
+  return [...map.values()];
+};
+
+/** Additive, idempotent migration of existing file metadata, run from admin. */
+export const ensureTeacherFileMasters = (): number => {
+  const existing = storedTeacherFileMasters();
+  const combined = getTeacherFileMasters();
+  if (combined.length === existing.length) return 0;
+  if (isDevMode()) devData['teacherFileMasters'] = combined;
+  else {
+    inMemoryStorage['teacherFileMasters'] = combined;
+    hybridSync.onDataChange();
+  }
+  return combined.length - existing.length;
+};
+
 export const addFile = (file: Omit<FileEntry, 'id' | 'uploadDate'> & { uploadDate?: string }): FileEntry => {
   const files = getFiles();
   const newFile: FileEntry = {
@@ -706,6 +751,7 @@ export const addFile = (file: Omit<FileEntry, 'id' | 'uploadDate'> & { uploadDat
     lastModified: new Date().toISOString(),
   };
   files.push(newFile);
+  trackTeacherFileMaster(newFile);
 
   if (isDevMode()) {
     devData['files'] = files;
@@ -727,6 +773,7 @@ export const updateFile = (id: string, updatedFields: Partial<FileEntry>): FileE
     ...updatedFields,
     lastModified: new Date().toISOString(),
   };
+  trackTeacherFileMaster(files[fileIndex]);
 
   if (isDevMode()) {
     devData['files'] = files;
@@ -740,6 +787,8 @@ export const updateFile = (id: string, updatedFields: Partial<FileEntry>): FileE
 
 export const deleteFile = async (id: string): Promise<boolean> => {
   const files = getFiles();
+  const existingFile = files.find(file => file.id === id);
+  if (existingFile) trackTeacherFileMaster(existingFile);
   const updatedFiles = files.filter(file => file.id !== id);
   if (updatedFiles.length === files.length) return false;
 
