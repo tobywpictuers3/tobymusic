@@ -486,3 +486,10 @@ The payment data model already contains all 12 academic months, September throug
 - The teacher-only notation picker imports existing sight-reading archive PDFs using makeSightReadingPdf and checks assignment markers to avoid duplicates. No Gmail change.
 - Deleting a student file removes its record only; shared Dropbox attachment is preserved for other assignments and the teacher archive.
 - The approved PAPER brand palette is used in A4 canvas templates. Exact earlier template file bytes were not found in Github brand assets or connected Dropbox/Drive searches; drawings follow existing brand guidelines, not purported original exports.
+
+### Durable teacher file library — 2026-11-10
+
+- A separate `musicSystem_teacherFileMasters` bucket preserves one metadata master record independently of each student's `musicSystem_files` assignment.
+- `getTeacherFileMasters` includes historical files without migration; `ensureTeacherFileMasters` on teacher-library mount migrates legacy metadata additively and idempotently.
+- File creation, metadata edits and student deletions upsert original master; deletion removes only the assignment and leaves original bytes untouched. Reassignment via `sourceFileId` never duplicates a master.
+- New student-file save confirms both assignment and master in canonical Dropbox latest readback. Live production Worker behaviour must be verified on release.
