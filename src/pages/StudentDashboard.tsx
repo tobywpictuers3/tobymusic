@@ -16,7 +16,7 @@ import GeneralWeeklySchedule from "@/components/student/GeneralWeeklySchedule";
 import StudentFixedSchedule from "@/components/student/StudentFixedSchedule";
 import ContactsList from "@/components/student/ContactsList";
 import YemotInstructions from "@/components/student/YemotInstructions";
-import StudentFiles from "@/components/student/StudentFiles";
+import StudentFileDownloads from "@/components/student/StudentFileDownloads";
 import PaymentAlert from "@/components/student/PaymentAlert";
 import LessonHistory from "@/components/student/LessonHistory";
 import PracticeTracking from "@/components/student/PracticeTracking";
@@ -315,7 +315,7 @@ const StudentDashboard = () => {
         </TabsContent>
 
         <TabsContent value="files" className="fade-slide-in space-y-6">
-          <StudentFiles studentId={student.id} />
+          <StudentFileDownloads studentId={student.id} />
         </TabsContent>
 
         <TabsContent value="yemot" className="fade-slide-in space-y-6">

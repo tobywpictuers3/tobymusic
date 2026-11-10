@@ -467,11 +467,17 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     }
   };
 
+  // Defense in depth: this editor must never be rendered inside a student session.
+  // StudentDashboard uses StudentFileDownloads, which has no write controls.
+  if (!isTeacher) {
+    return <Card><CardContent className="p-4 text-sm">עריכה, העלאה והקלטה זמינות למנהלת בלבד.</CardContent></Card>;
+  }
+
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row flex-wrap gap-3 items-center justify-between">
         <CardTitle>הקבצים שלי</CardTitle>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="secondary" disabled={refreshingFiles} onClick={() => void refreshFromCloud()}>
             {refreshingFiles ? "טוען מהענן…" : "רענון מ-Dropbox"}
           </Button>
