@@ -1,5 +1,6 @@
 // StudentFiles.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Upload, Mic, Square } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,9 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [refreshTick, setRefreshTick] = useState(0);
   const [sortBy, setSortBy] = useState<FileSort>("date");
   const [openChoices, setOpenChoices] = useState<FileEntry | null>(null);
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
   const [visibleReadingId,setVisibleReadingId] = useState<string | null>(null);
   const [refreshingFiles,setRefreshingFiles]=useState(false);
   useEffect(()=>{
@@ -121,6 +125,37 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [editorTemplate, setEditorTemplate] = useState<NewPageTemplate>("blank");
   const [editorSource, setEditorSource] = useState<{ kind: "image" | "pdf"; blob: Blob } | undefined>(undefined);
 
+  const toggleRecording = async () => {
+    if (recorderRef.current?.state === "recording") { recorderRef.current.stop(); setRecording(false); return; }
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") throw new Error("הדפדפן אינו תומך בהקלטה");
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      recordingStreamRef.current = stream;
+      const chunks: BlobPart[] = [];
+      const preferred = ["audio/webm;codecs=opus","audio/webm","audio/mp4"].find(type => MediaRecorder.isTypeSupported(type));
+      const rec = new MediaRecorder(stream, preferred ? {mimeType: preferred} : undefined);
+      recorderRef.current = rec;
+      rec.ondataavailable = e => {if (e.data.size) chunks.push(e.data);};
+      rec.onerror = () => {setRecording(false); stream.getTracks().forEach(t=>t.stop()); toast({title:"שגיאה בהקלטה",variant:"destructive"});};
+      rec.onstop = async () => {
+        setRecording(false); stream.getTracks().forEach(t=>t.stop()); recordingStreamRef.current = null; recorderRef.current = null;
+        try {
+          const format = rec.mimeType.includes("mp4") ? "m4a" : "webm";
+          const mime = rec.mimeType || "audio/webm";
+          const name = "הקלטה " + nowStamp();
+          const file = new File([new Blob(chunks,{type:mime})], name + "." + format,{type:mime});
+          if (!file.size) throw new Error("ההקלטה ריקה");
+          const upload = await workerApi.uploadAttachment(file);
+          if (!upload.success || !upload.data) throw new Error(upload.error || "העלאת ההקלטה נכשלה");
+          addFile({studentId,name:file.name,mimeType:mime,kind:"upload",webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path,size:file.size});
+          setRefreshTick(n=>n+1);
+          toast({title:"ההקלטה נשמרה",description:"הקובץ נוסף לספרייה"});
+        } catch (error) {toast({title:"לא ניתן לשמור הקלטה",description:String(error),variant:"destructive"});}
+      };
+      rec.start(); setRecording(true);
+    } catch(error) {recordingStreamRef.current?.getTracks().forEach(t=>t.stop());toast({title:"לא ניתן להתחיל הקלטה",description:String(error),variant:"destructive"});}
+  };
+
   const resetAddForm = () => {
     setAddMode("upload");
     setTitle("");
@@ -150,11 +185,6 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       return false;
     }
     return true;
-  };
-
-  const handleAddOpen = () => {
-    resetAddForm();
-    setAddOpen(true);
   };
 
   const handleAddSubmit = async () => {
@@ -329,7 +359,9 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
           <Button variant="secondary" onClick={handleOpenEditPicker}>
             עריכת קובץ
           </Button>
-          <Button onClick={handleAddOpen}>הוספת קובץ</Button>
+          <Button variant="secondary" onClick={() => { resetAddForm(); setAddMode("newpage"); setAddOpen(true); }} title="דף חדש"><Plus className="h-4 w-4 ml-1" /> דף חדש</Button>
+          <Button variant="secondary" onClick={() => { resetAddForm(); setAddMode("upload"); setAddOpen(true); }} title="העלאת קובץ"><Upload className="h-4 w-4 ml-1" /> העלאה</Button>
+          <Button variant={recording ? "destructive" : "secondary"} onClick={() => void toggleRecording()} title={recording ? "סיום הקלטה" : "הקלטה חדשה"}>{recording ? <Square className="h-4 w-4 ml-1" /> : <Mic className="h-4 w-4 ml-1" />}{recording ? "סיום הקלטה" : "הקלטה"}</Button>
         </div>
       </CardHeader>
 
