@@ -29,6 +29,7 @@ function getFileCategory(f: FileEntry): string {
   const mime = (f.mimeType || "").toLowerCase();
   const name = f.name.toLowerCase();
   if (f.kind === "handwrite") return "דף שנוצר בעורך";
+  if (f.kind === "recording") return "הקלטה";
   if (mime.startsWith("audio/") || /\.(mp3|wav|m4a|ogg|webm)$/.test(name)) return "קובץ שמע";
   if (mime === "application/pdf" || name.endsWith(".pdf")) return "PDF";
   if (f.kind === "link") return "קישור";
@@ -147,7 +148,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
           if (!file.size) throw new Error("ההקלטה ריקה");
           const upload = await workerApi.uploadAttachment(file);
           if (!upload.success || !upload.data) throw new Error(upload.error || "העלאת ההקלטה נכשלה");
-          addFile({studentId,name:file.name,mimeType:mime,kind:"upload",webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path,size:file.size});
+          addFile({studentId,name:file.name,mimeType:mime,kind:"recording",webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path,size:file.size});
           setRefreshTick(n=>n+1);
           toast({title:"ההקלטה נשמרה",description:"הקובץ נוסף לספרייה"});
         } catch (error) {toast({title:"לא ניתן לשמור הקלטה",description:String(error),variant:"destructive"});}
