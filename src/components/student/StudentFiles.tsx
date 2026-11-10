@@ -148,8 +148,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     if(!read.success||!read.data)throw new Error("נשמר מקומית אך לא התקבל אישור קריאה חוזרת מ-Dropbox.");
     const raw=read.data as Record<string,unknown>;
     const files=(raw.musicSystem_files??raw.files) as unknown;
-    if(!Array.isArray(files) || !files.some(entry=>entry && typeof entry==="object" && (entry as FileEntry).id===id && (entry as FileEntry).studentId===studentId))
-      throw new Error("הקובץ טרם אומת ב-Dropbox. הנתונים המקומיים נשמרו ויש לנסות לסנכרן.");
+    const entry = Array.isArray(files) ? files.find(item => item && typeof item==="object" && (item as FileEntry).id===id && (item as FileEntry).studentId===studentId) as FileEntry | undefined : undefined;
+    if (!entry) throw new Error("הקובץ טרם אומת ב-Dropbox. הנתונים המקומיים נשמרו ויש לנסות לסנכרן.");
+    const masters = raw.musicSystem_teacherFileMasters as unknown;
+    if (!Array.isArray(masters) || !masters.some(item => item && typeof item === "object" && (item as FileEntry).id === (entry.sourceFileId || entry.id)))
+      throw new Error("השיוך נשמר, אך רשומת המקור בספריית המורה טרם אומתה ב-Dropbox.");
   };
 
   const addNotationFromEngine = async () => {
