@@ -276,8 +276,12 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
         return;
       }
 
-      const blob = await fetchBlob(fe.webViewLink);
       const kind = inferKindFromNameOrMime(fe.name, fe.mimeType);
+      if (kind === "pdf" || getFileCategory(fe) === "קובץ שמע" || fe.kind === "link") {
+        toast({title:"עריכה אינה זמינה לסוג קובץ זה",description:"הקובץ המקורי נשמר ללא שינוי. ניתן לפתוח אותו במכשיר או להוריד.",variant:"destructive"});
+        return;
+      }
+      const blob = await fetchBlob(fe.webViewLink);
 
       openEditorForEdit(baseNameWithoutExt(fe.name) || "עריכה", { kind, blob });
       setEditPickOpen(false);
