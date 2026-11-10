@@ -25,7 +25,7 @@ interface StudentFilesProps {
 }
 
 type AddMode = "upload" | "link" | "newpage";
-type NewPageTemplate = "blank" | "lines" | "staff";
+type NewPageTemplate = "blank" | "staff" | "piano";
 type EditPickMode = "from_app" | "from_device";
 type FileSort = "date" | "name" | "topic" | "type";
 
@@ -258,8 +258,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       }
 
       if (addMode === "newpage") {
-        if (!ensureTitle()) return;
-        openEditorForNew(title.trim(), template);
+        openEditorForNew(title.trim() || "דף חדש", template);
         setAddOpen(false);
         return;
       }
@@ -537,11 +536,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
                   <Button variant={template === "blank" ? "default" : "secondary"} onClick={() => setTemplate("blank")}>
                     ריק
                   </Button>
-                  <Button variant={template === "lines" ? "default" : "secondary"} onClick={() => setTemplate("lines")}>
-                    שורות
+                  <Button variant={template === "piano" ? "default" : "secondary"} onClick={() => setTemplate("piano")}>
+                    תווים לפסנתר
                   </Button>
                   <Button variant={template === "staff" ? "default" : "secondary"} onClick={() => setTemplate("staff")}>
-                    חמשות
+                    תווים רגיל
                   </Button>
                 </div>
               </div>
