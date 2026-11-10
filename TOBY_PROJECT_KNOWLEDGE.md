@@ -488,3 +488,10 @@ The payment data model already contains all 12 academic months, September throug
 ### Remaining verification
 - An authenticated operator/student must test actual file uploads, recordings, PDF annotation and print, teacher master preservation after removing a student assignment, and cross-device persistence including NetFree tablet. Live Worker permissions and browser download/open behaviour are **not verified solely by CI or the domain asset check**.
 - A future email integration may reuse durable file metadata but requires a separate explicitly approved change.
+
+### Follow-up security gate — 2026-11-10
+
+- **Critical finding:** `src/lib/workerApi.ts` upload_attachment/other mutation methods supply `X-Sonata-Manager-Code: getManagerCode()`. `getManagerCode()` deliberately returns empty for users of type `student`, whose personal login stores only `{type:'student',studentId}`. Previous release had no working verified student cloud-write path; a green build did not guarantee successful uploads.
+- Follow-up branch `fix/student-file-save-auth-20261110` fails closed for student cloud mutations: editor save downloads an A4 PDF to the device; recordings download as audio; upload, metadata edit and delete require admin credential. UI tells students explicitly this is **local only**. No admin credentials are granted to students.
+- **Outstanding architectural work:** implement a server-side *student-scoped* authentication mechanism for uploads, metadata mutations and canonical Dropbox persistence; the current personal-code login is client-side and must not be accepted as proof of secure backend identity. Do not call student cloud-file saving complete until actual authorized student upload and read-back succeeds on production.
+- No site Worker or Dropbox Worker secret changed by this local-fallback patch. Email link integration still deferred.
