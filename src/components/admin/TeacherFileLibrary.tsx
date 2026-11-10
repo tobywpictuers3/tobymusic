@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getFiles, getStudents, addFile, getSightReadingArchive, isDevMode } from "@/lib/storage";
+import { getFiles, getStudents, addFile, getSightReadingArchive, isDevMode, getTeacherFileMasters, ensureTeacherFileMasters } from "@/lib/storage";
 import { workerApi } from "@/lib/workerApi";
 import { hybridSync } from "@/lib/hybridSync";
 import { downloadCanonicalDropboxLatest } from "@/lib/canonicalDropboxRead";
@@ -28,6 +28,8 @@ export default function TeacherFileLibrary() {
   const [notationId,setNotationId] = useState("");
   const [notationBusy,setNotationBusy] = useState(false);
   useEffect(() => {
+    const imported = ensureTeacherFileMasters();
+    if(imported>0)setRevision(n=>n+1);
     const refresh = () => setRevision(n => n + 1);
     window.addEventListener("toby:canonical-sync-applied", refresh);
     return () => window.removeEventListener("toby:canonical-sync-applied", refresh);
@@ -35,7 +37,7 @@ export default function TeacherFileLibrary() {
   const entries = useMemo(() => {
     const students = new Map(getStudents().map(s => [s.id, (s.firstName + " " + s.lastName).trim()]));
     const collator = new Intl.Collator("he");
-    return getFiles().map(file => ({ file, student: students.get(file.studentId) || "תלמידה לא מזוהה" }))
+    return getTeacherFileMasters().map(file => ({ file, student: students.get(file.studentId) || "תלמידה לא מזוהה" }))
       .filter(row => [row.file.name, row.file.subject, row.file.description, row.file.tags?.join(" "), row.student, typeOf(row.file)]
         .some(value => (value || "").toLocaleLowerCase("he").includes(search.toLocaleLowerCase("he"))))
       .sort((a,b) => {
@@ -102,7 +104,7 @@ export default function TeacherFileLibrary() {
   };
   return <section className="rounded-xl border bg-background/95 p-4 space-y-4" dir="rtl">
     <h2 className="text-xl font-semibold">ספריית הקבצים של המורה</h2>
-    <p className="text-sm text-muted-foreground">מוצגים קבצים המשויכים לתלמידות, כולל פרטי הקובץ המקוריים. אין כאן שכפול קבצים.</p>
+    <p className="text-sm text-muted-foreground">ספריית מקור יציבה: הקובץ נשמר כאן גם אם התלמידה הסירה את השיוך שלה, ללא שכפול קבצים.</p>
     <details className="rounded-lg border p-3"><summary className="cursor-pointer font-medium">צירוף תרגיל ממנוע התווים</summary>
       <div className="flex gap-2 flex-wrap mt-3">
         <select className="border rounded bg-background p-2 flex-1 min-w-40" aria-label="בחירת תרגיל" value={notationId} onChange={e=>setNotationId(e.target.value)}><option value="">בחרי תרגיל מהארכיון</option>{getSightReadingArchive().map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select>
