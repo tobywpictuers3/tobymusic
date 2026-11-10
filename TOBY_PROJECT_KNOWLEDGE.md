@@ -468,28 +468,23 @@ The payment data model already contains all 12 academic months, September throug
 - `preparePriorYearSettlementRowsDurably` must never call a local no-op “verified”; a canonical read-back and field-level comparison are required even if no in-memory mutation occurred.
 - Production migration remains **unverified until a canonical Dropbox read-back shows every approved field and both transfers**. GitHub CI/Cloudflare deploy alone are not accounting proof.
 
-## Student files workspace — feature branch 2026-11-10 (not yet production)
+## Student files workspace — production release 2026-11-10
 
-- Work in progress on `feature/student-files-library-20261110`; PR #86 is draft and must not be merged until end-to-end verification.
-- Existing `musicSystem_files` / `FileEntry` records remain the single source for student assignments and the teacher-facing catalog. The new teacher library reads these existing records rather than copying Dropbox attachments.
-- Optional backward-compatible `subject` and `tags` fields are added to file metadata; older files continue to load.
-- Student files default to newest first and may sort by name, subject or type. Open actions show edit, device-open and download; editor support varies by file kind.
-- New document editor results are stored only as one A4 PDF attachment record, not as both PNG and PDF. The editor now offers ink color including opaque white and editable subject/tags.
-- **Known gap:** legacy `DocumentEditor` does not render/import an existing PDF. The new open menu explicitly blocks PDF-to-editor rather than accidentally saving a blank page. PDF annotation/import is required before claiming support for editing existing PDFs.
-- In-browser microphone recording uses MediaRecorder on supported devices and uploads the resulting audio as an attachment.
-- Still to verify: Cloudflare Worker attachment endpoints for student-side permissions, device download behavior, audio-browser support, persistence read-back, template-brand integration, notation-generator attachment integration and real PDF editing.
+### Release evidence
+- GitHub PR #86 squash-merged into student repository `main` at commit `a8bc47824933fc7379d148cce96ecdb8ca7de6b0`.
+- GitHub "Validate Platform PR" CI passed (including workspace regression, TypeScript diagnostic and Vite build).
+- Student Worker+Assets deployed through club-repo main1 release trigger `8f74088e0471ae1c34eb51ad50df0e025977a578`, workflow run `42817066438`; deploy-students succeeded, public-site deploy was skipped.
+- Deployment pipeline verified `https://students.tobymusic.club` served exact Vite main asset `/assets/index-CdsxyO1b.js`. This verifies delivery, **not** end-to-end authenticated save/download/microphone/permissions on each target browser.
 
-### Files workspace implementation — November 10, 2026
+### Features and data model
+- The student "My files" list defaults to newest first and supports search and sort by date/name/subject/type. Actions include create page, upload, in-browser recording, and (for admin) import from the existing sight-reading archive.
+- Every file offers editor/device-open/download. PDF editing uses locally bundled PDF.js 4.10.38 with a bundled worker; multi-page ink tools include pencil, pen, marker, eraser, white pen, text, colors, widths, undo/redo and A4 PDF export/print. Source file remains unmodified and editor save creates an A4 PDF as a new attachment record. Non-editable audio and links open/download instead.
+- Canvas page templates: blank, ordinary staff and piano grand staff. Drawn with official PAPER brand palette. Exact original approved template **files** were not found in GitHub/brand-assets or connected Dropbox/Drive; this reconstruction needs visual user review.
+- Optional backward-compatible file fields: `subject`, `tags`, `sourceFileId` and `parentFileId` for metadata, reusable source and document-associated recording. Existing `musicSystem_files` remains the student-assignment collection.
+- Dedicated additive `musicSystem_teacherFileMasters` persists teacher master metadata independently of student assignment deletion, without copying Dropbox media bytes. `getTeacherFileMasters` exposes both stored and legacy record metadata; `ensureTeacherFileMasters` performs additive, idempotent import on teacher-library load. `addFile`, `updateFile`, `deleteFile` upsert master; delete only removes assignment and never calls Worker delete_attachment.
+- Creation, metadata updates, assignments and audio saves call `hybridSync.manualSync()` and verify canonical Dropbox latest; until verified UI must not report a durable save.
+- Teacher catalog offers search/sort, assignments of existing attachments to additional students and importing archived notation PDFs. The email bridge was intentionally not modified.
 
-- Bundled PDF.js 4.10.38 renders multi-page PDF documents with local worker assets; annotation supports pen, marker, eraser, white covering strokes, text, undo/redo, and A4 export/print. Source PDF remains unchanged; new annotated version is a separate attachment record.
-- FileEntry includes subject, tags, sourceFileId and parentFileId for categorized library reuse and associated audio. Teacher library assigns one existing Dropbox attachment to multiple students without duplicate bytes, with canonical readback.
-- The teacher-only notation picker imports existing sight-reading archive PDFs using makeSightReadingPdf and checks assignment markers to avoid duplicates. No Gmail change.
-- Deleting a student file removes its record only; shared Dropbox attachment is preserved for other assignments and the teacher archive.
-- The approved PAPER brand palette is used in A4 canvas templates. Exact earlier template file bytes were not found in Github brand assets or connected Dropbox/Drive searches; drawings follow existing brand guidelines, not purported original exports.
-
-### Durable teacher file library — 2026-11-10
-
-- A separate `musicSystem_teacherFileMasters` bucket preserves one metadata master record independently of each student's `musicSystem_files` assignment.
-- `getTeacherFileMasters` includes historical files without migration; `ensureTeacherFileMasters` on teacher-library mount migrates legacy metadata additively and idempotently.
-- File creation, metadata edits and student deletions upsert original master; deletion removes only the assignment and leaves original bytes untouched. Reassignment via `sourceFileId` never duplicates a master.
-- New student-file save confirms both assignment and master in canonical Dropbox latest readback. Live production Worker behaviour must be verified on release.
+### Remaining verification
+- An authenticated operator/student must test actual file uploads, recordings, PDF annotation and print, teacher master preservation after removing a student assignment, and cross-device persistence including NetFree tablet. Live Worker permissions and browser download/open behaviour are **not verified solely by CI or the domain asset check**.
+- A future email integration may reuse durable file metadata but requires a separate explicitly approved change.
