@@ -311,7 +311,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     }
   };
 
-  const handleEditorSave = async (payload: { fileNameBase: string; png: Blob; pdf: Blob; subject: string; tags: string[] }) => {
+  const handleEditorSave = async (payload: { fileNameBase: string; pdf: Blob; subject: string; tags: string[] }) => {
     try {
       const base = payload.fileNameBase;
       const stamp = nowStamp();
@@ -408,8 +408,9 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
             <Button variant="secondary" onClick={async () => {
               if (!openChoices) return;
               try {
-                const blob = await fetchBlob(openChoices.webViewLink);
                 const kind = inferKindFromNameOrMime(openChoices.name, openChoices.mimeType);
+                if (kind === "pdf") { toast({title:"עריכת PDF קיים עדיין לא נתמכת",description:"המסמך נשמר ללא שינוי. אפשר לפתוח במכשיר או להוריד.",variant:"destructive"}); return; }
+                const blob = await fetchBlob(openChoices.webViewLink);
                 if (getFileCategory(openChoices) === "קובץ שמע" || openChoices.kind === "link") {
                   toast({title:"סוג קובץ שאינו נתמך",description:"אפשר לפתוח במכשיר או להוריד קובץ זה",variant:"destructive"}); return;
                 }
