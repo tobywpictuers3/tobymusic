@@ -19,6 +19,7 @@ import { getCurrentUser } from "@/lib/storage";
 
 import DocumentEditor, { editorSourceFromFile } from "./DocumentEditor";
 import PdfAnnotationEditor from "./PdfAnnotationEditor";
+import StudentFileMetadataEditor from "./StudentFileMetadataEditor";
 
 interface StudentFilesProps {
   studentId: string;
@@ -77,6 +78,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [sortBy, setSortBy] = useState<FileSort>("date");
   const [search,setSearch] = useState("");
   const [openChoices, setOpenChoices] = useState<FileEntry | null>(null);
+  const [metadataFile,setMetadataFile] = useState<FileEntry | null>(null);
   const [recording, setRecording] = useState(false);
   const [readingPickerOpen, setReadingPickerOpen] = useState(false);
   const [readingItemId,setReadingItemId] = useState("");
@@ -200,7 +202,8 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
           const record=addFile({studentId,name:file.name,mimeType:mime,kind:"recording",parentFileId:associated||undefined,webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path,size:file.size});
           setRefreshTick(n=>n+1);
           await verifySavedFile(record.id);
-          toast({title:"ההקלטה נשמרה ואומתה",description:"הקובץ נוסף לספרייה"});
+          toast({title:"ההקלטה נשמרה ואומתה",description:"אפשר להוסיף לה שם ונושא ותגיות"});
+          setMetadataFile(record);
         } catch (error) {toast({title:"לא ניתן לשמור הקלטה",description:String(error),variant:"destructive"});}
       };
       rec.start(); setRecording(true);
@@ -316,6 +319,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       setRefreshTick(t=>t+1);
       await verifySavedFile(record.id);
       toast({ title: "הועלה", description: "הקובץ נוסף ואומת" });
+      setMetadataFile(record);
       setAddOpen(false);
       setRefreshTick((x) => x + 1);
     } catch (e: any) {
@@ -490,6 +494,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
               <Button variant="secondary" onClick={()=>{if(openChoices){void toggleRecording(openChoices.id);setOpenChoices(null);}}}>הקלטה חדשה מצורפת לדף</Button>
               <Button variant="secondary" disabled={busyFiles} onClick={()=>{setLinkedAudioParent(openChoices.id);linkedAudioInput.current?.click();}}>צירוף קובץ שמע מהמכשיר</Button>
             </>}
+            <Button variant="secondary" onClick={() => {if(openChoices)setMetadataFile(openChoices);setOpenChoices(null);}}>עריכת שם, נושא ותגיות</Button>
             <Button variant="secondary" onClick={async () => {
               const file=openChoices;if(!file)return;
               try {
@@ -517,6 +522,13 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       </DialogContent>
       </Dialog>
       <input ref={linkedAudioInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.webm" className="hidden" aria-label="קובץ שמע לצירוף לדף" onChange={e=>{const f=e.target.files?.[0];if(f&&linkedAudioParent)void attachAudioFromDevice(f,linkedAudioParent);e.target.value="";}} />
+      <Dialog open={!!metadataFile} onOpenChange={v=>{if(!v)setMetadataFile(null)}}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>פרטי קובץ ותגיות</DialogTitle></DialogHeader>
+          {metadataFile && <StudentFileMetadataEditor file={metadataFile} onCancel={()=>setMetadataFile(null)}
+            onSaved={()=>{setMetadataFile(null);setRefreshTick(n=>n+1);}}/>}
+        </DialogContent>
+      </Dialog>
       {/* Add dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-xl">
