@@ -169,7 +169,7 @@ export interface SwapRequest {
 /**
  * NEW (for StudentFiles): file kind + handwrite template
  */
-export type StudentFileKind = 'upload' | 'handwrite' | 'link';
+export type StudentFileKind = 'upload' | 'handwrite' | 'link' | 'recording';
 export type HandwriteTemplate = 'blank' | 'lines' | 'staff';
 
 export interface FileEntry {
