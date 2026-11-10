@@ -5,7 +5,7 @@ import { jsPDF } from "jspdf";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
-type Tool = "pen" | "marker" | "eraser" | "text";
+type Tool = "pencil" | "pen" | "marker" | "eraser" | "text";
 type Point = [number, number];
 type Stroke = { tool: Tool; color: string; width: number; points: Point[]; text?: string };
 type Layers = Record<number, Stroke[]>;
@@ -23,8 +23,8 @@ function paint(ctx: CanvasRenderingContext2D, strokes: Stroke[], width: number, 
     else ctx.globalCompositeOperation = "source-over";
     ctx.strokeStyle = s.color;
     ctx.fillStyle = s.color;
-    ctx.globalAlpha = s.tool === "marker" ? 0.33 : 1;
-    ctx.lineWidth = s.width * width / 700 * (s.tool === "marker" ? 2.4 : s.tool === "eraser" ? 2 : 1);
+    ctx.globalAlpha = s.tool === "marker" ? 0.33 : s.tool === "pencil" ? 0.65 : 1;
+    ctx.lineWidth = s.width * width / 700 * (s.tool === "marker" ? 2.4 : s.tool === "eraser" ? 2 : s.tool === "pencil" ? 0.65 : 1);
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     if (s.tool === "text") {
@@ -218,10 +218,11 @@ export default function PdfAnnotationEditor(props: {
       <input className="rounded border p-2 bg-background w-44" aria-label="שם המסמך" value={fileNameBase} onChange={e=>setFileNameBase(e.target.value)} />
       <input className="rounded border p-2 bg-background w-40" aria-label="נושא" placeholder="נושא" value={subject} onChange={e=>setSubject(e.target.value)} />
       <select className="rounded border bg-background p-2" aria-label="כלי ציור" value={tool} onChange={e=>setTool(e.target.value as Tool)}>
-        <option value="pen">עט / עיפרון</option><option value="marker">מרקר</option><option value="eraser">מחק</option><option value="text">טקסט</option>
+        <option value="pencil">עיפרון</option><option value="pen">עט</option><option value="marker">מרקר</option><option value="eraser">מחק</option><option value="text">טקסט</option>
       </select>
       <input type="color" aria-label="צבע כתיבה" value={color} onChange={e=>setColor(e.target.value)} />
       <button className="border rounded p-2 bg-white text-black" onClick={()=>setColor("#ffffff")}>לבן</button>
+      <div className="flex gap-1" aria-label="צבעים מהירים">{["#171717","#6B1F2A","#1D4ED8","#DC2626","#15803D","#C9A961","#FFFFFF"].map(c=><button key={c} title={c==="#FFFFFF"?"לבן":"צבע"} aria-label={"צבע "+c} className="w-6 h-6 rounded-full" onClick={()=>setColor(c)} style={{background:c,border:color===c?"3px solid #C9A961":"1px solid #777"}}/>)}</div>
       <label className="flex items-center gap-1 text-sm">עובי <input type="range" min="1" max="30" value={penSize} onChange={e=>setPenSize(Number(e.target.value))}/></label>
       {tool==="text"&&<input className="rounded border p-2 bg-background" aria-label="טקסט להוספה" placeholder="כתבי טקסט ולחצי על הדף" value={textValue} onChange={e=>setTextValue(e.target.value)}/>}
       <button className="rounded border p-2" disabled={!undoRef.current.length} onClick={undo}>ביטול</button>

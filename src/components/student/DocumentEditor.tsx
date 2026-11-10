@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 export type EditorTemplate = "blank" | "lines" | "staff" | "piano";
 export type EditorSourceKind = "blank" | "image" | "pdf";
-type ToolMode = "pen" | "marker" | "eraser" | "text";
+type ToolMode = "pencil" | "pen" | "marker" | "eraser" | "text";
 const DEFAULT_TAGS = ["פסנתר","חליל","קריאה","שליפה","יצירה","מקצבים","קואורדינציה","רמה 1","רמה 2","רמה 3","דואט","ליווי","עיבוד"];
 
 function formatA4Px(scale = 2) {
@@ -353,6 +353,7 @@ export default function DocumentEditor(props: {
 
       const k = e.key.toLowerCase();
       if (k === "b") setTool("pen");
+      if (k === "p") setTool("pencil");
       if (k === "m") setTool("marker");
       if (k === "e") setTool("eraser");
       if (k === "t") setTool("text");
@@ -397,6 +398,7 @@ export default function DocumentEditor(props: {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
+    ctx.globalAlpha = 1;
     if (tool === "eraser") {
       ctx.globalCompositeOperation = "destination-out";
       ctx.strokeStyle = "rgba(0,0,0,1)";
@@ -405,6 +407,11 @@ export default function DocumentEditor(props: {
       ctx.globalCompositeOperation = "source-over";
       ctx.strokeStyle = inkColor + "59";
       ctx.lineWidth = penSize * 2.4;
+    } else if (tool === "pencil") {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 0.65;
+      ctx.strokeStyle = inkColor;
+      ctx.lineWidth = Math.max(1, penSize * 0.65);
     } else {
       ctx.globalCompositeOperation = "source-over";
       ctx.strokeStyle = inkColor;
@@ -592,6 +599,7 @@ export default function DocumentEditor(props: {
             ) : null}
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <button type="button" onClick={() => setTool("pencil")} style={toolButtonStyle(tool === "pencil")}>עיפרון (P)</button>
               <button type="button" onClick={() => setTool("pen")} style={toolButtonStyle(tool === "pen")}>
                 עט (B)
               </button>
@@ -609,6 +617,7 @@ export default function DocumentEditor(props: {
                 <input aria-label="צבע כתיבה" type="color" value={inkColor} onChange={(e) => setInkColor(e.target.value)} />
               </label>
               <button type="button" onClick={() => setInkColor("#ffffff")} title="כתיבה לבנה לכיסוי תוכן על דף כתוב" style={toolButtonStyle(false)}>לבן</button>
+              <div className="flex items-center gap-1" aria-label="צבעים מהירים">{["#171717","#6B1F2A","#1D4ED8","#DC2626","#15803D","#C9A961","#FFFFFF"].map(c => <button key={c} type="button" title={c === "#FFFFFF" ? "לבן" : "בחרי צבע"} aria-label={"צבע "+c} onClick={() => setInkColor(c)} style={{width:22,height:22,borderRadius:"50%",background:c,border:inkColor===c?"3px solid #C9A961":"1px solid #777"}} />)}</div>
               <div style={{ display: "grid", gap: 4, minWidth: 160 }}>
                 <div style={{ fontSize: 12, opacity: 0.85, color: "white" }}>עובי</div>
                 <input type="range" min={2} max={18} value={penSize} onChange={(e) => setPenSize(Number(e.target.value))} />
