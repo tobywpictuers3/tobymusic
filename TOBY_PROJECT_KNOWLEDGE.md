@@ -533,3 +533,9 @@ The payment data model already contains all 12 academic months, September throug
 - This APK is a **debug-signed test build**, not a Play Store/distribution-ready signed release. Every fresh GitHub runner may generate a different debug key; repeatable APK updates require a separately secured release keystore stored only in GitHub Actions Secrets, not in repository content.
 - Browser WebView storage is separate from Chrome storage, so users may need to log in again. The shell is online-only. Full login, file upload/download, PDF save/print, audio recording and filtering behavior on physical Android/NetFree-Hadran devices are **נדרש אימות**; passing the GitHub compilation and ZIP integrity test alone is not end-to-end runtime evidence.
 - No merge into `main` and no student/site Cloudflare deployment was performed for this packaging work.
+
+### 2026-11-10 — Android launcher icon and APK delivery correction
+- Requestor confirmed the original APK chat download failed ("library missing") and explicitly requested the **official TOBY Music logo** as launcher icon instead of the previously packaged icon.
+- The official named source file is `public/lovable-uploads/toby-music-logo.png`. Android branch now generates a 512px launcher icon from that source via `android-app/tools/make_launcher_icon.py`, preserving the entire logo within a square brand background.
+- Bumped Android test build to `versionCode=2` / `versionName=1.0.1` without changing platform source, permissions or Dropbox data. The official logo is not edited in the website itself.
+- Final APK delivery must use a fresh, verified sandbox file path and a backup GitHub Actions run/artifact link; do not rely on the earlier broken sandbox link. Repeatable debug-build signatures still need a permanent release-keystore strategy before routine in-place APK updates.

@@ -13,13 +13,19 @@ and Gradle build it without touching the production Cloudflare deployment.
 Local build with Android SDK 35 and Gradle 8.10.2:
 
 ```sh
-mkdir -p android-app/app/src/main/res/drawable
-cp public/assets/brand/icon-192.png android-app/app/src/main/res/drawable/toby_icon.png
+python3 -m pip install 'Pillow==11.3.0'
+python3 android-app/tools/make_launcher_icon.py \
+  public/lovable-uploads/toby-music-logo.png \
+  android-app/app/src/main/res/drawable-nodpi/toby_icon.png
 cd android-app
 gradle :app:assembleDebug
 ```
 
 APK: `android-app/app/build/outputs/apk/debug/app-debug.apk`
+
+The launcher icon is generated directly from the official original logo at
+`public/lovable-uploads/toby-music-logo.png`; it is centered on a square
+canvas without cropping or replacing the artwork.
 
 ## Behaviour
 

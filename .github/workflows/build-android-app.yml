@@ -34,10 +34,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Use existing TOBY PWA icon
+      - name: Use official TOBY Music logo as the launcher icon
         run: |
-          mkdir -p android-app/app/src/main/res/drawable
-          cp public/assets/brand/icon-192.png android-app/app/src/main/res/drawable/toby_icon.png
+          python3 -m pip install --quiet 'Pillow==11.3.0'
+          python3 android-app/tools/make_launcher_icon.py \
+            public/lovable-uploads/toby-music-logo.png \
+            android-app/app/src/main/res/drawable-nodpi/toby_icon.png
       - name: Compile Android APK
         run: gradle --project-dir android-app :app:assembleDebug --no-daemon --stacktrace
       - name: Upload APK
