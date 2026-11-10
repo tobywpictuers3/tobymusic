@@ -14,6 +14,7 @@ import { addFile, deleteFile, getFiles, getSightReadingArchive } from "@/lib/sto
 import { workerApi } from "@/lib/workerApi";
 import { hybridSync } from "@/lib/hybridSync";
 import { downloadCanonicalDropboxLatest } from "@/lib/canonicalDropboxRead";
+import { getManagerCode } from "@/lib/devMode";
 
 import { getCurrentUser } from "@/lib/storage";
 
@@ -84,6 +85,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [readingItemId,setReadingItemId] = useState("");
   const [busyFiles,setBusyFiles] = useState(false);
   const isTeacher = getCurrentUser()?.type === "admin";
+  const cloudWriteAuthorized = isTeacher && Boolean(getManagerCode());
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingTargetRef = useRef<string | null>(null);
@@ -140,6 +142,14 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [editorTemplate, setEditorTemplate] = useState<NewPageTemplate>("blank");
   const [editorSource, setEditorSource] = useState<{ kind: "image" | "pdf"; blob: Blob } | undefined>(undefined);
   const [editorOriginal, setEditorOriginal] = useState<FileEntry | null>(null);
+
+  const downloadLocal = (blob: Blob, name: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+  };
 
   const verifySavedFile = async (id: string): Promise<void> => {
     const synced=await hybridSync.manualSync();
@@ -200,6 +210,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
           const name = "הקלטה " + nowStamp();
           const file = new File([new Blob(chunks,{type:mime})], name + "." + format,{type:mime});
           if (!file.size) throw new Error("ההקלטה ריקה");
+          if (!cloudWriteAuthorized) {
+            downloadLocal(file, file.name);
+            toast({title:"ההקלטה הורדה למכשיר",description:"היא לא נשמרה באזור האישי; שמירת ענן לתלמידות דורשת חיבור מאובטח."});
+            return;
+          }
           const upload = await workerApi.uploadAttachment(file);
           if (!upload.success || !upload.data) throw new Error(upload.error || "העלאת ההקלטה נכשלה");
           const record=addFile({studentId,name:file.name,mimeType:mime,kind:"recording",parentFileId:associated||undefined,webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path,size:file.size});
@@ -214,6 +229,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   };
 
   const attachAudioFromDevice = async (file: File, parentFileId: string) => {
+    if (!cloudWriteAuthorized) {
+      toast({title:"צירוף שמע לענן אינו זמין עדיין לתלמידות",description:"אין להשתמש בהרשאת המנהלת לצורך צירוף קובץ.",variant:"destructive"});
+      setLinkedAudioParent(null);
+      return;
+    }
     if (!file.type.startsWith("audio/") && !/\.(wav|mp3|m4a|ogg|webm|aac|flac)$/i.test(file.name)) {
       toast({title:"יש לבחור קובץ שמע",variant:"destructive"});return;
     }
@@ -266,6 +286,10 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
 
   const handleAddSubmit = async () => {
     try {
+      if (!cloudWriteAuthorized && addMode !== "newpage") {
+        toast({title:"שמירת קבצים בענן לתלמידות אינה זמינה עדיין",description:"אפשר לפתוח דף, לסמן ולהוריד PDF למכשיר; לצירוף לענן נדרש מסלול הרשאה אישי מאובטח.",variant:"destructive"});
+        return;
+      }
       if (addMode === "link") {
         if (!ensureTitle()) return;
         if (!linkUrl.trim()) {
@@ -379,6 +403,10 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   };
 
   const handleDelete = async (file: FileEntry) => {
+    if (!cloudWriteAuthorized) {
+      toast({title:"הסרת שיוך בענן אינה זמינה ללא הרשאה מאובטחת",variant:"destructive"});
+      return;
+    }
     try {
       // Remove only this student assignment. Do not delete the shared Dropbox attachment:
       // the same source may still be referenced by another student or the teacher library.
@@ -401,6 +429,12 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       const finalBase = editorMode === "edit" ? `${base} - ערוך ${stamp}` : base;
 
       const pdfFile = new File([payload.pdf], `${finalBase}.pdf`, { type: "application/pdf" });
+      if (!cloudWriteAuthorized) {
+        downloadLocal(pdfFile, pdfFile.name);
+        toast({title:"המסמך הורד למכשיר",description:"זהו עותק מקומי בלבד. שמירת PDF בספריית התלמידה תתאפשר אחרי חיבור הרשאות מאובטח."});
+        setEditorOpen(false);
+        return;
+      }
 
       const upPdf = await workerApi.uploadAttachment(pdfFile);
       if (!upPdf.success || !upPdf.data) {
@@ -445,13 +479,14 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
             עריכת קובץ
           </Button>
           <Button variant="secondary" onClick={() => { resetAddForm(); setAddMode("newpage"); setAddOpen(true); }} title="דף חדש"><Plus className="h-4 w-4 ml-1" /> דף חדש</Button>
-          <Button variant="secondary" onClick={() => { resetAddForm(); setAddMode("upload"); setAddOpen(true); }} title="העלאת קובץ"><Upload className="h-4 w-4 ml-1" /> העלאה</Button>
+          <Button variant="secondary" disabled={!cloudWriteAuthorized} onClick={() => { resetAddForm(); setAddMode("upload"); setAddOpen(true); }} title="העלאת קובץ"><Upload className="h-4 w-4 ml-1" /> העלאה</Button>
           {isTeacher && <Button variant="secondary" onClick={() => {setReadingItemId(getSightReadingArchive()[0]?.id||"");setReadingPickerOpen(true);}} title="ממנוע התווים">ממנוע התווים</Button>}
           <Button variant={recording ? "destructive" : "secondary"} onClick={() => void toggleRecording()} title={recording ? "סיום הקלטה" : "הקלטה חדשה"}>{recording ? <Square className="h-4 w-4 ml-1" /> : <Mic className="h-4 w-4 ml-1" />}{recording ? "סיום הקלטה" : "הקלטה"}</Button>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {!cloudWriteAuthorized && <div role="status" className="rounded-lg border p-3 text-sm bg-muted/50">אפשר לפתוח, לסמן ולהדפיס דפים. דף חדש והקלטה ניתנים להורדה למכשיר. שמירה לספריית הענן והעלאות חדשות דורשות חיבור הרשאה אישי מאובטח, ולכן אינן פעילות בחשבון תלמידה כרגע.</div>}
         <Input aria-label="חיפוש בקבצים שלי" value={search} onChange={e=>setSearch(e.target.value)} placeholder="חיפוש לפי שם, נושא, סוג או תגית" />
         <div className="flex items-center gap-2"><Label htmlFor="student-file-sort">מיון לפי</Label><select id="student-file-sort" aria-label="מיון קבצים" value={sortBy} onChange={e => setSortBy(e.target.value as FileSort)} className="rounded-md border bg-background text-foreground p-2"><option value="date">תאריך — החדשים תחילה</option><option value="name">שם</option><option value="topic">נושא</option><option value="type">סוג</option></select></div>
         {files.length === 0 ? (
@@ -497,7 +532,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
               <Button variant="secondary" onClick={()=>{if(openChoices){void toggleRecording(openChoices.id);setOpenChoices(null);}}}>הקלטה חדשה מצורפת לדף</Button>
               <Button variant="secondary" disabled={busyFiles} onClick={()=>{setLinkedAudioParent(openChoices.id);linkedAudioInput.current?.click();}}>צירוף קובץ שמע מהמכשיר</Button>
             </>}
-            <Button variant="secondary" onClick={() => {if(openChoices)setMetadataFile(openChoices);setOpenChoices(null);}}>עריכת שם, נושא ותגיות</Button>
+            {cloudWriteAuthorized && <Button variant="secondary" onClick={() => {if(openChoices)setMetadataFile(openChoices);setOpenChoices(null);}}>עריכת שם, נושא ותגיות</Button>}
             <Button variant="secondary" onClick={async () => {
               const file=openChoices;if(!file)return;
               try {
@@ -525,7 +560,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       </DialogContent>
       </Dialog>
       <input ref={linkedAudioInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.webm" className="hidden" aria-label="קובץ שמע לצירוף לדף" onChange={e=>{const f=e.target.files?.[0];if(f&&linkedAudioParent)void attachAudioFromDevice(f,linkedAudioParent);e.target.value="";}} />
-      <Dialog open={!!metadataFile} onOpenChange={v=>{if(!v)setMetadataFile(null)}}>
+      <Dialog open={!!metadataFile && cloudWriteAuthorized} onOpenChange={v=>{if(!v)setMetadataFile(null)}}>
         <DialogContent className="max-w-xl">
           <DialogHeader><DialogTitle>פרטי קובץ ותגיות</DialogTitle></DialogHeader>
           {metadataFile && <StudentFileMetadataEditor file={metadataFile} onCancel={()=>setMetadataFile(null)}
