@@ -181,6 +181,7 @@ export interface FileEntry {
   description?: string; // optional description/explanation for the file
   subject?: string; // teacher library topic
   tags?: string[]; // searchable multi-label classification
+  sourceFileId?: string; // original record for assignments reusing one Dropbox attachment
 
   // Where to open the file (worker serve_attachment or external URL)
   webViewLink: string;
