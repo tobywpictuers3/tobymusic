@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getFiles, getStudents, addFile } from "@/lib/storage";
+import { getFiles, getStudents, addFile, getSightReadingArchive, isDevMode } from "@/lib/storage";
+import { workerApi } from "@/lib/workerApi";
 import { hybridSync } from "@/lib/hybridSync";
 import { downloadCanonicalDropboxLatest } from "@/lib/canonicalDropboxRead";
 import { toast } from "@/hooks/use-toast";
@@ -23,6 +24,9 @@ export default function TeacherFileLibrary() {
   const [assignmentSource,setAssignmentSource] = useState<FileEntry | null>(null);
   const [assignmentStudentId,setAssignmentStudentId] = useState("");
   const [busy,setBusy] = useState(false);
+  const [notationStudent,setNotationStudent] = useState("");
+  const [notationId,setNotationId] = useState("");
+  const [notationBusy,setNotationBusy] = useState(false);
   useEffect(() => {
     const refresh = () => setRevision(n => n + 1);
     window.addEventListener("toby:canonical-sync-applied", refresh);
@@ -40,6 +44,36 @@ export default function TeacherFileLibrary() {
         return collator.compare(val(a),val(b));
       });
   }, [search, sort, revision]);
+  const importNotation=async()=>{
+    const item=getSightReadingArchive().find(x=>x.id===notationId);
+    if(!item||!notationStudent||notationBusy)return;
+    if(isDevMode()){toast({title:"העברה לענן חסומה במצב פיתוח",variant:"destructive"});return;}
+    if(!getStudents().some(s=>s.id===notationStudent))return;
+    const flag="sight-reading:"+item.id;
+    if(getFiles().some(file=>file.studentId===notationStudent&&file.description?.includes(flag))){toast({title:"התרגיל כבר משויך לתלמידה"});return;}
+    setNotationBusy(true);
+    try {
+      const {makeSightReadingPdf}=await import("@/components/admin/SightReadingVerovio");
+      const pdf=await makeSightReadingPdf(item.xml);
+      const filename=(item.title||"תרגיל תווים")+".pdf";
+      const upload=await workerApi.uploadAttachment(new File([pdf],filename,{type:"application/pdf"}));
+      if(!upload.success||!upload.data)throw new Error(upload.error||"ההעלאה נכשלה");
+      const record=addFile({studentId:notationStudent,name:filename,kind:"pdf",mimeType:"application/pdf",
+        subject:"קריאה",tags:["קריאה"],description:"תרגיל קריאה מהדף · "+flag,
+        size:pdf.size,webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path});
+      setRevision(n=>n+1);
+      const synced=await hybridSync.manualSync();
+      if(!synced)throw new Error("נדרשת שמירה חוזרת לענן");
+      const remote=await downloadCanonicalDropboxLatest();
+      const d=remote.data as Record<string,unknown>|undefined;
+      const files=(d?.musicSystem_files??d?.files) as unknown;
+      if(!remote.success||!Array.isArray(files)||!files.some(f=>f&&typeof f==="object"&&(f as FileEntry).id===record.id&&(f as FileEntry).studentId===notationStudent))throw new Error("לא התקבל אישור שמירת שיוך ב-Dropbox");
+      toast({title:"דף התווים צורף ואומת"});
+      setNotationId("");
+    }catch(e){toast({title:"צירוף התווים טרם אומת",description:String(e),variant:"destructive"});}
+    finally{setNotationBusy(false);}
+  };
+
   const assign=async()=>{
     const source=assignmentSource;
     if(!source||!assignmentStudentId||busy)return;
@@ -69,6 +103,13 @@ export default function TeacherFileLibrary() {
   return <section className="rounded-xl border bg-background/95 p-4 space-y-4" dir="rtl">
     <h2 className="text-xl font-semibold">ספריית הקבצים של המורה</h2>
     <p className="text-sm text-muted-foreground">מוצגים קבצים המשויכים לתלמידות, כולל פרטי הקובץ המקוריים. אין כאן שכפול קבצים.</p>
+    <details className="rounded-lg border p-3"><summary className="cursor-pointer font-medium">צירוף תרגיל ממנוע התווים</summary>
+      <div className="flex gap-2 flex-wrap mt-3">
+        <select className="border rounded bg-background p-2 flex-1 min-w-40" aria-label="בחירת תרגיל" value={notationId} onChange={e=>setNotationId(e.target.value)}><option value="">בחרי תרגיל מהארכיון</option>{getSightReadingArchive().map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select>
+        <select className="border rounded bg-background p-2 flex-1 min-w-40" aria-label="בחירת תלמידה" value={notationStudent} onChange={e=>setNotationStudent(e.target.value)}><option value="">בחרי תלמידה</option>{getStudents().map(student=><option key={student.id} value={student.id}>{student.firstName} {student.lastName}</option>)}</select>
+        <button className="rounded bg-primary text-primary-foreground px-3 py-2" disabled={!notationId||!notationStudent||notationBusy} onClick={()=>void importNotation()}>{notationBusy?"מעביר…":"צרפי לאזור האישי"}</button>
+      </div>
+    </details>
     <div className="flex flex-wrap gap-3">
       <input className="rounded-md border bg-background p-2 flex-1 min-w-44" aria-label="חיפוש ספריית קבצים" placeholder="חיפוש שם, תלמידה, נושא או תגית" value={search} onChange={e=>setSearch(e.target.value)}/>
       <select className="rounded-md border bg-background p-2" aria-label="מיון ספריית קבצים" value={sort} onChange={e=>setSort(e.target.value as SortKey)}>

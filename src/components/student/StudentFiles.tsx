@@ -14,7 +14,7 @@ import { addFile, deleteFile, getFiles, getSightReadingArchive } from "@/lib/sto
 import { workerApi } from "@/lib/workerApi";
 import { hybridSync } from "@/lib/hybridSync";
 import { downloadCanonicalDropboxLatest } from "@/lib/canonicalDropboxRead";
-import { makeSightReadingPdf } from "@/components/admin/SightReadingVerovio";
+
 import { getCurrentUser } from "@/lib/storage";
 
 import DocumentEditor, { editorSourceFromFile } from "./DocumentEditor";
@@ -75,6 +75,7 @@ async function fetchBlob(url: string): Promise<Blob> {
 export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [refreshTick, setRefreshTick] = useState(0);
   const [sortBy, setSortBy] = useState<FileSort>("date");
+  const [search,setSearch] = useState("");
   const [openChoices, setOpenChoices] = useState<FileEntry | null>(null);
   const [recording, setRecording] = useState(false);
   const [readingPickerOpen, setReadingPickerOpen] = useState(false);
@@ -108,13 +109,13 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const files = useMemo(() => {
     const all = getFiles();
     const collator = new Intl.Collator("he");
-    return all.filter(f => f.studentId === studentId).sort((a, b) => {
+    return all.filter(f => f.studentId === studentId && [f.name,f.subject,f.description,f.tags?.join(" "),getFileCategory(f)].some(t=>(t||"").toLocaleLowerCase("he").includes(search.toLocaleLowerCase("he")))).sort((a, b) => {
       if (sortBy === "name") return collator.compare(a.name, b.name);
       if (sortBy === "topic") return collator.compare(a.subject || a.description || "", b.subject || b.description || "") || collator.compare(a.name, b.name);
       if (sortBy === "type") return collator.compare(getFileCategory(a), getFileCategory(b)) || collator.compare(a.name, b.name);
       return (b.uploadDate || "").localeCompare(a.uploadDate || "");
     });
-  }, [studentId, refreshTick, sortBy]);
+  }, [studentId, refreshTick, sortBy, search]);
 
   // ---- Add dialog ----
   const [addOpen, setAddOpen] = useState(false);
@@ -156,6 +157,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     if(existing){toast({title:"כבר קיים",description:"התווים כבר משויכים לתלמידה"});return;}
     setBusyFiles(true);
     try {
+      const {makeSightReadingPdf}=await import("@/components/admin/SightReadingVerovio");
       const pdf=await makeSightReadingPdf(item.xml);
       const name=(item.title||"תרגיל תווים")+".pdf";
       const upload=await workerApi.uploadAttachment(new File([pdf],name,{type:"application/pdf"}));
@@ -443,6 +445,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        <Input aria-label="חיפוש בקבצים שלי" value={search} onChange={e=>setSearch(e.target.value)} placeholder="חיפוש לפי שם, נושא, סוג או תגית" />
         <div className="flex items-center gap-2"><Label htmlFor="student-file-sort">מיון לפי</Label><select id="student-file-sort" aria-label="מיון קבצים" value={sortBy} onChange={e => setSortBy(e.target.value as FileSort)} className="rounded-md border bg-background text-foreground p-2"><option value="date">תאריך — החדשים תחילה</option><option value="name">שם</option><option value="topic">נושא</option><option value="type">סוג</option></select></div>
         {files.length === 0 ? (
           <div className="text-sm opacity-70">אין קבצים שמורים לתלמידה</div>
