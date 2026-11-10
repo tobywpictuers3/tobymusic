@@ -15,6 +15,7 @@ import { workerApi } from "@/lib/workerApi";
 import { hybridSync } from "@/lib/hybridSync";
 
 import DocumentEditor, { editorSourceFromFile } from "./DocumentEditor";
+import PdfAnnotationEditor from "./PdfAnnotationEditor";
 
 interface StudentFilesProps {
   studentId: string;
@@ -125,6 +126,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [editorInitialName, setEditorInitialName] = useState("");
   const [editorTemplate, setEditorTemplate] = useState<NewPageTemplate>("blank");
   const [editorSource, setEditorSource] = useState<{ kind: "image" | "pdf"; blob: Blob } | undefined>(undefined);
+  const [editorOriginal, setEditorOriginal] = useState<FileEntry | null>(null);
 
   const toggleRecording = async () => {
     if (recorderRef.current?.state === "recording") { recorderRef.current.stop(); setRecording(false); return; }
@@ -170,13 +172,15 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     setEditorInitialName(nameBase);
     setEditorTemplate(t);
     setEditorSource(undefined);
+    setEditorOriginal(null);
     setEditorOpen(true);
   };
 
-  const openEditorForEdit = (nameBase: string, source: { kind: "image" | "pdf"; blob: Blob }) => {
+  const openEditorForEdit = (nameBase: string, source: { kind: "image" | "pdf"; blob: Blob }, file?: FileEntry) => {
     setEditorMode("edit");
     setEditorInitialName(nameBase);
     setEditorSource(source);
+    setEditorOriginal(file || null);
     setEditorOpen(true);
   };
 
@@ -278,13 +282,13 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       }
 
       const kind = inferKindFromNameOrMime(fe.name, fe.mimeType);
-      if (kind === "pdf" || getFileCategory(fe) === "קובץ שמע" || fe.kind === "link") {
+      if (getFileCategory(fe) === "קובץ שמע" || fe.kind === "link") {
         toast({title:"עריכה אינה זמינה לסוג קובץ זה",description:"הקובץ המקורי נשמר ללא שינוי. ניתן לפתוח אותו במכשיר או להוריד.",variant:"destructive"});
         return;
       }
       const blob = await fetchBlob(fe.webViewLink);
 
-      openEditorForEdit(baseNameWithoutExt(fe.name) || "עריכה", { kind, blob });
+      openEditorForEdit(baseNameWithoutExt(fe.name) || "עריכה", { kind, blob }, fe);
       setEditPickOpen(false);
     } catch (e: any) {
       toast({
@@ -411,12 +415,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
               if (!openChoices) return;
               try {
                 const kind = inferKindFromNameOrMime(openChoices.name, openChoices.mimeType);
-                if (kind === "pdf") { toast({title:"עריכת PDF קיים עדיין לא נתמכת",description:"המסמך נשמר ללא שינוי. אפשר לפתוח במכשיר או להוריד.",variant:"destructive"}); return; }
                 const blob = await fetchBlob(openChoices.webViewLink);
                 if (getFileCategory(openChoices) === "קובץ שמע" || openChoices.kind === "link") {
                   toast({title:"סוג קובץ שאינו נתמך",description:"אפשר לפתוח במכשיר או להוריד קובץ זה",variant:"destructive"}); return;
                 }
-                openEditorForEdit(baseNameWithoutExt(openChoices.name), {kind, blob});
+                openEditorForEdit(baseNameWithoutExt(openChoices.name), {kind, blob}, openChoices);
                 setOpenChoices(null);
               } catch (e) { toast({title:"לא ניתן לפתוח בעורך",description:String(e),variant:"destructive"}); }
             }}>פתיחה בעורך לעריכה</Button>
@@ -572,14 +575,25 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="w-[95vw] max-w-[95vw] h-[95vh] max-h-[95vh] overflow-hidden p-4">
           <div className="h-full">
-            <DocumentEditor
-              mode={editorMode}
-              initialFileName={editorInitialName}
-              initialTemplate={editorTemplate}
-              source={editorSource}
-              onCancel={() => setEditorOpen(false)}
-              onSave={handleEditorSave}
-            />
+            {editorSource?.kind === "pdf" ? (
+              <PdfAnnotationEditor
+                blob={editorSource.blob}
+                initialFileName={editorInitialName}
+                initialSubject={editorOriginal?.subject}
+                initialTags={editorOriginal?.tags}
+                onCancel={() => setEditorOpen(false)}
+                onSave={handleEditorSave}
+              />
+            ) : (
+              <DocumentEditor
+                mode={editorMode}
+                initialFileName={editorInitialName}
+                initialTemplate={editorTemplate}
+                source={editorSource}
+                onCancel={() => setEditorOpen(false)}
+                onSave={handleEditorSave}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>
