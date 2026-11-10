@@ -24,6 +24,8 @@ jobs:
         run: npm run test:music
       - name: Closed-year reconciliation safety tests
         run: node --test scripts/reconcile-closed-lessons.test.mjs
+      - name: Student files and PDF workspace regression
+        run: node --test scripts/test-student-files-workspace.mjs
       - name: TypeScript diagnostic
         continue-on-error: true
         run: npx tsc --noEmit --pretty false

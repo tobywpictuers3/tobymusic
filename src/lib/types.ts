@@ -169,8 +169,8 @@ export interface SwapRequest {
 /**
  * NEW (for StudentFiles): file kind + handwrite template
  */
-export type StudentFileKind = 'upload' | 'handwrite' | 'link';
-export type HandwriteTemplate = 'blank' | 'lines' | 'staff';
+export type StudentFileKind = 'upload' | 'handwrite' | 'link' | 'recording' | 'pdf';
+export type HandwriteTemplate = 'blank' | 'lines' | 'staff' | 'piano';
 
 export interface FileEntry {
   id: string;
@@ -179,6 +179,10 @@ export interface FileEntry {
   // Display
   name: string;
   description?: string; // optional description/explanation for the file
+  subject?: string; // teacher library topic
+  tags?: string[]; // searchable multi-label classification
+  sourceFileId?: string; // original record for assignments reusing one Dropbox attachment
+  parentFileId?: string; // audio attachment associated with a document
 
   // Where to open the file (worker serve_attachment or external URL)
   webViewLink: string;

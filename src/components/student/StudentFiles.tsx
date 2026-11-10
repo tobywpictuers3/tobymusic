@@ -1,5 +1,6 @@
 // StudentFiles.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Upload, Mic, Square } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,19 +10,36 @@ import { toast } from "@/hooks/use-toast";
 
 import type { FileEntry } from "@/lib/types";
 import { addFile, deleteFile, getFiles, getSightReadingArchive } from "@/lib/storage";
-import { EngravedScore } from "@/components/admin/SightReadingVerovio";
+
 import { workerApi } from "@/lib/workerApi";
 import { hybridSync } from "@/lib/hybridSync";
+import { downloadCanonicalDropboxLatest } from "@/lib/canonicalDropboxRead";
+
+import { getCurrentUser } from "@/lib/storage";
 
 import DocumentEditor, { editorSourceFromFile } from "./DocumentEditor";
+import PdfAnnotationEditor from "./PdfAnnotationEditor";
+import StudentFileMetadataEditor from "./StudentFileMetadataEditor";
 
 interface StudentFilesProps {
   studentId: string;
 }
 
 type AddMode = "upload" | "link" | "newpage";
-type NewPageTemplate = "blank" | "lines" | "staff";
+type NewPageTemplate = "blank" | "staff" | "piano";
 type EditPickMode = "from_app" | "from_device";
+type FileSort = "date" | "name" | "topic" | "type";
+
+function getFileCategory(f: FileEntry): string {
+  const mime = (f.mimeType || "").toLowerCase();
+  const name = f.name.toLowerCase();
+  if (f.kind === "handwrite") return "דף שנוצר בעורך";
+  if (f.kind === "recording") return "הקלטה";
+  if (mime.startsWith("audio/") || /\.(mp3|wav|m4a|ogg|webm)$/.test(name)) return "קובץ שמע";
+  if (mime === "application/pdf" || name.endsWith(".pdf")) return "PDF";
+  if (f.kind === "link") return "קישור";
+  return "העלאה";
+}
 
 function nowStamp() {
   const d = new Date();
@@ -46,7 +64,7 @@ function inferKindFromNameOrMime(fileName: string, mime?: string) {
   const n = (fileName || "").toLowerCase();
   if (m.includes("pdf") || n.endsWith(".pdf")) return "pdf" as const;
   if (m.startsWith("image/") || n.match(/\.(png|jpg|jpeg|webp|gif)$/)) return "image" as const;
-  return "image" as const;
+  return null;
 }
 
 async function fetchBlob(url: string): Promise<Blob> {
@@ -57,7 +75,21 @@ async function fetchBlob(url: string): Promise<Blob> {
 
 export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [refreshTick, setRefreshTick] = useState(0);
-  const [visibleReadingId,setVisibleReadingId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<FileSort>("date");
+  const [search,setSearch] = useState("");
+  const [openChoices, setOpenChoices] = useState<FileEntry | null>(null);
+  const [metadataFile,setMetadataFile] = useState<FileEntry | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [readingPickerOpen, setReadingPickerOpen] = useState(false);
+  const [readingItemId,setReadingItemId] = useState("");
+  const [busyFiles,setBusyFiles] = useState(false);
+  const isTeacher = getCurrentUser()?.type === "admin";
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingTargetRef = useRef<string | null>(null);
+  const linkedAudioInput = useRef<HTMLInputElement | null>(null);
+  const [linkedAudioParent,setLinkedAudioParent] = useState<string | null>(null);
+
   const [refreshingFiles,setRefreshingFiles]=useState(false);
   useEffect(()=>{
     const refresh=()=>setRefreshTick(tick=>tick+1);
@@ -78,10 +110,14 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
 
   const files = useMemo(() => {
     const all = getFiles();
-    return all
-      .filter((f) => f.studentId === studentId)
-      .sort((a, b) => (b.uploadDate || "").localeCompare(a.uploadDate || ""));
-  }, [studentId, refreshTick]);
+    const collator = new Intl.Collator("he");
+    return all.filter(f => f.studentId === studentId && [f.name,f.subject,f.description,f.tags?.join(" "),getFileCategory(f)].some(t=>(t||"").toLocaleLowerCase("he").includes(search.toLocaleLowerCase("he")))).sort((a, b) => {
+      if (sortBy === "name") return collator.compare(a.name, b.name);
+      if (sortBy === "topic") return collator.compare(a.subject || a.description || "", b.subject || b.description || "") || collator.compare(a.name, b.name);
+      if (sortBy === "type") return collator.compare(getFileCategory(a), getFileCategory(b)) || collator.compare(a.name, b.name);
+      return (b.uploadDate || "").localeCompare(a.uploadDate || "");
+    });
+  }, [studentId, refreshTick, sortBy, search]);
 
   // ---- Add dialog ----
   const [addOpen, setAddOpen] = useState(false);
@@ -103,6 +139,97 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const [editorInitialName, setEditorInitialName] = useState("");
   const [editorTemplate, setEditorTemplate] = useState<NewPageTemplate>("blank");
   const [editorSource, setEditorSource] = useState<{ kind: "image" | "pdf"; blob: Blob } | undefined>(undefined);
+  const [editorOriginal, setEditorOriginal] = useState<FileEntry | null>(null);
+
+  const verifySavedFile = async (id: string): Promise<void> => {
+    const synced=await hybridSync.manualSync();
+    if (!synced) throw new Error("נוצרה רשומה מקומית אך הסנכרון לענן לא אומת. שמרי שוב באמצעות כפתור השמירה הראשי.");
+    const read=await downloadCanonicalDropboxLatest();
+    if(!read.success||!read.data)throw new Error("נשמר מקומית אך לא התקבל אישור קריאה חוזרת מ-Dropbox.");
+    const raw=read.data as Record<string,unknown>;
+    const files=(raw.musicSystem_files??raw.files) as unknown;
+    const entry = Array.isArray(files) ? files.find(item => item && typeof item==="object" && (item as FileEntry).id===id && (item as FileEntry).studentId===studentId) as FileEntry | undefined : undefined;
+    if (!entry) throw new Error("הקובץ טרם אומת ב-Dropbox. הנתונים המקומיים נשמרו ויש לנסות לסנכרן.");
+    const masters = raw.musicSystem_teacherFileMasters as unknown;
+    if (!Array.isArray(masters) || !masters.some(item => item && typeof item === "object" && (item as FileEntry).id === (entry.sourceFileId || entry.id)))
+      throw new Error("השיוך נשמר, אך רשומת המקור בספריית המורה טרם אומתה ב-Dropbox.");
+  };
+
+  const addNotationFromEngine = async () => {
+    const item=getSightReadingArchive().find(a=>a.id===readingItemId);
+    if(!item||!isTeacher)return;
+    const existing=getFiles().find(f=>f.studentId===studentId&&f.description?.includes("sight-reading:"+item.id));
+    if(existing){toast({title:"כבר קיים",description:"התווים כבר משויכים לתלמידה"});return;}
+    setBusyFiles(true);
+    try {
+      const {makeSightReadingPdf}=await import("@/components/admin/SightReadingVerovio");
+      const pdf=await makeSightReadingPdf(item.xml);
+      const name=(item.title||"תרגיל תווים")+".pdf";
+      const upload=await workerApi.uploadAttachment(new File([pdf],name,{type:"application/pdf"}));
+      if(!upload.success||!upload.data)throw new Error(upload.error||"העלאת תווים נכשלה");
+      const record=addFile({studentId,name,description:"תרגיל קריאה מהדף · sight-reading:"+item.id,subject:"קריאה",tags:["קריאה"],kind:"upload",template:undefined,
+        mimeType:"application/pdf",size:pdf.size,dropboxPath:upload.data.path,webViewLink:upload.data.webViewLink});
+      setRefreshTick(t=>t+1);
+      await verifySavedFile(record.id);
+      setReadingPickerOpen(false);
+      toast({title:"נשמר ואומת",description:"דף התווים נוסף לאזור האישי ולספריית המורה"});
+    }catch(e){toast({title:"העברת התווים לא הושלמה",description:String(e),variant:"destructive"});}
+    finally{setBusyFiles(false);}
+  };
+
+  const toggleRecording = async (parentFileId: string | null = null) => {
+    if (recorderRef.current?.state === "recording") { recorderRef.current.stop(); setRecording(false); return; }
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") throw new Error("הדפדפן אינו תומך בהקלטה");
+      recordingTargetRef.current = parentFileId;
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      recordingStreamRef.current = stream;
+      const chunks: BlobPart[] = [];
+      const preferred = ["audio/webm;codecs=opus","audio/webm","audio/mp4"].find(type => MediaRecorder.isTypeSupported(type));
+      const rec = new MediaRecorder(stream, preferred ? {mimeType: preferred} : undefined);
+      recorderRef.current = rec;
+      rec.ondataavailable = e => {if (e.data.size) chunks.push(e.data);};
+      rec.onerror = () => {setRecording(false); stream.getTracks().forEach(t=>t.stop()); toast({title:"שגיאה בהקלטה",variant:"destructive"});};
+      rec.onstop = async () => {
+        setRecording(false); stream.getTracks().forEach(t=>t.stop()); recordingStreamRef.current = null; recorderRef.current = null;
+        const associated = recordingTargetRef.current;
+        recordingTargetRef.current = null;
+        try {
+          const format = rec.mimeType.includes("mp4") ? "m4a" : "webm";
+          const mime = rec.mimeType || "audio/webm";
+          const name = "הקלטה " + nowStamp();
+          const file = new File([new Blob(chunks,{type:mime})], name + "." + format,{type:mime});
+          if (!file.size) throw new Error("ההקלטה ריקה");
+          const upload = await workerApi.uploadAttachment(file);
+          if (!upload.success || !upload.data) throw new Error(upload.error || "העלאת ההקלטה נכשלה");
+          const record=addFile({studentId,name:file.name,mimeType:mime,kind:"recording",parentFileId:associated||undefined,webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path,size:file.size});
+          setRefreshTick(n=>n+1);
+          await verifySavedFile(record.id);
+          toast({title:"ההקלטה נשמרה ואומתה",description:"אפשר להוסיף לה שם ונושא ותגיות"});
+          setMetadataFile(record);
+        } catch (error) {toast({title:"לא ניתן לשמור הקלטה",description:String(error),variant:"destructive"});}
+      };
+      rec.start(); setRecording(true);
+    } catch(error) {recordingStreamRef.current?.getTracks().forEach(t=>t.stop());recordingTargetRef.current=null;toast({title:"לא ניתן להתחיל הקלטה",description:String(error),variant:"destructive"});}
+  };
+
+  const attachAudioFromDevice = async (file: File, parentFileId: string) => {
+    if (!file.type.startsWith("audio/") && !/\.(wav|mp3|m4a|ogg|webm|aac|flac)$/i.test(file.name)) {
+      toast({title:"יש לבחור קובץ שמע",variant:"destructive"});return;
+    }
+    setBusyFiles(true);
+    try{
+      const upload=await workerApi.uploadAttachment(file);
+      if(!upload.success||!upload.data)throw new Error(upload.error||"העלאת שמע נכשלה");
+      const record=addFile({studentId,name:file.name,kind:"upload",mimeType:file.type||"audio/mpeg",size:file.size,
+        parentFileId,webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path});
+      setRefreshTick(n=>n+1);
+      await verifySavedFile(record.id);
+      toast({title:"קובץ השמע צורף ואומת"});
+      setOpenChoices(null);
+    }catch(e){toast({title:"קובץ השמע לא אומת",description:String(e),variant:"destructive"});}
+    finally{setBusyFiles(false);setLinkedAudioParent(null);}
+  };
 
   const resetAddForm = () => {
     setAddMode("upload");
@@ -117,13 +244,15 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     setEditorInitialName(nameBase);
     setEditorTemplate(t);
     setEditorSource(undefined);
+    setEditorOriginal(null);
     setEditorOpen(true);
   };
 
-  const openEditorForEdit = (nameBase: string, source: { kind: "image" | "pdf"; blob: Blob }) => {
+  const openEditorForEdit = (nameBase: string, source: { kind: "image" | "pdf"; blob: Blob }, file?: FileEntry) => {
     setEditorMode("edit");
     setEditorInitialName(nameBase);
     setEditorSource(source);
+    setEditorOriginal(file || null);
     setEditorOpen(true);
   };
 
@@ -135,11 +264,6 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     return true;
   };
 
-  const handleAddOpen = () => {
-    resetAddForm();
-    setAddOpen(true);
-  };
-
   const handleAddSubmit = async () => {
     try {
       if (addMode === "link") {
@@ -149,7 +273,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
           return;
         }
 
-        addFile({
+        const record=addFile({
           studentId,
           name: title.trim(),
           webViewLink: linkUrl.trim(),
@@ -157,15 +281,16 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
           uploadDate: new Date().toISOString(),
         });
 
-        toast({ title: "נוסף", description: "הקישור נשמר" });
+        setRefreshTick(t=>t+1);
+        await verifySavedFile(record.id);
+        toast({ title: "נוסף", description: "הקישור נשמר ואומת" });
         setAddOpen(false);
         setRefreshTick((x) => x + 1);
         return;
       }
 
       if (addMode === "newpage") {
-        if (!ensureTitle()) return;
-        openEditorForNew(title.trim(), template);
+        openEditorForNew(title.trim() || "דף חדש", template);
         setAddOpen(false);
         return;
       }
@@ -183,7 +308,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
         return;
       }
 
-      addFile({
+      const record=addFile({
         studentId,
         name: title.trim() || f.name,
         webViewLink: result.data.webViewLink,
@@ -194,7 +319,10 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
         uploadDate: new Date().toISOString(),
       });
 
-      toast({ title: "הועלה", description: "הקובץ נוסף לתלמידה" });
+      setRefreshTick(t=>t+1);
+      await verifySavedFile(record.id);
+      toast({ title: "הועלה", description: "הקובץ נוסף ואומת" });
+      setMetadataFile(record);
       setAddOpen(false);
       setRefreshTick((x) => x + 1);
     } catch (e: any) {
@@ -229,10 +357,15 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
         return;
       }
 
-      const blob = await fetchBlob(fe.webViewLink);
       const kind = inferKindFromNameOrMime(fe.name, fe.mimeType);
+      if (getFileCategory(fe) === "קובץ שמע" || fe.kind === "link") {
+        toast({title:"עריכה אינה זמינה לסוג קובץ זה",description:"הקובץ המקורי נשמר ללא שינוי. ניתן לפתוח אותו במכשיר או להוריד.",variant:"destructive"});
+        return;
+      }
+      if(!kind)throw new Error("סוג קובץ זה אינו נתמך בעריכה");
+      const blob = await fetchBlob(fe.webViewLink);
 
-      openEditorForEdit(baseNameWithoutExt(fe.name) || "עריכה", { kind, blob });
+      openEditorForEdit(baseNameWithoutExt(fe.name) || "עריכה", { kind, blob }, fe);
       setEditPickOpen(false);
     } catch (e: any) {
       toast({
@@ -247,11 +380,8 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
 
   const handleDelete = async (file: FileEntry) => {
     try {
-      if (file.dropboxPath) {
-        const r = await workerApi.deleteAttachment(file.dropboxPath);
-        if (!r.success) toast({ title: "אזהרה", description: "מחיקה מהדרופבוקס נכשלה (מוחק מהרשימה בלבד)" });
-      }
-
+      // Remove only this student assignment. Do not delete the shared Dropbox attachment:
+      // the same source may still be referenced by another student or the teacher library.
       const ok = await deleteFile(file.id);
       if (!ok) {
         toast({ title: "שגיאה", description: "לא נמצא למחיקה", variant: "destructive" });
@@ -264,20 +394,13 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     }
   };
 
-  const handleEditorSave = async (payload: { fileNameBase: string; png: Blob; pdf: Blob }) => {
+  const handleEditorSave = async (payload: { fileNameBase: string; pdf: Blob; subject: string; tags: string[] }) => {
     try {
       const base = payload.fileNameBase;
       const stamp = nowStamp();
       const finalBase = editorMode === "edit" ? `${base} - ערוך ${stamp}` : base;
 
-      const pngFile = new File([payload.png], `${finalBase}.png`, { type: "image/png" });
       const pdfFile = new File([payload.pdf], `${finalBase}.pdf`, { type: "application/pdf" });
-
-      const upPng = await workerApi.uploadAttachment(pngFile);
-      if (!upPng.success || !upPng.data) {
-        toast({ title: "שגיאה", description: upPng.error || "העלאת PNG נכשלה", variant: "destructive" });
-        return;
-      }
 
       const upPdf = await workerApi.uploadAttachment(pdfFile);
       if (!upPdf.success || !upPdf.data) {
@@ -286,9 +409,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       }
 
       // Save as NEW VERSION(s): add entries without deleting originals
-      addFile({
+      const record=addFile({
         studentId,
         name: `${finalBase}.pdf`,
+        subject: payload.subject,
+        tags: payload.tags,
         webViewLink: upPdf.data.webViewLink,
         dropboxPath: upPdf.data.path,
         mimeType: upPdf.data.type || "application/pdf",
@@ -298,19 +423,9 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
         uploadDate: new Date().toISOString(),
       });
 
-      addFile({
-        studentId,
-        name: `${finalBase}.png`,
-        webViewLink: upPng.data.webViewLink,
-        dropboxPath: upPng.data.path,
-        mimeType: upPng.data.type || "image/png",
-        size: upPng.data.size,
-        kind: editorMode === "edit" ? "upload" : "handwrite",
-        template: editorMode === "edit" ? undefined : editorTemplate,
-        uploadDate: new Date().toISOString(),
-      });
-
-      toast({ title: "נשמר", description: editorMode === "edit" ? "נשמרה גרסה חדשה" : "נשמר קובץ חדש" });
+      setRefreshTick(t=>t+1);
+      await verifySavedFile(record.id);
+      toast({ title: "נשמר ואומת", description: editorMode === "edit" ? "נשמרה גרסה חדשה" : "נשמר קובץ PDF A4" });
       setEditorOpen(false);
       setRefreshTick((x) => x + 1);
     } catch (e: any) {
@@ -321,7 +436,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>קבצים</CardTitle>
+        <CardTitle>הקבצים שלי</CardTitle>
         <div className="flex gap-2">
           <Button variant="secondary" disabled={refreshingFiles} onClick={() => void refreshFromCloud()}>
             {refreshingFiles ? "טוען מהענן…" : "רענון מ-Dropbox"}
@@ -329,45 +444,94 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
           <Button variant="secondary" onClick={handleOpenEditPicker}>
             עריכת קובץ
           </Button>
-          <Button onClick={handleAddOpen}>הוספת קובץ</Button>
+          <Button variant="secondary" onClick={() => { resetAddForm(); setAddMode("newpage"); setAddOpen(true); }} title="דף חדש"><Plus className="h-4 w-4 ml-1" /> דף חדש</Button>
+          <Button variant="secondary" onClick={() => { resetAddForm(); setAddMode("upload"); setAddOpen(true); }} title="העלאת קובץ"><Upload className="h-4 w-4 ml-1" /> העלאה</Button>
+          {isTeacher && <Button variant="secondary" onClick={() => {setReadingItemId(getSightReadingArchive()[0]?.id||"");setReadingPickerOpen(true);}} title="ממנוע התווים">ממנוע התווים</Button>}
+          <Button variant={recording ? "destructive" : "secondary"} onClick={() => void toggleRecording()} title={recording ? "סיום הקלטה" : "הקלטה חדשה"}>{recording ? <Square className="h-4 w-4 ml-1" /> : <Mic className="h-4 w-4 ml-1" />}{recording ? "סיום הקלטה" : "הקלטה"}</Button>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4">
+        <Input aria-label="חיפוש בקבצים שלי" value={search} onChange={e=>setSearch(e.target.value)} placeholder="חיפוש לפי שם, נושא, סוג או תגית" />
+        <div className="flex items-center gap-2"><Label htmlFor="student-file-sort">מיון לפי</Label><select id="student-file-sort" aria-label="מיון קבצים" value={sortBy} onChange={e => setSortBy(e.target.value as FileSort)} className="rounded-md border bg-background text-foreground p-2"><option value="date">תאריך — החדשים תחילה</option><option value="name">שם</option><option value="topic">נושא</option><option value="type">סוג</option></select></div>
         {files.length === 0 ? (
           <div className="text-sm opacity-70">אין קבצים שמורים לתלמידה</div>
         ) : (
           <div className="grid gap-2">
             {files.map((f) => {
-              const isReading = f.description?.includes('sight-reading:') && (f.mimeType === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-              const isOpen = visibleReadingId === f.id;
-              const sourceExerciseId = f.description?.match(/sight-reading:([a-zA-Z0-9-]+)/)?.[1];
-              const archivedExercise = isReading && sourceExerciseId ? getSightReadingArchive().find(item => item.id === sourceExerciseId) : undefined;
               return <div key={f.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate font-medium">{f.name}</div>
-                    <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} {f.mimeType ? `• ${f.mimeType}` : ""}</div>
+                    <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} • {getFileCategory(f)} {f.parentFileId ? `• צורף לדף: ${files.find(parent=>parent.id===f.parentFileId)?.name||"קובץ קודם"}` : ""} {f.subject ? `• ${f.subject}` : ""} {f.tags?.length ? `• ${f.tags.join(", ")}` : ""}</div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {isReading && <Button variant="secondary" onClick={() => setVisibleReadingId(isOpen ? null : f.id)}>{isOpen ? 'סגירת תווים' : 'הצגת התווים כאן'}</Button>}
-                    <Button variant="secondary" onClick={() => window.open(f.webViewLink, "_blank", "noopener,noreferrer")}>פתיחה / הורדה</Button>
+                    <Button variant="secondary" onClick={() => setOpenChoices(f)}>פתיחה / הורדה</Button>
                     <Button variant="destructive" onClick={() => void handleDelete(f)}>מחיקה</Button>
                   </div>
                 </div>
-                {isReading && isOpen && <div className="rounded-md border bg-white p-2" dir="ltr">
-                  {archivedExercise?.xml ? (
-                    <EngravedScore xml={archivedExercise.xml} />
-                  ) : (
-                    <iframe title={`תווים — ${f.name}`} src={f.webViewLink} className="w-full h-[72vh] min-h-[500px] border-0" loading="lazy" />
-                  )}
-                  <p className="text-xs text-slate-600 text-center" dir="rtl">תיווי ישיר בדף, ללא תוכנה חיצונית. אם התרגיל אינו זמין בתצוגה הפנימית, לחצי על פתיחה / הורדה.</p>
-                </div>}
+
               </div>;
             })}          </div>
         )}
       </CardContent>
 
+      <Dialog open={!!openChoices} onOpenChange={open => { if (!open) setOpenChoices(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>פתיחת קובץ: {openChoices?.name}</DialogTitle></DialogHeader>
+          <div className="grid gap-2">
+            <Button variant="secondary" onClick={async () => {
+              if (!openChoices) return;
+              try {
+                const kind = inferKindFromNameOrMime(openChoices.name, openChoices.mimeType);
+                if (!kind || ["קובץ שמע","הקלטה"].includes(getFileCategory(openChoices)) || openChoices.kind === "link") {
+                  toast({title:"סוג קובץ שאינו נתמך",description:"אפשר לפתוח במכשיר או להוריד קובץ זה",variant:"destructive"}); return;
+                }
+                const blob = await fetchBlob(openChoices.webViewLink);
+                openEditorForEdit(baseNameWithoutExt(openChoices.name), {kind, blob}, openChoices);
+                setOpenChoices(null);
+              } catch (e) { toast({title:"לא ניתן לפתוח בעורך",description:String(e),variant:"destructive"}); }
+            }}>פתיחה בעורך לעריכה</Button>
+            <Button variant="secondary" onClick={() => { if (openChoices) window.open(openChoices.webViewLink, "_blank", "noopener,noreferrer"); setOpenChoices(null); }}>פתיחה במכשיר</Button>
+            {openChoices && !["הקלטה","קובץ שמע"].includes(getFileCategory(openChoices)) && <>
+              <Button variant="secondary" onClick={()=>{if(openChoices){void toggleRecording(openChoices.id);setOpenChoices(null);}}}>הקלטה חדשה מצורפת לדף</Button>
+              <Button variant="secondary" disabled={busyFiles} onClick={()=>{setLinkedAudioParent(openChoices.id);linkedAudioInput.current?.click();}}>צירוף קובץ שמע מהמכשיר</Button>
+            </>}
+            <Button variant="secondary" onClick={() => {if(openChoices)setMetadataFile(openChoices);setOpenChoices(null);}}>עריכת שם, נושא ותגיות</Button>
+            <Button variant="secondary" onClick={async () => {
+              const file=openChoices;if(!file)return;
+              try {
+                const blob=await fetchBlob(file.webViewLink);
+                const url=URL.createObjectURL(blob);
+                const link=document.createElement("a");link.href=url;link.download=file.name;link.rel="noopener noreferrer";
+                document.body.appendChild(link);link.click();link.remove();
+                window.setTimeout(()=>URL.revokeObjectURL(url),20000);
+                setOpenChoices(null);
+              } catch(e) {
+                toast({title:"ההורדה הישירה נחסמה",description:"הקובץ ייפתח במכשיר; אפשר להוריד אותו משם.",variant:"destructive"});
+                window.open(file.webViewLink,"_blank","noopener,noreferrer");
+              }
+            }}>הורדה</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={readingPickerOpen} onOpenChange={setReadingPickerOpen}>
+        <DialogContent className="max-w-md"><DialogHeader><DialogTitle>הוספת תווים ממנוע היצירה</DialogTitle></DialogHeader>
+        <select className="p-2 rounded border bg-background text-foreground w-full" aria-label="תרגיל תווים" value={readingItemId} onChange={e=>setReadingItemId(e.target.value)}>
+          {getSightReadingArchive().map(item=><option key={item.id} value={item.id}>{item.title}</option>)}
+        </select>
+        <Button disabled={!readingItemId||busyFiles} onClick={()=>void addNotationFromEngine()}>{busyFiles?"מעביר תווים…":"צירוף לתלמידה"}</Button>
+      </DialogContent>
+      </Dialog>
+      <input ref={linkedAudioInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.webm" className="hidden" aria-label="קובץ שמע לצירוף לדף" onChange={e=>{const f=e.target.files?.[0];if(f&&linkedAudioParent)void attachAudioFromDevice(f,linkedAudioParent);e.target.value="";}} />
+      <Dialog open={!!metadataFile} onOpenChange={v=>{if(!v)setMetadataFile(null)}}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>פרטי קובץ ותגיות</DialogTitle></DialogHeader>
+          {metadataFile && <StudentFileMetadataEditor file={metadataFile} onCancel={()=>setMetadataFile(null)}
+            onSaved={()=>{setMetadataFile(null);setRefreshTick(n=>n+1);}}/>}
+        </DialogContent>
+      </Dialog>
       {/* Add dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-xl">
@@ -418,11 +582,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
                   <Button variant={template === "blank" ? "default" : "secondary"} onClick={() => setTemplate("blank")}>
                     ריק
                   </Button>
-                  <Button variant={template === "lines" ? "default" : "secondary"} onClick={() => setTemplate("lines")}>
-                    שורות
+                  <Button variant={template === "piano" ? "default" : "secondary"} onClick={() => setTemplate("piano")}>
+                    תווים לפסנתר
                   </Button>
                   <Button variant={template === "staff" ? "default" : "secondary"} onClick={() => setTemplate("staff")}>
-                    חמשות
+                    תווים רגיל
                   </Button>
                 </div>
               </div>
@@ -511,14 +675,25 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
         <DialogContent className="w-[95vw] max-w-[95vw] h-[95vh] max-h-[95vh] overflow-hidden p-4">
           <div className="h-full">
-            <DocumentEditor
-              mode={editorMode}
-              initialFileName={editorInitialName}
-              initialTemplate={editorTemplate}
-              source={editorSource}
-              onCancel={() => setEditorOpen(false)}
-              onSave={handleEditorSave}
-            />
+            {editorSource?.kind === "pdf" ? (
+              <PdfAnnotationEditor
+                blob={editorSource.blob}
+                initialFileName={editorInitialName}
+                initialSubject={editorOriginal?.subject}
+                initialTags={editorOriginal?.tags}
+                onCancel={() => setEditorOpen(false)}
+                onSave={handleEditorSave}
+              />
+            ) : (
+              <DocumentEditor
+                mode={editorMode}
+                initialFileName={editorInitialName}
+                initialTemplate={editorTemplate}
+                source={editorSource}
+                onCancel={() => setEditorOpen(false)}
+                onSave={handleEditorSave}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>

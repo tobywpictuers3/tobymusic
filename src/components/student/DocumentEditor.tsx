@@ -1,9 +1,10 @@
 // DocumentEditor.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-export type EditorTemplate = "blank" | "lines" | "staff";
+export type EditorTemplate = "blank" | "lines" | "staff" | "piano";
 export type EditorSourceKind = "blank" | "image" | "pdf";
-type ToolMode = "pen" | "marker" | "eraser" | "text";
+type ToolMode = "pencil" | "pen" | "marker" | "eraser" | "text";
+const DEFAULT_TAGS = ["פסנתר","חליל","קריאה","שליפה","יצירה","מקצבים","קואורדינציה","רמה 1","רמה 2","רמה 3","דואט","ליווי","עיבוד"];
 
 function formatA4Px(scale = 2) {
   // A4 ratio ~ 1 : 1.414
@@ -12,71 +13,42 @@ function formatA4Px(scale = 2) {
 
 function drawTemplate(ctx: CanvasRenderingContext2D, w: number, h: number, template: EditorTemplate) {
   ctx.save();
-  ctx.clearRect(0, 0, w, h);
-
-  // page background
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, w, h);
-
-  // page frame
-  ctx.strokeStyle = "rgba(0,0,0,0.10)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(20, 20, w - 40, h - 40);
-
-  if (template === "lines") {
-    // stronger than before (still subtle)
-    ctx.strokeStyle = "rgba(0,0,0,0.18)";
-    ctx.lineWidth = 2.5;
-
-    const top = 90;
-    const gap = 64;
-    for (let y = top; y < h - 90; y += gap) {
-      ctx.beginPath();
-      ctx.moveTo(50, y);
-      ctx.lineTo(w - 50, y);
-      ctx.stroke();
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle="#fff";
+  ctx.fillRect(0,0,w,h);
+  const k=w/900, left=64*k, right=w-left;
+  // Consistent TOBY ivory / warm gold printed stationery, drawn locally for offline reliability.
+  ctx.fillStyle="#6B1F2A";
+  ctx.font=`${18*k}px Heebo, Arial, sans-serif`;
+  ctx.fillText("TOBY MUSIC",left,52*k);
+  ctx.strokeStyle="#C9A961";ctx.lineWidth=1.4*k;
+  ctx.beginPath();ctx.moveTo(left,67*k);ctx.lineTo(right,67*k);ctx.stroke();
+  ctx.fillStyle="#1A1A1F";
+  ctx.font=`${12*k}px Arial, sans-serif`;
+  ctx.textAlign="right";
+  ctx.fillText(template==="piano"?"PIANO" : template==="staff"?"MUSIC MANUSCRIPT" : "",right,52*k);
+  ctx.textAlign="left";
+  const staff=(top:number,x1:number=left,x2:number=right)=>{
+    ctx.strokeStyle="#252525";ctx.lineWidth=1.4*k;
+    for(let j=0;j<5;j++){let y=top+j*16*k;ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();}
+  };
+  if(template==="staff"){
+    for(let top=135*k;top<h-135*k;top+=145*k)staff(top);
+  }else if(template==="piano"){
+    for(let top=134*k;top+232*k<h-115*k;top+=302*k){
+      const x1=left+22*k;
+      staff(top,x1,right);staff(top+142*k,x1,right);
+      ctx.strokeStyle="#252525";ctx.lineWidth=1.6*k;
+      ctx.beginPath();ctx.moveTo(x1,top);ctx.lineTo(x1,top+206*k);ctx.stroke();
+      ctx.font=`${62*k}px Georgia, serif`;ctx.fillStyle="#816846";
+      ctx.fillText("{",left-4*k,top+131*k);
     }
+  }else if(template==="lines"){
+    ctx.strokeStyle="rgba(0,0,0,.2)";ctx.lineWidth=1.4*k;
+    for(let top=138*k;top<h-110*k;top+=52*k){ctx.beginPath();ctx.moveTo(left,top);ctx.lineTo(right,top);ctx.stroke();}
   }
-
-  if (template === "staff") {
-    // MUCH stronger staff lines
-    ctx.strokeStyle = "rgba(0,0,0,0.38)";
-    ctx.lineWidth = 3.2;
-
-    const left = 70;
-    const right = w - 70;
-    const groupTopStart = 95;
-    const lineGap = 18;
-    const groupGap = 88;
-
-    for (let top = groupTopStart; top < h - 150; top += lineGap * 4 + groupGap) {
-      for (let i = 0; i < 5; i++) {
-        const y = top + i * lineGap;
-        ctx.beginPath();
-        ctx.moveTo(left, y);
-        ctx.lineTo(right, y);
-        ctx.stroke();
-      }
-    }
-
-    // optional: faint barlines (very subtle)
-    ctx.strokeStyle = "rgba(0,0,0,0.10)";
-    ctx.lineWidth = 2;
-    for (let top = groupTopStart; top < h - 150; top += lineGap * 4 + groupGap) {
-      const yTop = top;
-      const yBot = top + 4 * lineGap;
-      // a few barlines across the width
-      const bars = 4;
-      for (let b = 1; b <= bars; b++) {
-        const x = left + (b * (right - left)) / (bars + 1);
-        ctx.beginPath();
-        ctx.moveTo(x, yTop);
-        ctx.lineTo(x, yBot);
-        ctx.stroke();
-      }
-    }
-  }
-
+  ctx.fillStyle="#8A8378";ctx.font=`${10*k}px Georgia, serif`;
+  ctx.textAlign="center";ctx.fillText("TOBY MUSIC",w/2,h-38*k);
   ctx.restore();
 }
 
@@ -219,7 +191,7 @@ export default function DocumentEditor(props: {
   initialTemplate?: EditorTemplate;
   source?: { kind: Exclude<EditorSourceKind, "blank">; blob: Blob };
   onCancel: () => void;
-  onSave: (result: { fileNameBase: string; png: Blob; pdf: Blob }) => Promise<void> | void;
+  onSave: (result: { fileNameBase: string; pdf: Blob; subject: string; tags: string[] }) => Promise<void> | void;
 }) {
   const { w, h } = useMemo(() => formatA4Px(2), []);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -230,6 +202,10 @@ export default function DocumentEditor(props: {
 
   const [tool, setTool] = useState<ToolMode>("pen");
   const [penSize, setPenSize] = useState<number>(6);
+  const [inkColor, setInkColor] = useState("#111111");
+  const [subject, setSubject] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState("");
   const [zoom, setZoom] = useState<number>(1);
 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -377,6 +353,7 @@ export default function DocumentEditor(props: {
 
       const k = e.key.toLowerCase();
       if (k === "b") setTool("pen");
+      if (k === "p") setTool("pencil");
       if (k === "m") setTool("marker");
       if (k === "e") setTool("eraser");
       if (k === "t") setTool("text");
@@ -421,17 +398,23 @@ export default function DocumentEditor(props: {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
+    ctx.globalAlpha = 1;
     if (tool === "eraser") {
       ctx.globalCompositeOperation = "destination-out";
       ctx.strokeStyle = "rgba(0,0,0,1)";
       ctx.lineWidth = penSize * 2;
     } else if (tool === "marker") {
       ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = "rgba(255, 205, 0, 0.35)";
+      ctx.strokeStyle = inkColor + "59";
       ctx.lineWidth = penSize * 2.4;
+    } else if (tool === "pencil") {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 0.65;
+      ctx.strokeStyle = inkColor;
+      ctx.lineWidth = Math.max(1, penSize * 0.65);
     } else {
       ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = "rgba(0,0,0,0.95)";
+      ctx.strokeStyle = inkColor;
       ctx.lineWidth = penSize;
     }
 
@@ -469,7 +452,7 @@ export default function DocumentEditor(props: {
 
     ctx.save();
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(0,0,0,0.95)";
+    ctx.fillStyle = inkColor;
     ctx.textBaseline = "top";
 
     const fontSize = Math.max(18, Math.round(penSize * 3));
@@ -502,16 +485,13 @@ export default function DocumentEditor(props: {
 
   const save = async () => {
     const baseName = safeBaseName(fileNameBase);
-    if (!baseName) return;
+    if (!baseName || pdfNotSupported) return;
 
     const merged = await exportMergedCanvas();
 
-    const pngBlob: Blob | null = await new Promise((resolve) => merged.toBlob((b) => resolve(b), "image/png", 1));
-    if (!pngBlob) return;
-
     const pdfBlob = await canvasToPdfBlob(merged);
 
-    await props.onSave({ fileNameBase: baseName, png: pngBlob, pdf: pdfBlob });
+    await props.onSave({ fileNameBase: baseName, pdf: pdfBlob, subject: subject.trim(), tags });
   };
 
   const printPage = async () => {
@@ -595,6 +575,8 @@ export default function DocumentEditor(props: {
               />
             </div>
 
+            <div style={{display:"grid", gap:4, minWidth:180}}><label style={{fontSize:12,color:"white"}}>נושא</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="נושא הקובץ" style={{padding:8,borderRadius:8,color:"black"}} /></div>
+            <details style={{color:"white"}}><summary>תגיות לשמירה ({tags.length})</summary><div style={{display:"flex",flexWrap:"wrap",gap:6,maxWidth:550}}>{[...new Set([...DEFAULT_TAGS,...tags])].map(tag=><label key={tag} style={{fontSize:12,display:"flex",alignItems:"center",gap:3}}><input type="checkbox" checked={tags.includes(tag)} onChange={e=>setTags(v=>e.target.checked?[...v,tag]:v.filter(x=>x!==tag))}/>{tag}</label>)}</div><div style={{display:"flex",gap:4}}><input aria-label="תגית חדשה" value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder="תגית נוספת" style={{color:"black"}}/><button type="button" onClick={()=>{const t=customTag.trim();if(t&&!tags.includes(t))setTags(v=>[...v,t]);setCustomTag("");}}>הוספה</button></div></details>
             {props.mode === "new" ? (
               <div style={{ display: "grid", gap: 4 }}>
                 <div style={{ fontSize: 12, opacity: 0.85, color: "white" }}>סוג דף</div>
@@ -610,13 +592,14 @@ export default function DocumentEditor(props: {
                   }}
                 >
                   <option value="blank">דף ריק</option>
-                  <option value="lines">דף שורות</option>
-                  <option value="staff">דף חמשות</option>
+                  <option value="staff">דף תווים רגיל</option>
+                  <option value="piano">דף תווים לפסנתר</option>
                 </select>
               </div>
             ) : null}
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <button type="button" onClick={() => setTool("pencil")} style={toolButtonStyle(tool === "pencil")}>עיפרון (P)</button>
               <button type="button" onClick={() => setTool("pen")} style={toolButtonStyle(tool === "pen")}>
                 עט (B)
               </button>
@@ -630,6 +613,11 @@ export default function DocumentEditor(props: {
                 טקסט (T)
               </button>
 
+              <label style={{ display: "grid", gap: 4, color: "white", fontSize: 12 }}>צבע כתיבה
+                <input aria-label="צבע כתיבה" type="color" value={inkColor} onChange={(e) => setInkColor(e.target.value)} />
+              </label>
+              <button type="button" onClick={() => setInkColor("#ffffff")} title="כתיבה לבנה לכיסוי תוכן על דף כתוב" style={toolButtonStyle(false)}>לבן</button>
+              <div className="flex items-center gap-1" aria-label="צבעים מהירים">{["#171717","#6B1F2A","#1D4ED8","#DC2626","#15803D","#C9A961","#FFFFFF"].map(c => <button key={c} type="button" title={c === "#FFFFFF" ? "לבן" : "בחרי צבע"} aria-label={"צבע "+c} onClick={() => setInkColor(c)} style={{width:22,height:22,borderRadius:"50%",background:c,border:inkColor===c?"3px solid #C9A961":"1px solid #777"}} />)}</div>
               <div style={{ display: "grid", gap: 4, minWidth: 160 }}>
                 <div style={{ fontSize: 12, opacity: 0.85, color: "white" }}>עובי</div>
                 <input type="range" min={2} max={18} value={penSize} onChange={(e) => setPenSize(Number(e.target.value))} />
