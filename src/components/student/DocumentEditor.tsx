@@ -18,12 +18,12 @@ function drawTemplate(ctx: CanvasRenderingContext2D, w: number, h: number, templ
   ctx.fillRect(0,0,w,h);
   const k=w/900, left=64*k, right=w-left;
   // Consistent TOBY ivory / warm gold printed stationery, drawn locally for offline reliability.
-  ctx.fillStyle="#846e49";
-  ctx.font=`${18*k}px Georgia, serif`;
+  ctx.fillStyle="#6B1F2A";
+  ctx.font=`${18*k}px Heebo, Arial, sans-serif`;
   ctx.fillText("TOBY MUSIC",left,52*k);
-  ctx.strokeStyle="#bf9b5d";ctx.lineWidth=1.4*k;
+  ctx.strokeStyle="#C9A961";ctx.lineWidth=1.4*k;
   ctx.beginPath();ctx.moveTo(left,67*k);ctx.lineTo(right,67*k);ctx.stroke();
-  ctx.fillStyle="#6b5d54";
+  ctx.fillStyle="#1A1A1F";
   ctx.font=`${12*k}px Arial, sans-serif`;
   ctx.textAlign="right";
   ctx.fillText(template==="piano"?"PIANO" : template==="staff"?"MUSIC MANUSCRIPT" : "",right,52*k);
@@ -47,7 +47,7 @@ function drawTemplate(ctx: CanvasRenderingContext2D, w: number, h: number, templ
     ctx.strokeStyle="rgba(0,0,0,.2)";ctx.lineWidth=1.4*k;
     for(let top=138*k;top<h-110*k;top+=52*k){ctx.beginPath();ctx.moveTo(left,top);ctx.lineTo(right,top);ctx.stroke();}
   }
-  ctx.fillStyle="#b5a183";ctx.font=`${10*k}px Georgia, serif`;
+  ctx.fillStyle="#8A8378";ctx.font=`${10*k}px Georgia, serif`;
   ctx.textAlign="center";ctx.fillText("TOBY MUSIC",w/2,h-38*k);
   ctx.restore();
 }

@@ -168,7 +168,9 @@ export default function PdfAnnotationEditor(props: {
   };
   const createPdf=async()=>{
     if(!document)throw new Error("המסמך עדיין בטעינה");
-    const output=new jsPDF({orientation:"portrait",unit:"mm",format:"a4",compress:true});
+    const first=await document.getPage(1);
+    const firstViewport=first.getViewport({scale:1});
+    const output=new jsPDF({orientation:firstViewport.width>firstViewport.height?"landscape":"portrait",unit:"mm",format:"a4",compress:true});
     for(let n=1;n<=document.numPages;n++){
       setProgress(`מכין עמוד ${n} מתוך ${document.numPages}`);
       const pdfPage=await document.getPage(n);
@@ -184,10 +186,12 @@ export default function PdfAnnotationEditor(props: {
       const ink=overlay.getContext("2d");if(!ink)throw new Error("לא ניתן לייצא סימונים");
       paint(ink,layersRef.current[n]||[],c.width,c.height);
       ctx.drawImage(overlay,0,0);
-      if(n>1)output.addPage("a4","portrait");
-      const margin=6, maxW=210-2*margin,maxH=297-2*margin,ratio=Math.min(maxW/c.width,maxH/c.height);
+      const landscape=v.width>v.height;
+      if(n>1)output.addPage("a4",landscape?"landscape":"portrait");
+      const pageW=landscape?297:210,pageH=landscape?210:297;
+      const margin=6,ratio=Math.min((pageW-2*margin)/c.width,(pageH-2*margin)/c.height);
       const w=c.width*ratio,h=c.height*ratio;
-      output.addImage(c.toDataURL("image/jpeg",0.93),"JPEG",(210-w)/2,(297-h)/2,w,h,undefined,"FAST");
+      output.addImage(c.toDataURL("image/jpeg",0.93),"JPEG",(pageW-w)/2,(pageH-h)/2,w,h,undefined,"FAST");
       c.width=c.height=overlay.width=overlay.height=0;
     }
     setProgress("");

@@ -478,3 +478,11 @@ The payment data model already contains all 12 academic months, September throug
 - **Known gap:** legacy `DocumentEditor` does not render/import an existing PDF. The new open menu explicitly blocks PDF-to-editor rather than accidentally saving a blank page. PDF annotation/import is required before claiming support for editing existing PDFs.
 - In-browser microphone recording uses MediaRecorder on supported devices and uploads the resulting audio as an attachment.
 - Still to verify: Cloudflare Worker attachment endpoints for student-side permissions, device download behavior, audio-browser support, persistence read-back, template-brand integration, notation-generator attachment integration and real PDF editing.
+
+### Files workspace implementation — November 10, 2026
+
+- Bundled PDF.js 4.10.38 renders multi-page PDF documents with local worker assets; annotation supports pen, marker, eraser, white covering strokes, text, undo/redo, and A4 export/print. Source PDF remains unchanged; new annotated version is a separate attachment record.
+- FileEntry includes subject, tags, sourceFileId and parentFileId for categorized library reuse and associated audio. Teacher library assigns one existing Dropbox attachment to multiple students without duplicate bytes, with canonical readback.
+- The teacher-only notation picker imports existing sight-reading archive PDFs using makeSightReadingPdf and checks assignment markers to avoid duplicates. No Gmail change.
+- Deleting a student file removes its record only; shared Dropbox attachment is preserved for other assignments and the teacher archive.
+- The approved PAPER brand palette is used in A4 canvas templates. Exact earlier template file bytes were not found in Github brand assets or connected Dropbox/Drive searches; drawings follow existing brand guidelines, not purported original exports.

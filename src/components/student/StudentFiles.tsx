@@ -10,7 +10,7 @@ import { toast } from "@/hooks/use-toast";
 
 import type { FileEntry } from "@/lib/types";
 import { addFile, deleteFile, getFiles, getSightReadingArchive } from "@/lib/storage";
-import { EngravedScore } from "@/components/admin/SightReadingVerovio";
+
 import { workerApi } from "@/lib/workerApi";
 import { hybridSync } from "@/lib/hybridSync";
 import { downloadCanonicalDropboxLatest } from "@/lib/canonicalDropboxRead";
@@ -86,7 +86,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const recordingTargetRef = useRef<string | null>(null);
   const linkedAudioInput = useRef<HTMLInputElement | null>(null);
   const [linkedAudioParent,setLinkedAudioParent] = useState<string | null>(null);
-  const [visibleReadingId,setVisibleReadingId] = useState<string | null>(null);
+
   const [refreshingFiles,setRefreshingFiles]=useState(false);
   useEffect(()=>{
     const refresh=()=>setRefreshTick(tick=>tick+1);
@@ -449,10 +449,6 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
         ) : (
           <div className="grid gap-2">
             {files.map((f) => {
-              const isReading = f.description?.includes('sight-reading:') && (f.mimeType === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-              const isOpen = visibleReadingId === f.id;
-              const sourceExerciseId = f.description?.match(/sight-reading:([a-zA-Z0-9-]+)/)?.[1];
-              const archivedExercise = isReading && sourceExerciseId ? getSightReadingArchive().find(item => item.id === sourceExerciseId) : undefined;
               return <div key={f.id} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
@@ -460,19 +456,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
                     <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} • {getFileCategory(f)} {f.parentFileId ? `• צורף לדף: ${files.find(parent=>parent.id===f.parentFileId)?.name||"קובץ קודם"}` : ""} {f.subject ? `• ${f.subject}` : ""} {f.tags?.length ? `• ${f.tags.join(", ")}` : ""}</div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {isReading && <Button variant="secondary" onClick={() => setVisibleReadingId(isOpen ? null : f.id)}>{isOpen ? 'סגירת תווים' : 'הצגת התווים כאן'}</Button>}
                     <Button variant="secondary" onClick={() => setOpenChoices(f)}>פתיחה / הורדה</Button>
                     <Button variant="destructive" onClick={() => void handleDelete(f)}>מחיקה</Button>
                   </div>
                 </div>
-                {isReading && isOpen && <div className="rounded-md border bg-white p-2" dir="ltr">
-                  {archivedExercise?.xml ? (
-                    <EngravedScore xml={archivedExercise.xml} />
-                  ) : (
-                    <iframe title={`תווים — ${f.name}`} src={f.webViewLink} className="w-full h-[72vh] min-h-[500px] border-0" loading="lazy" />
-                  )}
-                  <p className="text-xs text-slate-600 text-center" dir="rtl">תיווי ישיר בדף, ללא תוכנה חיצונית. אם התרגיל אינו זמין בתצוגה הפנימית, לחצי על פתיחה / הורדה.</p>
-                </div>}
+
               </div>;
             })}          </div>
         )}
@@ -499,9 +487,19 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
               <Button variant="secondary" onClick={()=>{if(openChoices){void toggleRecording(openChoices.id);setOpenChoices(null);}}}>הקלטה חדשה מצורפת לדף</Button>
               <Button variant="secondary" disabled={busyFiles} onClick={()=>{setLinkedAudioParent(openChoices.id);linkedAudioInput.current?.click();}}>צירוף קובץ שמע מהמכשיר</Button>
             </>}
-            <Button variant="secondary" onClick={() => {
-              if (!openChoices) return;
-              const a = document.createElement("a"); a.href = openChoices.webViewLink; a.download = openChoices.name; a.rel = "noopener noreferrer"; document.body.appendChild(a); a.click(); a.remove(); setOpenChoices(null);
+            <Button variant="secondary" onClick={async () => {
+              const file=openChoices;if(!file)return;
+              try {
+                const blob=await fetchBlob(file.webViewLink);
+                const url=URL.createObjectURL(blob);
+                const link=document.createElement("a");link.href=url;link.download=file.name;link.rel="noopener noreferrer";
+                document.body.appendChild(link);link.click();link.remove();
+                window.setTimeout(()=>URL.revokeObjectURL(url),20000);
+                setOpenChoices(null);
+              } catch(e) {
+                toast({title:"ההורדה הישירה נחסמה",description:"הקובץ ייפתח במכשיר; אפשר להוריד אותו משם.",variant:"destructive"});
+                window.open(file.webViewLink,"_blank","noopener,noreferrer");
+              }
             }}>הורדה</Button>
           </div>
         </DialogContent>
