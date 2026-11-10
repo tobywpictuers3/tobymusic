@@ -1,0 +1,48 @@
+name: Build TOBY Music Android APK
+
+on:
+  push:
+    branches:
+      - 'feature/android-students-app-*'
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/build-android-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Use existing TOBY PWA icon
+        run: |
+          mkdir -p android-app/app/src/main/res/drawable
+          cp public/assets/brand/icon-192.png android-app/app/src/main/res/drawable/toby_icon.png
+      - name: Compile Android APK
+        run: gradle --project-dir android-app :app:assembleDebug --no-daemon --stacktrace
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TOBY-Music-Students-Android-APK
+          path: android-app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
