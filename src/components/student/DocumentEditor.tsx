@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 export type EditorTemplate = "blank" | "lines" | "staff";
 export type EditorSourceKind = "blank" | "image" | "pdf";
 type ToolMode = "pen" | "marker" | "eraser" | "text";
+const DEFAULT_TAGS = ["פסנתר","חליל","קריאה","שליפה","יצירה","מקצבים","קואורדינציה","רמה 1","רמה 2","רמה 3","דואט","ליווי","עיבוד"];
 
 function formatA4Px(scale = 2) {
   // A4 ratio ~ 1 : 1.414
@@ -219,7 +220,7 @@ export default function DocumentEditor(props: {
   initialTemplate?: EditorTemplate;
   source?: { kind: Exclude<EditorSourceKind, "blank">; blob: Blob };
   onCancel: () => void;
-  onSave: (result: { fileNameBase: string; png: Blob; pdf: Blob }) => Promise<void> | void;
+  onSave: (result: { fileNameBase: string; png: Blob; pdf: Blob; subject: string; tags: string[] }) => Promise<void> | void;
 }) {
   const { w, h } = useMemo(() => formatA4Px(2), []);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -231,6 +232,9 @@ export default function DocumentEditor(props: {
   const [tool, setTool] = useState<ToolMode>("pen");
   const [penSize, setPenSize] = useState<number>(6);
   const [inkColor, setInkColor] = useState("#111111");
+  const [subject, setSubject] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState("");
   const [zoom, setZoom] = useState<number>(1);
 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -512,7 +516,7 @@ export default function DocumentEditor(props: {
 
     const pdfBlob = await canvasToPdfBlob(merged);
 
-    await props.onSave({ fileNameBase: baseName, png: pngBlob, pdf: pdfBlob });
+    await props.onSave({ fileNameBase: baseName, png: pngBlob, pdf: pdfBlob, subject: subject.trim(), tags });
   };
 
   const printPage = async () => {
@@ -596,6 +600,8 @@ export default function DocumentEditor(props: {
               />
             </div>
 
+            <div style={{display:"grid", gap:4, minWidth:180}}><label style={{fontSize:12,color:"white"}}>נושא</label><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="נושא הקובץ" style={{padding:8,borderRadius:8,color:"black"}} /></div>
+            <details style={{color:"white"}}><summary>תגיות לשמירה ({tags.length})</summary><div style={{display:"flex",flexWrap:"wrap",gap:6,maxWidth:550}}>{[...new Set([...DEFAULT_TAGS,...tags])].map(tag=><label key={tag} style={{fontSize:12,display:"flex",alignItems:"center",gap:3}}><input type="checkbox" checked={tags.includes(tag)} onChange={e=>setTags(v=>e.target.checked?[...v,tag]:v.filter(x=>x!==tag))}/>{tag}</label>)}</div><div style={{display:"flex",gap:4}}><input aria-label="תגית חדשה" value={customTag} onChange={e=>setCustomTag(e.target.value)} placeholder="תגית נוספת" style={{color:"black"}}/><button type="button" onClick={()=>{const t=customTag.trim();if(t&&!tags.includes(t))setTags(v=>[...v,t]);setCustomTag("");}}>הוספה</button></div></details>
             {props.mode === "new" ? (
               <div style={{ display: "grid", gap: 4 }}>
                 <div style={{ fontSize: 12, opacity: 0.85, color: "white" }}>סוג דף</div>
