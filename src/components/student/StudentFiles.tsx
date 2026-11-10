@@ -63,7 +63,7 @@ function inferKindFromNameOrMime(fileName: string, mime?: string) {
   const n = (fileName || "").toLowerCase();
   if (m.includes("pdf") || n.endsWith(".pdf")) return "pdf" as const;
   if (m.startsWith("image/") || n.match(/\.(png|jpg|jpeg|webp|gif)$/)) return "image" as const;
-  return "image" as const;
+  return null;
 }
 
 async function fetchBlob(url: string): Promise<Blob> {
@@ -83,6 +83,9 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   const isTeacher = getCurrentUser()?.type === "admin";
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingTargetRef = useRef<string | null>(null);
+  const linkedAudioInput = useRef<HTMLInputElement | null>(null);
+  const [linkedAudioParent,setLinkedAudioParent] = useState<string | null>(null);
   const [visibleReadingId,setVisibleReadingId] = useState<string | null>(null);
   const [refreshingFiles,setRefreshingFiles]=useState(false);
   useEffect(()=>{
@@ -167,10 +170,11 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     finally{setBusyFiles(false);}
   };
 
-  const toggleRecording = async () => {
+  const toggleRecording = async (parentFileId: string | null = null) => {
     if (recorderRef.current?.state === "recording") { recorderRef.current.stop(); setRecording(false); return; }
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") throw new Error("הדפדפן אינו תומך בהקלטה");
+      recordingTargetRef.current = parentFileId;
       const stream = await navigator.mediaDevices.getUserMedia({audio:true});
       recordingStreamRef.current = stream;
       const chunks: BlobPart[] = [];
@@ -181,6 +185,8 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       rec.onerror = () => {setRecording(false); stream.getTracks().forEach(t=>t.stop()); toast({title:"שגיאה בהקלטה",variant:"destructive"});};
       rec.onstop = async () => {
         setRecording(false); stream.getTracks().forEach(t=>t.stop()); recordingStreamRef.current = null; recorderRef.current = null;
+        const associated = recordingTargetRef.current;
+        recordingTargetRef.current = null;
         try {
           const format = rec.mimeType.includes("mp4") ? "m4a" : "webm";
           const mime = rec.mimeType || "audio/webm";
@@ -189,14 +195,32 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
           if (!file.size) throw new Error("ההקלטה ריקה");
           const upload = await workerApi.uploadAttachment(file);
           if (!upload.success || !upload.data) throw new Error(upload.error || "העלאת ההקלטה נכשלה");
-          const record=addFile({studentId,name:file.name,mimeType:mime,kind:"recording",webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path,size:file.size});
+          const record=addFile({studentId,name:file.name,mimeType:mime,kind:"recording",parentFileId:associated||undefined,webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path,size:file.size});
           setRefreshTick(n=>n+1);
           await verifySavedFile(record.id);
           toast({title:"ההקלטה נשמרה ואומתה",description:"הקובץ נוסף לספרייה"});
         } catch (error) {toast({title:"לא ניתן לשמור הקלטה",description:String(error),variant:"destructive"});}
       };
       rec.start(); setRecording(true);
-    } catch(error) {recordingStreamRef.current?.getTracks().forEach(t=>t.stop());toast({title:"לא ניתן להתחיל הקלטה",description:String(error),variant:"destructive"});}
+    } catch(error) {recordingStreamRef.current?.getTracks().forEach(t=>t.stop());recordingTargetRef.current=null;toast({title:"לא ניתן להתחיל הקלטה",description:String(error),variant:"destructive"});}
+  };
+
+  const attachAudioFromDevice = async (file: File, parentFileId: string) => {
+    if (!file.type.startsWith("audio/") && !/\.(wav|mp3|m4a|ogg|webm|aac|flac)$/i.test(file.name)) {
+      toast({title:"יש לבחור קובץ שמע",variant:"destructive"});return;
+    }
+    setBusyFiles(true);
+    try{
+      const upload=await workerApi.uploadAttachment(file);
+      if(!upload.success||!upload.data)throw new Error(upload.error||"העלאת שמע נכשלה");
+      const record=addFile({studentId,name:file.name,kind:"upload",mimeType:file.type||"audio/mpeg",size:file.size,
+        parentFileId,webViewLink:upload.data.webViewLink,dropboxPath:upload.data.path});
+      setRefreshTick(n=>n+1);
+      await verifySavedFile(record.id);
+      toast({title:"קובץ השמע צורף ואומת"});
+      setOpenChoices(null);
+    }catch(e){toast({title:"קובץ השמע לא אומת",description:String(e),variant:"destructive"});}
+    finally{setBusyFiles(false);setLinkedAudioParent(null);}
   };
 
   const resetAddForm = () => {
@@ -329,6 +353,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
         toast({title:"עריכה אינה זמינה לסוג קובץ זה",description:"הקובץ המקורי נשמר ללא שינוי. ניתן לפתוח אותו במכשיר או להוריד.",variant:"destructive"});
         return;
       }
+      if(!kind)throw new Error("סוג קובץ זה אינו נתמך בעריכה");
       const blob = await fetchBlob(fe.webViewLink);
 
       openEditorForEdit(baseNameWithoutExt(fe.name) || "עריכה", { kind, blob }, fe);
@@ -432,7 +457,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate font-medium">{f.name}</div>
-                    <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} • {getFileCategory(f)} {f.subject ? `• ${f.subject}` : ""} {f.tags?.length ? `• ${f.tags.join(", ")}` : ""}</div>
+                    <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} • {getFileCategory(f)} {f.parentFileId ? `• צורף לדף: ${files.find(parent=>parent.id===f.parentFileId)?.name||"קובץ קודם"}` : ""} {f.subject ? `• ${f.subject}` : ""} {f.tags?.length ? `• ${f.tags.join(", ")}` : ""}</div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {isReading && <Button variant="secondary" onClick={() => setVisibleReadingId(isOpen ? null : f.id)}>{isOpen ? 'סגירת תווים' : 'הצגת התווים כאן'}</Button>}
@@ -461,15 +486,19 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
               if (!openChoices) return;
               try {
                 const kind = inferKindFromNameOrMime(openChoices.name, openChoices.mimeType);
-                const blob = await fetchBlob(openChoices.webViewLink);
-                if (getFileCategory(openChoices) === "קובץ שמע" || openChoices.kind === "link") {
+                if (!kind || ["קובץ שמע","הקלטה"].includes(getFileCategory(openChoices)) || openChoices.kind === "link") {
                   toast({title:"סוג קובץ שאינו נתמך",description:"אפשר לפתוח במכשיר או להוריד קובץ זה",variant:"destructive"}); return;
                 }
+                const blob = await fetchBlob(openChoices.webViewLink);
                 openEditorForEdit(baseNameWithoutExt(openChoices.name), {kind, blob}, openChoices);
                 setOpenChoices(null);
               } catch (e) { toast({title:"לא ניתן לפתוח בעורך",description:String(e),variant:"destructive"}); }
             }}>פתיחה בעורך לעריכה</Button>
             <Button variant="secondary" onClick={() => { if (openChoices) window.open(openChoices.webViewLink, "_blank", "noopener,noreferrer"); setOpenChoices(null); }}>פתיחה במכשיר</Button>
+            {openChoices && !["הקלטה","קובץ שמע"].includes(getFileCategory(openChoices)) && <>
+              <Button variant="secondary" onClick={()=>{if(openChoices){void toggleRecording(openChoices.id);setOpenChoices(null);}}}>הקלטה חדשה מצורפת לדף</Button>
+              <Button variant="secondary" disabled={busyFiles} onClick={()=>{setLinkedAudioParent(openChoices.id);linkedAudioInput.current?.click();}}>צירוף קובץ שמע מהמכשיר</Button>
+            </>}
             <Button variant="secondary" onClick={() => {
               if (!openChoices) return;
               const a = document.createElement("a"); a.href = openChoices.webViewLink; a.download = openChoices.name; a.rel = "noopener noreferrer"; document.body.appendChild(a); a.click(); a.remove(); setOpenChoices(null);
@@ -486,6 +515,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
         <Button disabled={!readingItemId||busyFiles} onClick={()=>void addNotationFromEngine()}>{busyFiles?"מעביר תווים…":"צירוף לתלמידה"}</Button>
       </DialogContent>
       </Dialog>
+      <input ref={linkedAudioInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.webm" className="hidden" aria-label="קובץ שמע לצירוף לדף" onChange={e=>{const f=e.target.files?.[0];if(f&&linkedAudioParent)void attachAudioFromDevice(f,linkedAudioParent);e.target.value="";}} />
       {/* Add dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-xl">
