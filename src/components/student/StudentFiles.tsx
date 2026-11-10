@@ -403,6 +403,10 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
   };
 
   const handleDelete = async (file: FileEntry) => {
+    if (!cloudWriteAuthorized) {
+      toast({title:"הסרת שיוך בענן אינה זמינה ללא הרשאה מאובטחת",variant:"destructive"});
+      return;
+    }
     try {
       // Remove only this student assignment. Do not delete the shared Dropbox attachment:
       // the same source may still be referenced by another student or the teacher library.
@@ -528,7 +532,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
               <Button variant="secondary" onClick={()=>{if(openChoices){void toggleRecording(openChoices.id);setOpenChoices(null);}}}>הקלטה חדשה מצורפת לדף</Button>
               <Button variant="secondary" disabled={busyFiles} onClick={()=>{setLinkedAudioParent(openChoices.id);linkedAudioInput.current?.click();}}>צירוף קובץ שמע מהמכשיר</Button>
             </>}
-            <Button variant="secondary" onClick={() => {if(openChoices)setMetadataFile(openChoices);setOpenChoices(null);}}>עריכת שם, נושא ותגיות</Button>
+            {cloudWriteAuthorized && <Button variant="secondary" onClick={() => {if(openChoices)setMetadataFile(openChoices);setOpenChoices(null);}}>עריכת שם, נושא ותגיות</Button>}
             <Button variant="secondary" onClick={async () => {
               const file=openChoices;if(!file)return;
               try {
@@ -556,7 +560,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       </DialogContent>
       </Dialog>
       <input ref={linkedAudioInput} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.webm" className="hidden" aria-label="קובץ שמע לצירוף לדף" onChange={e=>{const f=e.target.files?.[0];if(f&&linkedAudioParent)void attachAudioFromDevice(f,linkedAudioParent);e.target.value="";}} />
-      <Dialog open={!!metadataFile} onOpenChange={v=>{if(!v)setMetadataFile(null)}}>
+      <Dialog open={!!metadataFile && cloudWriteAuthorized} onOpenChange={v=>{if(!v)setMetadataFile(null)}}>
         <DialogContent className="max-w-xl">
           <DialogHeader><DialogTitle>פרטי קובץ ותגיות</DialogTitle></DialogHeader>
           {metadataFile && <StudentFileMetadataEditor file={metadataFile} onCancel={()=>setMetadataFile(null)}
