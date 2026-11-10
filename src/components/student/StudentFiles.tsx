@@ -94,7 +94,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     const collator = new Intl.Collator("he");
     return all.filter(f => f.studentId === studentId).sort((a, b) => {
       if (sortBy === "name") return collator.compare(a.name, b.name);
-      if (sortBy === "topic") return collator.compare(a.description || "", b.description || "") || collator.compare(a.name, b.name);
+      if (sortBy === "topic") return collator.compare(a.subject || a.description || "", b.subject || b.description || "") || collator.compare(a.name, b.name);
       if (sortBy === "type") return collator.compare(getFileCategory(a), getFileCategory(b)) || collator.compare(a.name, b.name);
       return (b.uploadDate || "").localeCompare(a.uploadDate || "");
     });
@@ -281,7 +281,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
     }
   };
 
-  const handleEditorSave = async (payload: { fileNameBase: string; png: Blob; pdf: Blob }) => {
+  const handleEditorSave = async (payload: { fileNameBase: string; png: Blob; pdf: Blob; subject: string; tags: string[] }) => {
     try {
       const base = payload.fileNameBase;
       const stamp = nowStamp();
@@ -299,6 +299,8 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
       addFile({
         studentId,
         name: `${finalBase}.pdf`,
+        subject: payload.subject,
+        tags: payload.tags,
         webViewLink: upPdf.data.webViewLink,
         dropboxPath: upPdf.data.path,
         mimeType: upPdf.data.type || "application/pdf",
@@ -346,7 +348,7 @@ export default function StudentFiles({ studentId }: StudentFilesProps) {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate font-medium">{f.name}</div>
-                    <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} • {getFileCategory(f)}</div>
+                    <div className="text-xs opacity-70">{new Date(f.uploadDate).toLocaleString("he-IL")} • {getFileCategory(f)} {f.subject ? `• ${f.subject}` : ""} {f.tags?.length ? `• ${f.tags.join(", ")}` : ""}</div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {isReading && <Button variant="secondary" onClick={() => setVisibleReadingId(isOpen ? null : f.id)}>{isOpen ? 'סגירת תווים' : 'הצגת התווים כאן'}</Button>}
