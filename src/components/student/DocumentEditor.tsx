@@ -230,6 +230,7 @@ export default function DocumentEditor(props: {
 
   const [tool, setTool] = useState<ToolMode>("pen");
   const [penSize, setPenSize] = useState<number>(6);
+  const [inkColor, setInkColor] = useState("#111111");
   const [zoom, setZoom] = useState<number>(1);
 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -427,11 +428,11 @@ export default function DocumentEditor(props: {
       ctx.lineWidth = penSize * 2;
     } else if (tool === "marker") {
       ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = "rgba(255, 205, 0, 0.35)";
+      ctx.strokeStyle = inkColor + "59";
       ctx.lineWidth = penSize * 2.4;
     } else {
       ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = "rgba(0,0,0,0.95)";
+      ctx.strokeStyle = inkColor;
       ctx.lineWidth = penSize;
     }
 
@@ -469,7 +470,7 @@ export default function DocumentEditor(props: {
 
     ctx.save();
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(0,0,0,0.95)";
+    ctx.fillStyle = inkColor;
     ctx.textBaseline = "top";
 
     const fontSize = Math.max(18, Math.round(penSize * 3));
@@ -630,6 +631,10 @@ export default function DocumentEditor(props: {
                 טקסט (T)
               </button>
 
+              <label style={{ display: "grid", gap: 4, color: "white", fontSize: 12 }}>צבע כתיבה
+                <input aria-label="צבע כתיבה" type="color" value={inkColor} onChange={(e) => setInkColor(e.target.value)} />
+              </label>
+              <button type="button" onClick={() => setInkColor("#ffffff")} title="כתיבה לבנה לכיסוי תוכן על דף כתוב" style={toolButtonStyle(false)}>לבן</button>
               <div style={{ display: "grid", gap: 4, minWidth: 160 }}>
                 <div style={{ fontSize: 12, opacity: 0.85, color: "white" }}>עובי</div>
                 <input type="range" min={2} max={18} value={penSize} onChange={(e) => setPenSize(Number(e.target.value))} />
