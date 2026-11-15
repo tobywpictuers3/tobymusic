@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index,follow">
+<meta name="description" content="התנסות אינטראקטיבית במערכת TOBY Music עם נתוני הדגמה בלבד.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'">
+<title>התנסות במערכת התלמידות | TOBY Music</title>
+<style>
+:root{color-scheme:light;--ink:#271c20;--burgundy:#762f47;--gold:#b48a43;--cream:#f7f3eb;--line:#e8dac5;--muted:#786b6c;--surface:#fffefa;--success:#276a4e;--danger:#a33d41;--shadow:0 16px 40px #60462513}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#fcfaf6 10%,#f5eee6 65%,#f8f4ed);font-family:Arial,"Noto Sans Hebrew",sans-serif;color:var(--ink);line-height:1.55}
+button,input,select,textarea{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid #b78b42;outline-offset:2px}
+a{color:var(--burgundy)}.shell{max-width:1260px;margin:0 auto;padding:22px 18px 70px}
+header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:18px}
+.brand{font-size:27px;font-family:Georgia,serif;letter-spacing:1px;color:#64334b;font-weight:800}.brand span{color:#ae8440}
+.label{font-size:12px;font-weight:700;color:var(--gold);letter-spacing:.08em}.muted{color:var(--muted)}.compact{font-size:13px}
+.btn{border:1px solid #bfaa85;border-radius:11px;padding:9px 15px;background:var(--surface);color:#56293c;font-weight:700;white-space:normal;line-height:1.4}.btn:hover{background:#fbefdd}.btn.primary{background:var(--burgundy);color:#fff;border-color:var(--burgundy)}.btn.primary:hover{background:#60273a}.btn.small{font-size:13px;padding:6px 10px}.btn:disabled{opacity:.55;cursor:not-allowed}
+.hero{display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:32px 0 22px}.hero h1{font-family:Georgia,serif;font-size:clamp(27px,4vw,42px);line-height:1.2;margin:6px 0}.hero p{max-width:660px;margin:0}.hero .pill{font-size:12px;background:#f3e2c8;color:#68411d;border:1px solid #e5c18f;padding:7px 12px;border-radius:100px;font-weight:bold}
+.notice{background:#fff8e9;border-right:4px solid var(--gold);border-radius:12px;padding:12px 16px;font-size:14px;margin-bottom:18px}
+.layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:22px;align-items:start}
+.sidebar{border:1px solid var(--line);border-radius:18px;background:#fffdf8;box-shadow:var(--shadow);padding:13px;display:grid;gap:7px;position:sticky;top:14px}
+.tab{display:flex;align-items:center;gap:10px;border:0;border-radius:11px;background:transparent;text-align:right;padding:12px;color:#5c4e4e;width:100%;font-weight:700}.tab.active{background:#f3e7d6;color:#652a41}.tab:hover{background:#f8f0e5}
+.content{min-width:0}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.stat,.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}.stat .num{font-size:27px;color:var(--burgundy);font-weight:800}.stat .caption{color:var(--muted);font-size:13px}
+.card{margin-bottom:16px}.card h2,.card h3{margin:0 0 11px}.card h2{font-size:23px}.card h3{font-size:18px}
+.toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:13px}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+table{border-collapse:collapse;width:100%;min-width:550px}th,td{padding:12px 10px;text-align:right;border-bottom:1px solid #eee1cf;font-size:14px;vertical-align:middle}th{font-size:12px;color:#7d6d67;white-space:nowrap;background:#fbf6ed}tr:last-child td{border-bottom:0}.table-wrap{overflow:auto;border-radius:12px;border:1px solid #f2e8db}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.wide{grid-column:1/-1}.field{display:grid;gap:5px;margin:9px 0}.field label{font-weight:700;font-size:13px}.field input,.field select,.field textarea{width:100%;border:1px solid #d9c8ac;background:#fff;padding:9px 11px;border-radius:8px;color:#35272b}
+.field textarea{min-height:90px;resize:vertical}.badge{display:inline-block;border-radius:100px;background:#e6f1e9;color:#286748;font-size:12px;font-weight:700;padding:4px 9px}.badge.warning{background:#fff0d5;color:#8a5824}.badge.error{background:#fce7e4;color:#963d3e}.selection{color:#744259;font-weight:800}
+.empty{padding:18px;background:#f9f2e7;border-radius:12px;color:#7c6970}.footer{margin:26px auto 0;text-align:center;color:var(--muted);font-size:12px}
+.keyboard-note{margin:0 0 8px;padding:9px 12px;border-radius:10px;background:#f8eddd;color:#79512c}
+@media(max-width:940px){.layout{grid-template-columns:1fr}.sidebar{position:static;grid-template-columns:repeat(3,minmax(0,1fr))}.tab{justify-content:center;font-size:13px;padding:10px 6px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.grid{grid-template-columns:1fr}.sidebar{grid-template-columns:repeat(2,minmax(0,1fr))}.shell{padding:14px 10px 50px}.hero{padding:24px 3px 18px}.card,.stat{padding:14px}.brand{font-size:23px}}
+</style>
+</head>
+<body>
+<div class="shell">
+<header><div><div class="brand">TOBY <span>music</span></div><div class="muted compact">מערכת התלמידות · מרחב התנסות ציבורי</div></div>
+<div class="actions"><a class="btn small" href="https://tobymusic.club/platform" rel="noopener">חזרה לסיור המודרך</a><button id="resetDemo" class="btn small" type="button">↻ איפוס הדמו</button></div></header>
+<section class="hero"><div><div class="label">הכירי את המערכת מבפנים</div><h1>ככה ניהול תלמידות<br>יכול להרגיש</h1><p class="muted">נסי לבחור תלמידה, לשנות סטטוס של שיעור, לרשום תשלום ולהיכנס לאזור האישי. כל מה שתעשי כאן נוגע לנתונים בדיוניים בלבד.</p></div><div class="pill">✓ 10 תלמידות דמה · ללא הרשמה</div></section>
+<div class="notice" role="note"><strong>סביבת הדגמה בלבד.</strong> אין כאן תלמידות אמיתיות, שליחת מיילים, חיוב כספי או גישה לנתוני הניהול שלך. השינויים נראים מיד במסך ונמחקים כשמרעננים את הדף.</div>
+<div class="layout"><nav class="sidebar" aria-label="ניווט במרחב ההתנסות" id="demoNav"></nav><main class="content" id="demoContent" aria-live="polite"></main></div>
+<div class="footer">TOBY music · הדגמה אינטראקטיבית עצמאית · כל הפעולות בדפדפן שלך בלבד</div>
+</div>
+<script>
+(function(){
+'use strict';
+// Public demo must NEVER import production auth, Worker API, Dropbox sync or sessions.
+const names=[['שרה','כהן'],['רחל','לוי'],['מירי','אברהם'],['אסתר','פרידמן'],['חני','גולדברג'],['לאה','רוזנברג'],['תמר','ויסמן'],['דבורה','קליין'],['נועה','שטרן'],['יהודית','ברק']];
+const nav=[['overview','◈','סקירה'],['students','♬','תלמידות'],['lessons','▦','יומן שיעורים'],['payments','₪','תשלומים'],['schedule','◷','מערכת שבועית'],['practice','✧','מעקב אימונים'],['personal','☆','אזור אישי']];
+const DAYS=['ראשון','שני','שלישי'];
+const dates=['2026-09-10','2026-10-08','2026-11-05'];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nis=n=>Number(n||0).toLocaleString('he-IL')+' ₪';
+const date=d=>d?new Date(d+'T12:00:00').toLocaleDateString('he-IL'):'—';
+const nId=i=>'demo-student-'+String(i+1).padStart(2,'0');
+const time=i=>String(14+Math.floor(i/2)).padStart(2,'0')+':'+(i%2===0?'00':'30');
+function makeData(){
+ const students=names.map((name,i)=>({id:nId(i),first:name[0],last:name[1],track:i===2||i===6?'per_lesson':'annual',annual:i%3===0?5400:4800,price:150,active:true,start:i===4?'2026-10-01':'2026-09-01',notes:'',credits:(i+1)*8}));
+ const lessons=students.flatMap((s,i)=>dates.map((d,j)=>({id:'lesson-'+i+'-'+j,studentId:s.id,date:d,hour:time(i),status:'completed',grade:2+(i+j)%4})));
+ students.forEach((s,i)=>lessons.push({id:'upcoming-'+i,studentId:s.id,date:'2026-11-19',hour:time(i),status:'scheduled',grade:0}));
+ const payments=students.flatMap((s,i)=>['2026-09','2026-10','2026-11'].map((m,j)=>({id:'payment-'+i+'-'+j,studentId:s.id,month:m,amount:s.track==='annual'?s.annual/12:150,status:j===2||i===3&&j===1?'pending':'paid'})));
+ const practice=students.map((s,i)=>({studentId:s.id,minutes:45+i*12,sessions:3+i%4}));
+ return {students,lessons,payments,practice};
+}
+let state=makeData(),tab='overview',selected=nId(0),feedback='';
+const student=id=>state.students.find(s=>s.id===id);
+const full=s=>s?esc(s.first+' '+s.last):'תלמידת דמה';
+const statusText={scheduled:'נקבע',completed:'התקיים',cancelled:'בוטל',pending:'ממתין',paid:'שולם'};
+const statusBadge=s=>'<span class="badge'+(s==='pending'||s==='scheduled'?' warning':s==='cancelled'?' error':'')+'">'+(statusText[s]||esc(s))+'</span>';
+const linkBtn=(action,id,label,primary)=>'<button type="button" class="btn small'+(primary?' primary':'')+'" data-action="'+action+'" data-id="'+esc(id)+'">'+label+'</button>';
+function setMessage(m){feedback=m;render();}
+function summaryCards(){
+ const due=state.payments.filter(p=>p.status!=='paid').reduce((n,p)=>n+p.amount,0);
+ const held=state.lessons.filter(l=>l.status==='completed').length;
+ return '<div class="stats"><div class="stat"><div class="num">'+state.students.length+'</div><div class="caption">תלמידות רשומות</div></div><div class="stat"><div class="num">'+held+'</div><div class="caption">שיעורים שהתקיימו</div></div><div class="stat"><div class="num">'+state.lessons.filter(l=>l.status==='scheduled').length+'</div><div class="caption">שיעורים קרובים</div></div><div class="stat"><div class="num">'+nis(due)+'</div><div class="caption">תשלומים להשלמה (דמה)</div></div></div>';
+}
+function rowLessons(ls,includeStudent){
+ return '<div class="table-wrap"><table><thead><tr>'+(includeStudent?'<th>תלמידה</th>':'')+'<th>תאריך</th><th>שעה</th><th>סטטוס</th><th>פעולה</th></tr></thead><tbody>'+ls.map(l=>'<tr>'+(includeStudent?'<td>'+full(student(l.studentId))+'</td>':'')+'<td>'+date(l.date)+'</td><td>'+esc(l.hour)+'</td><td>'+statusBadge(l.status)+'</td><td>'+linkBtn('cycleLesson',l.id,'שני סטטוס')+'</td></tr>').join('')+'</tbody></table></div>';
+}
+function overview(){
+ const s=student(selected);
+ return summaryCards()+'<div class="grid"><section class="card"><h2>מה אפשר לנסות?</h2><p>הדגמה מעשית של ניהול התלמידות, היומן והגבייה. כל כפתור פועל על עותק זמני וניתן לחזור למצב ההתחלתי בלחיצה.</p><div class="actions">'+linkBtn('tab','students','פתיחת רשימת תלמידות',true)+linkBtn('tab','payments','רישום תשלומים')+'</div></section><section class="card"><h2>תלמידה לדוגמה</h2><p class="selection">'+full(s)+'</p><p class="muted">מסלול '+(s.track==='annual'?'שנתי':'לפי שיעור')+' · התחלה '+date(s.start)+'</p><div class="actions">'+linkBtn('tab','personal','לצפייה באזור האישי',true)+linkBtn('tab','lessons','ליומן שיעורים')+'</div></section></div><section class="card"><h2>שיעורים קרובים</h2>'+rowLessons(state.lessons.filter(l=>l.status==='scheduled').slice(0,5),true)+'</section>';
+}
+function students(){
+ return '<section class="card"><div class="toolbar"><div><h2>ניהול תלמידות</h2><div class="muted compact">10 תלמידות בדיוניות, כולל מסלולים שנתיים ולפי שיעור</div></div></div><div class="table-wrap"><table><thead><tr><th>שם</th><th>מסלול</th><th>תשלום</th><th>מצב</th><th>כרטיס תלמידה</th></tr></thead><tbody>'+state.students.map(s=>'<tr><td>'+full(s)+'</td><td>'+(s.track==='annual'?'שנתי':'לפי שיעור')+'</td><td>'+nis(s.track==='annual'?s.annual:s.price)+'</td><td>'+statusBadge(s.active?'completed':'cancelled')+'</td><td>'+linkBtn('selectStudent',s.id,'פתיחת כרטיס')+'</td></tr>').join('')+'</tbody></table></div></section>'+studentCard();
+}
+function studentCard(){
+ const s=student(selected);const ls=state.lessons.filter(l=>l.studentId===s.id);
+ return '<section class="card"><div class="toolbar"><h2>כרטיס תלמידה — '+full(s)+'</h2><span class="badge">דמה בלבד</span></div><div class="grid"><div><div class="field"><label for="demoStudent">תלמידה נבחרת</label><select id="demoStudent">'+state.students.map(item=>'<option value="'+item.id+'"'+(item.id===s.id?' selected':'')+'>'+full(item)+'</option>').join('')+'</select></div><div class="field"><label for="trackChoice">מסלול תשלום</label><select id="trackChoice"><option value="annual"'+(s.track==='annual'?' selected':'')+'>שנתי</option><option value="per_lesson"'+(s.track==='per_lesson'?' selected':'')+'>לפי שיעור</option></select></div></div><div><div class="field"><label for="demoAmount">מחיר '+(s.track==='annual'?'שנתי':'לשיעור')+' (₪)</label><input type="number" id="demoAmount" min="0" max="50000" step="10" value="'+(s.track==='annual'?s.annual:s.price)+'"></div><div class="field"><label for="demoNotes">הערות לתלמידה</label><textarea id="demoNotes" maxlength="250" placeholder="כתבי הערת דמה...">'+esc(s.notes)+'</textarea></div><div class="actions">'+linkBtn('saveCard',s.id,'שמירת שינויים לדמו',true)+'</div></div></div><p class="muted compact">שיעורים רשומים: '+ls.length+' · קרדיטים לדוגמה: '+s.credits+'</p></section>';
+}
+function lessons(){
+ const sorted=[...state.lessons].sort((a,b)=>a.date.localeCompare(b.date)||a.hour.localeCompare(b.hour));
+ return '<section class="card"><div class="toolbar"><div><h2>יומן שיעורים</h2><p class="muted compact">עדכני סטטוס וראי מיד את המונה משתנה בסקירה.</p></div>'+linkBtn('addLesson','', 'הוספת שיעור דמה',true)+'</div>'+rowLessons(sorted,true)+'</section>';
+}
+function payments(){
+ const paid=state.payments.filter(p=>p.status==='paid').reduce((x,p)=>x+p.amount,0);
+ return '<div class="grid"><div class="stat"><div class="num">'+nis(paid)+'</div><div class="caption">שולם בדמו</div></div><div class="stat"><div class="num">'+state.payments.filter(p=>p.status==='pending').length+'</div><div class="caption">תשלומים ממתינים</div></div></div><section class="card"><h2>מעקב תשלומים</h2><p class="muted compact">לחצי על סימון שולם כדי לעדכן תשלום, או שוב כדי להחזיר לממתין. לא מתבצעת סליקה.</p><div class="table-wrap"><table><thead><tr><th>תלמידה</th><th>חודש</th><th>סכום</th><th>מצב</th><th>פעולה</th></tr></thead><tbody>'+state.payments.map(p=>'<tr><td>'+full(student(p.studentId))+'</td><td>'+esc(p.month)+'</td><td>'+nis(p.amount)+'</td><td>'+statusBadge(p.status)+'</td><td>'+linkBtn('togglePayment',p.id,p.status==='paid'?'החזר לממתין':'סמן כשולם',p.status!=='paid')+'</td></tr>').join('')+'</tbody></table></div></section>';
+}
+function schedule(){
+ return '<section class="card"><h2>מערכת שבועית</h2><p class="muted compact">מערכת לדוגמה: עשרה שיעורים בני 30 דקות בשלושה ימים.</p><div class="table-wrap"><table><thead><tr><th>יום</th><th>שעה</th><th>תלמידה</th><th>כרטיס</th></tr></thead><tbody>'+state.students.map((s,i)=>'<tr><td>'+DAYS[i%3]+'</td><td>'+esc(time(i))+'</td><td>'+full(s)+'</td><td>'+linkBtn('selectStudent',s.id,'צפייה')+'</td></tr>').join('')+'</tbody></table></div></section>';
+}
+function practice(){
+ return '<section class="card"><h2>מעקב אימונים</h2><p>הוסיפי 15 דקות אימון לתלמידה נבחרת וראי את הנתונים מתעדכנים.</p><div class="table-wrap"><table><thead><tr><th>תלמידה</th><th>דקות אימון</th><th>מספר אימונים</th><th>פעולה</th></tr></thead><tbody>'+state.practice.map(p=>'<tr><td>'+full(student(p.studentId))+'</td><td>'+p.minutes+'</td><td>'+p.sessions+'</td><td>'+linkBtn('addPractice',p.studentId,'+ 15 דקות')+'</td></tr>').join('')+'</tbody></table></div></section>';
+}
+function personal(){
+ const s=student(selected),p=state.practice.find(p=>p.studentId===s.id),ls=state.lessons.filter(l=>l.studentId===s.id);
+ return '<section class="card"><div class="toolbar"><div><div class="label">אזור אישי לדוגמה</div><h2>שלום, '+esc(s.first)+'!</h2></div><div class="actions"><label class="compact" for="personalStudent">בחירת תלמידה</label><select class="btn" id="personalStudent">'+state.students.map(a=>'<option value="'+a.id+'"'+(a.id===s.id?' selected':'')+'>'+full(a)+'</option>').join('')+'</select></div></div><div class="stats"><div class="stat"><div class="num">'+p.minutes+'</div><div class="caption">דקות אימון</div></div><div class="stat"><div class="num">'+p.sessions+'</div><div class="caption">אימונים</div></div><div class="stat"><div class="num">'+s.credits+'</div><div class="caption">קרדיטים</div></div><div class="stat"><div class="num">'+ls.filter(l=>l.status==='completed').length+'</div><div class="caption">שיעורים שהתקיימו</div></div></div><div class="grid"><div class="card"><h3>המשימה שלי</h3><p>תרגול קצב וקריאת תווים · 15 דקות ביום.</p>'+linkBtn('addPractice',s.id,'רישום 15 דקות אימון',true)+'</div><div class="card"><h3>הודעות מהמורה</h3><p>ברוכה הבאה! תרגול קבוע יעזור לך להתקדם בכל שבוע.</p><p class="muted compact">הודעת דמה בלבד — אין אפשרות לשלוח הודעות אמיתיות.</p></div></div><h3>השיעורים שלי</h3>'+rowLessons(ls,false)+'</section>';
+}
+const views={overview,students,lessons,payments,schedule,practice,personal};
+function render(){
+ document.getElementById('demoNav').innerHTML=nav.map(([id,icon,label])=>'<button type="button" class="tab'+(id===tab?' active':'')+'" data-action="tab" data-id="'+id+'" '+(id===tab?'aria-current="page"':'')+'><span aria-hidden="true">'+icon+'</span> '+label+'</button>').join('');
+ document.getElementById('demoContent').innerHTML=(feedback?'<div class="notice" role="status">'+esc(feedback)+'</div>':'')+views[tab]();
+}
+document.addEventListener('click',function(event){
+ const e=event.target.closest('[data-action]');if(!e)return;
+ const id=e.getAttribute('data-id'),action=e.getAttribute('data-action');feedback='';
+ if(action==='tab'){tab=id;}
+ else if(action==='selectStudent'){selected=id;tab='students';}
+ else if(action==='cycleLesson'){const l=state.lessons.find(x=>x.id===id);if(l){const next={scheduled:'completed',completed:'cancelled',cancelled:'scheduled'};l.status=next[l.status];feedback='סטטוס השיעור עודכן בדמו.';}}
+ else if(action==='addLesson'){const s=student(selected);state.lessons.push({id:'added-'+(state.lessons.length+1),studentId:s.id,date:'2026-11-26',hour:'18:00',status:'scheduled',grade:0});feedback='נוסף שיעור דמה ל'+s.first+'.';}
+ else if(action==='togglePayment'){const p=state.payments.find(x=>x.id===id);if(p){p.status=p.status==='paid'?'pending':'paid';feedback='מצב התשלום עודכן בדמו בלבד.';}}
+ else if(action==='addPractice'){const p=state.practice.find(x=>x.studentId===id);if(p){p.minutes+=15;p.sessions++;feedback='נרשמו 15 דקות אימון לדוגמה.';}}
+ else if(action==='saveCard'){const s=student(id);const track=document.getElementById('trackChoice').value;const amount=Number(document.getElementById('demoAmount').value);if(!Number.isFinite(amount)||amount<0||amount>50000){feedback='הכניסי סכום בין 0 ל־50,000';}else{s.track=track;if(track==='annual')s.annual=amount;else s.price=amount;s.notes=document.getElementById('demoNotes').value.slice(0,250);state.payments.filter(p=>p.studentId===id).forEach(p=>p.amount=track==='annual'?amount/12:amount);feedback='כרטיס התלמידה עודכן בדמו בלבד.';}}
+ render();
+});
+document.addEventListener('change',function(event){const e=event.target;if(e.id==='demoStudent'||e.id==='personalStudent'){selected=e.value;feedback='';render();}});
+document.getElementById('resetDemo').addEventListener('click',function(){state=makeData();selected=nId(0);tab='overview';feedback='סביבת הדמו אופסה בהצלחה.';render();});
+render();
+}());
+</script>
+</body>
+</html>
