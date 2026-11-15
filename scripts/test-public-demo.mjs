@@ -8,7 +8,7 @@ assert.equal(scripts.length, 1, 'Demo must be standalone and have exactly one in
 const script = scripts[0][1];
 assert.doesNotThrow(() => new vm.Script(script), 'Demo JavaScript syntax');
 assert.match(html, /connect-src 'none'/, 'Browser Content Security Policy prevents API calls.');
-assert.doesNotMatch(script, /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|localStorage|sessionStorage|workerApi|hybridSync|Dropbox|Gmail/);
+assert.doesNotMatch(script.replace(/^\s*\/\/.*$/gm, ''), /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|localStorage|sessionStorage|workerApi|hybridSync|Dropbox|Gmail/);
 assert.match(html, /נתוני הדגמה|נתוני דמה/);
 assert.match(html, /id="resetDemo"/);
 assert.equal((script.match(/\['[\u0590-\u05FF]+','[\u0590-\u05FF]+'\]/g) || []).length, 10, 'Exactly ten fictional students');
