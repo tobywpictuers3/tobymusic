@@ -531,3 +531,14 @@ The payment data model already contains all 12 academic months, September throug
 - The fixtures are permanent **in source** and reappear after each browser reload, but edits to the developer copy are intentionally ephemeral. Do not implement demo persistence using production JSON/Dropbox.
 - `/dev-admin` is **not** a public marketing demo. A visitor-facing trial should be a separately audited, isolated route or deployment with no production credentials, no external sends/uploads, user-session reset, safe rate limits and a prominent “נתוני הדגמה” label; do not make existing developer credentials or internal endpoints public.
 - Source changes require GitHub CI, Lovable parity/published-revision checks and a live Cloudflare student-asset verification before declaring deployment complete.
+
+
+## 2026-11-15 — Public marketing demo without production connections
+
+- `public/demo/index.html` is a **standalone static HTML+JS** interactive sampler that is packaged by the existing Vite production build and served from `/demo/index.html`. It intentionally does not mount `AdminDashboard`, `hybridSync`, or `workerApi`, authenticate users, or load canonical Dropbox JSON.
+- The demo presents exactly 10 synthetic students with stable IDs; visitors can select student records, inspect and update the lesson journal, change pending payments, view the weekly schedule, add fictitious practice minutes, and preview a student area. All state lives in a JavaScript variable; reload or reset reconstructs the seed. No data is stored between sessions.
+- HTML CSP sets `connect-src 'none'` and `default-src 'none'`, disallowing network/XHR/WebSocket calls by construction. No uploads, email, billing, credentials, phone calls, data import, or real client records.
+- This is deliberately a limited **self-contained demo of representative workflows**, not an unlocked instance of the privileged manager app. A more complete trial requires an independent audited backend/security boundary; never expose `/dev-admin` or production credentials.
+- `scripts/test-public-demo.mjs` executes demo script in an isolated mocked DOM, verifies 10 fixtures, key interactions/reset and lack of backend APIs. It is now part of the repository's `prebuild` command.
+- The public site `tobywpictuers3/tobymusic-club-repo` links to `https://students.tobymusic.club/demo/index.html` from its /platform and /students system sections, not from the home page.
+- Both student endpoints `https://students.tobymusic.club` (Cloudflare) and `https://tobymusic.lovable.app` (Lovable) refer to the platform. Lovable code parity, Lovable's published version and the Cloudflare asset each require independent verification.
