@@ -1,5 +1,6 @@
 import { Student, Lesson, Payment, SwapRequest, FileEntry, ScheduleTemplate, IntegrationSettings, Performance, PerformancePayment, OneTimePayment, PerLessonPayment, PerLessonLedger, PerLessonLedgerRow, Holiday, PracticeSession, MonthlyAchievement, LeaderboardEntry, MedalRecord, StoreItem, StorePurchase, YearlyLeaderboardEntry } from './types';
 import { hybridSync } from './hybridSync';
+import { mockStudents, mockLessons, mockPayments, mockPerLessonPayments, mockSwapRequests, mockFiles, mockPracticeSessions, mockScheduleTemplates } from './mockData';
 import { logger } from './logger';
 import { isDevMode, setDevMode } from './devMode';
 import { calculateEarnedCopper, formatPriceCompact } from './storeCurrency';
@@ -57,20 +58,24 @@ if (typeof window !== 'undefined') {
 }
 
 // Dev Mode: Completely isolated in-memory storage (no Worker, no sync)
+const cloneDemoData = <T,>(data: T): T => JSON.parse(JSON.stringify(data));
+
+// Seed only the in-memory developer store. Production storage and Dropbox are untouched.
 const devData: Record<string, any> = {
-  students: [],
-  lessons: [],
+  students: cloneDemoData(mockStudents),
+  lessons: cloneDemoData(mockLessons),
   calendar: [],
-  payments: [],
-  scheduleTemplates: [],
-  swapRequests: [], // New field for swap requests
-  files: [],
+  payments: cloneDemoData(mockPayments),
+  scheduleTemplates: cloneDemoData(mockScheduleTemplates),
+  swapRequests: cloneDemoData(mockSwapRequests), // New field for swap requests
+  files: cloneDemoData(mockFiles),
   teacherFileMasters: [],
   integrationSettings: {},
   performances: [],
   oneTimePayments: [],
+  perLessonPayments: cloneDemoData(mockPerLessonPayments),
   holidays: [],
-  practiceSessions: [],
+  practiceSessions: cloneDemoData(mockPracticeSessions),
   monthlyAchievements: [],
   leaderboard: [],
   medals: [],
