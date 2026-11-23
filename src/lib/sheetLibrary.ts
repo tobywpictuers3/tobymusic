@@ -110,13 +110,17 @@ export const normalizeText = (s: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-const haystackCache = new WeakMap<SheetPiece, { all: string; title: string }>();
+/** Spelling-tolerant form: drop ו / י / א inside Hebrew words (מינואט = מנואט, ואלס = וולס). */
+export const skeleton = (normalized: string) =>
+  normalized.split(' ').map((w) => (/[א-ת]/.test(w) ? w[0] + w.slice(1).replace(/[ויא]/g, '') : w)).join(' ');
+
+const haystackCache = new WeakMap<SheetPiece, { all: string; title: string; allSk: string; titleSk: string }>();
 const hay = (p: SheetPiece) => {
   let h = haystackCache.get(p);
   if (!h) {
     const title = normalizeText(`${p.title} ${p.fileTitle}`);
     const all = normalizeText([p.title, p.fileTitle, p.composer, p.arranger, p.lyricist, p.folder, p.key, p.ensemble, p.time, ...p.instruments, ...p.parts.map((x) => x.name)].join(' '));
-    h = { all, title };
+    h = { all, title, allSk: skeleton(all), titleSk: skeleton(title) };
     haystackCache.set(p, h);
   }
   return h;
@@ -140,12 +144,13 @@ export function filterPieces(pieces: SheetPiece[], f: SheetFilters): SheetPiece[
     if (f.key && p.key.replace(' (משוער)', '') !== f.key) continue;
     if (!tokens.length) { scored.push({ p, s: p.numericName ? 0 : 1 }); continue; }
     const h = hay(p);
-    if (!tokens.every((t) => h.all.includes(t))) continue;
+    if (!tokens.every((t) => h.all.includes(t) || h.allSk.includes(skeleton(t)))) continue;
     let s = 1;
     const q = tokens.join(' ');
     if (h.title.startsWith(q)) s += 6;
     else if (h.title.includes(q)) s += 4;
-    s += tokens.filter((t) => h.title.includes(t)).length;
+    else if (h.titleSk.includes(skeleton(q))) s += 3;
+    s += tokens.filter((t) => h.title.includes(t) || h.titleSk.includes(skeleton(t))).length;
     if (p.numericName) s -= 2;
     scored.push({ p, s });
   }
