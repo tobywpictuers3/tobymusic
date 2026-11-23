@@ -5,7 +5,8 @@
  */
 import { getWorkerCredentials } from './workerAuth';
 
-export const SHEETS_ORIGIN = 'https://toby-sheets.w0504124161.workers.dev';
+// Reached through the students API address (allowed by NetFree); the library Worker checks the manager code.
+export const SHEETS_ORIGIN = 'https://lovable-dropbox-api.w0504124161.workers.dev/sheets';
 
 export interface SheetPart { name: string; file: string }
 export interface SheetPiece {
