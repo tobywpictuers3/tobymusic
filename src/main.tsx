@@ -9,8 +9,9 @@ import { ThemeProvider } from "./brand/ThemeProvider";
 import { ensureBrandStylesheets } from "./brand/BrandProvider";
 
 import { hybridSync } from "./lib/hybridSync";
+import { installWorkerAuthHeaders, isStudentWithoutCode } from "./lib/workerAuth";
 import { logger } from "./lib/logger";
-import { setDevMode } from "./lib/storage";
+import { setCurrentUser, setDevMode } from "./lib/storage";
 import {
   hydrateTithePaidFromHistory,
   installTitheHistoryMergeGuard,
@@ -175,6 +176,14 @@ async function initializeApp() {
     // Install the append-only tithe merge rule before the first Worker load,
     // so an older cloud snapshot cannot erase newer tithe history events.
     installTitheHistoryMergeGuard();
+
+    // Every Worker request carries the logged-in user's code. A student who
+    // logged in before codes were checked by the server logs in once more.
+    installWorkerAuthHeaders();
+    if (!isDevModeActive && isStudentWithoutCode()) {
+      setCurrentUser(null);
+      if (window.location.pathname.startsWith("/student/")) window.history.replaceState(null, "", "/");
+    }
 
     await hybridSync.loadDataOnInit();
     hydrateTithePaidFromHistory();

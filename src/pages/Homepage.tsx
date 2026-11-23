@@ -13,6 +13,8 @@ import { SiteLink } from "@/brand/SiteLink";
 import { ASSETS } from "@/brand/assets";
 import BsiataDishmaya from "@/components/ui/BsiataDishmaya";
 import { verifyAdminCode, verifyDevCode, verifyPublicCode } from "@/lib/authCodes";
+import { hybridSync } from "@/lib/hybridSync";
+import { checkWorkerAccess, setPendingStudentCode } from "@/lib/workerAuth";
 
 const Homepage = () => {
   const [adminCode, setAdminCode] = useState("");
@@ -20,13 +22,27 @@ const Homepage = () => {
   const navigate = useNavigate();
   const { setAccessMode } = useAccessMode();
 
+  const [loggingIn, setLoggingIn] = useState(false);
+
   const handleAdminLogin = async () => {
     if (verifyAdminCode(adminCode)) {
-      setDevMode(false);
-      sessionStorage.removeItem("musicSystem_devMode");
-      setCurrentUser({ type: "admin", adminCode });
-      navigate("/admin");
-      toast({ title: "ברוך הבא!", description: "התחברת כמנהל מערכת" });
+      if (loggingIn) return;
+      setLoggingIn(true);
+      try {
+        const access = await checkWorkerAccess("manager", adminCode);
+        if (access === "denied") {
+          // The browser accepted the code but the server does not know it yet.
+          toast({ title: "שימי לב", description: "קוד המנהלת עדיין לא מעודכן בשרת. הנתונים עלולים לא להיטען.", variant: "destructive" });
+        }
+        setDevMode(false);
+        sessionStorage.removeItem("musicSystem_devMode");
+        setCurrentUser({ type: "admin", adminCode });
+        await hybridSync.loadDataOnInit();
+        navigate("/admin");
+        toast({ title: "ברוך הבא!", description: "התחברת כמנהל מערכת" });
+      } finally {
+        setLoggingIn(false);
+      }
     } else {
       toast({ title: "שגיאה", description: "קוד מנהל שגוי", variant: "destructive" });
     }
@@ -44,7 +60,8 @@ const Homepage = () => {
     }
   };
 
-  const handleStudentLogin = () => {
+  const handleStudentLogin = async () => {
+    if (loggingIn) return;
     if (!studentCode.trim()) {
       toast({ title: "שגיאה", description: "אנא הקישי את הקוד האישי שלך", variant: "destructive" });
       return;
@@ -58,13 +75,36 @@ const Homepage = () => {
       return;
     }
 
-    const students = getStudents();
-    let student = students.find((s) => s.personalCode === studentCode.trim());
-    if (!student) student = students.find((s) => s.phone === studentCode.trim());
+    const code = studentCode.trim();
+    setLoggingIn(true);
+    let student;
+    try {
+      // The server checks the code first; only then is the data loaded.
+      const access = await checkWorkerAccess("student", code);
+      if (access === "too_many") {
+        toast({ title: "יותר מדי ניסיונות", description: "נסי שוב בעוד כמה דקות", variant: "destructive" });
+        return;
+      }
+      if (access === "unavailable") {
+        toast({ title: "אין חיבור לשרת", description: "בדקי את החיבור לאינטרנט ונסי שוב", variant: "destructive" });
+        return;
+      }
+      if (access === "ok") {
+        setPendingStudentCode(code);
+        await hybridSync.loadDataOnInit();
+        const students = getStudents();
+        student = students.find((s) => s.personalCode === code);
+        if (!student) student = students.find((s) => s.phone === code);
+        if (student) setCurrentUser({ type: "student", studentId: student.id, accessCode: code });
+      }
+    } finally {
+      setPendingStudentCode("");
+      setLoggingIn(false);
+    }
 
     if (student) {
       setAccessMode("private");
-      setCurrentUser({ type: "student", studentId: student.id });
+      setCurrentUser({ type: "student", studentId: student.id, accessCode: code });
       navigate(`/student/${student.id}`);
       toast({ title: "ברוכה הבאה לאזור האישי!", description: `שלום ${student.firstName} ${student.lastName}` });
     } else {
@@ -150,6 +190,7 @@ const Homepage = () => {
               </div>
               <Button
                 onClick={handleAdminLogin}
+                disabled={loggingIn}
                 className="w-full btn-confirm font-semibold py-3"
               >
                 כניסה
@@ -179,6 +220,7 @@ const Homepage = () => {
               </div>
               <Button
                 onClick={handleStudentLogin}
+                disabled={loggingIn}
                 className="w-full btn-gold font-semibold py-3"
               >
                 כניסה לאזור אישי

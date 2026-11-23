@@ -10,6 +10,7 @@ import {
 import { recalculateAllMonthlyAchievements } from './recalculateAchievements';
 import { getManagerCode } from './devMode';
 import { downloadCanonicalDropboxLatest } from './canonicalDropboxRead';
+import { hasWorkerCredentials } from './workerAuth';
 
 /**
  * Hybrid Sync Manager - Worker as source of truth, in-memory storage as app state
@@ -434,6 +435,11 @@ class HybridSyncManager {
   async loadDataOnInit(): Promise<void> {
     if (isDevMode()) {
       logger.info('🔧 DEV MODE: Skipping Worker data load');
+      return;
+    }
+
+    if (!hasWorkerCredentials()) {
+      logger.info('🔒 Not logged in: data loads after login');
       return;
     }
 
@@ -999,6 +1005,9 @@ class HybridSyncManager {
       logger.info('🔧 DEV MODE: Worker sync disabled');
       return true;
     }
+
+    // Not logged in yet: nothing to sync (the Worker would refuse anyway).
+    if (!hasWorkerCredentials()) return true;
 
     if (this.isSyncingInternal) {
       this.pendingResync = true;
