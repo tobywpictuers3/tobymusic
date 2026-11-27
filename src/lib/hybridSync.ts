@@ -10,7 +10,7 @@ import {
 import { recalculateAllMonthlyAchievements } from './recalculateAchievements';
 import { getManagerCode } from './devMode';
 import { downloadCanonicalDropboxLatest } from './canonicalDropboxRead';
-import { hasWorkerCredentials } from './workerAuth';
+import { getWorkerCredentials, hasWorkerCredentials } from './workerAuth';
 
 /**
  * Hybrid Sync Manager - Worker as source of truth, in-memory storage as app state
@@ -996,6 +996,7 @@ class HybridSyncManager {
         db: data,
         workerBaseUrl: WORKER_BASE_URL,
         managerCode: getManagerCode(),
+        studentCode: getWorkerCredentials().student,
       });
     });
   }

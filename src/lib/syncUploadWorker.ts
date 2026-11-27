@@ -3,6 +3,7 @@ type WorkerUploadRequest = {
   db: any;
   workerBaseUrl: string;
   managerCode: string;
+  studentCode?: string;
 };
 
 const getWorkerError = (data: any, fallback = 'Worker request failed') => {
@@ -16,7 +17,7 @@ const isFailureEnvelope = (data: any) =>
   data && typeof data === 'object' && (data.success === false || data.ok === false);
 
 self.onmessage = async (event: MessageEvent<WorkerUploadRequest>) => {
-  const { id, db, workerBaseUrl, managerCode } = event.data;
+  const { id, db, workerBaseUrl, managerCode, studentCode } = event.data;
 
   try {
     const params = new URLSearchParams({
@@ -29,6 +30,8 @@ self.onmessage = async (event: MessageEvent<WorkerUploadRequest>) => {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store',
         'X-Sonata-Manager-Code': managerCode || '',
+        // a student's save carries her own code (this thread has no access to the page's fetch wrapper)
+        ...(studentCode ? { 'X-Sonata-Student-Code': studentCode } : {}),
       },
       body: JSON.stringify(db),
       cache: 'no-store',
