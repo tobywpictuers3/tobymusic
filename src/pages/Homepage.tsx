@@ -94,7 +94,6 @@ const Homepage = () => {
         await hybridSync.loadDataOnInit();
         const students = getStudents();
         student = students.find((s) => s.personalCode === code);
-        if (!student) student = students.find((s) => s.phone === code);
         if (student) setCurrentUser({ type: "student", studentId: student.id, accessCode: code });
       }
     } finally {
