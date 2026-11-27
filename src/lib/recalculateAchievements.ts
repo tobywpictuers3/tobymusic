@@ -1,4 +1,4 @@
-import { getStudents, getPracticeSessions, getMonthlyAchievements, updateMonthlyAchievement } from './storage';
+import { getStudents, getPracticeSessions, getMonthlyAchievements, updateMonthlyAchievement, getCurrentUser } from './storage';
 import { logger } from './logger';
 
 /**
@@ -8,7 +8,11 @@ import { logger } from './logger';
 export const recalculateAllMonthlyAchievements = (): void => {
   logger.info('🔄 Recalculating monthly achievements for all students...');
   
-  const students = getStudents();
+  // A student's device only has (and may only save) her own achievements.
+  const user = getCurrentUser();
+  const students = user?.type === 'student'
+    ? getStudents().filter(s => s.id === user.studentId)
+    : getStudents();
   const allSessions = getPracticeSessions();
   
   students.forEach(student => {

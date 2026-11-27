@@ -6,6 +6,7 @@ import {
   initializeStorage,
   isDevMode,
   peekDirtyDataKeys,
+  getCurrentUser,
 } from './storage';
 import { recalculateAllMonthlyAchievements } from './recalculateAchievements';
 import { getManagerCode } from './devMode';
@@ -890,6 +891,7 @@ class HybridSyncManager {
         return false;
       }
 
+      let lastReadBack: any = null;
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         const uploadResult = await this.uploadVersionedOffMainThread(candidate);
         if (!uploadResult.success) {
@@ -903,6 +905,7 @@ class HybridSyncManager {
           return false;
         }
 
+        lastReadBack = readBack.data;
         if (this.localDeltaSatisfied(localDelta, readBack.data)) {
           const cloudContainsOtherChanges =
             this.stableSyncFingerprint(localData) !== this.stableSyncFingerprint(readBack.data);
@@ -925,6 +928,18 @@ class HybridSyncManager {
         // the new canonical latest; never replay unrelated stale buckets from this device.
         candidate = this.mergeDataWithConflictResolution(localDelta, readBack.data);
         logger.warn(`⚠️ Canonical read-back changed during write; retrying merge (${attempt}/3)`);
+      }
+
+      // A student's device may change only her own records; the server ignores anything else
+      // (stage 2). Take the server's copy instead of retrying the refused part forever.
+      if (lastReadBack && getCurrentUser()?.type === 'student' && this.dataVersion === uploadVersion) {
+        logger.warn('⚠️ Server kept its own copy of records this student may not change; adopting it');
+        this.clearVerifiedDirtyDataKeys(dirtyKeys);
+        this.updateInMemoryStorage(lastReadBack);
+        this.persistLocalSnapshot({ full: true });
+        this.emitCanonicalDataApplied();
+        this.setCloudSuccessNow(uploadVersion);
+        return true;
       }
 
       this.setCloudError('CANONICAL_WRITE_NOT_VERIFIED');

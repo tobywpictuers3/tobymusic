@@ -11,7 +11,7 @@ import { ensureBrandStylesheets } from "./brand/BrandProvider";
 import { hybridSync } from "./lib/hybridSync";
 import { installWorkerAuthHeaders, isStudentWithoutCode } from "./lib/workerAuth";
 import { logger } from "./lib/logger";
-import { setCurrentUser, setDevMode } from "./lib/storage";
+import { getCurrentUser, setCurrentUser, setDevMode } from "./lib/storage";
 import {
   hydrateTithePaidFromHistory,
   installTitheHistoryMergeGuard,
@@ -186,7 +186,8 @@ async function initializeApp() {
     }
 
     await hybridSync.loadDataOnInit();
-    hydrateTithePaidFromHistory();
+    // Tithe data is the teacher's; a student's device does not have it.
+    if (getCurrentUser()?.type !== "student") hydrateTithePaidFromHistory();
 
     // Capture the loaded financial baseline, then transparently verify future
     // money-related mutations in the background. This keeps ordinary payment

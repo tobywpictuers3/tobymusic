@@ -1,5 +1,12 @@
 import { Message } from './types';
-import { isDevMode, getDevStore, getStudents, loadLocalMessages, saveLocalMessages, recordTombstones } from './storage';
+import { isDevMode, getDevStore, getStudents, loadLocalMessages, saveLocalMessages, recordTombstones, getCurrentUser } from './storage';
+
+// On a student's device: may this message be removed for everyone? Only one she sent.
+const studentMayRemove = (message?: Message): boolean => {
+  const user = getCurrentUser();
+  if (user?.type !== 'student') return true;
+  return Boolean(message && user.studentId && message.senderId === user.studentId);
+};
 import { hybridSync } from './hybridSync';
 import { workerApi } from './workerApi';
 import { sanitizeHtml } from './sanitize';
@@ -31,7 +38,8 @@ export const getMessages = (): Message[] => {
     .filter(message => message.expiresAt && new Date(message.expiresAt).getTime() <= now)
     .map(message => message.id);
 
-  if (expiredIds.length > 0) {
+  // Expired messages are removed by the teacher's device / the server, not by students.
+  if (expiredIds.length > 0 && getCurrentUser()?.type !== 'student') {
     storage.messages = messages.filter(message => !expiredIds.includes(message.id));
     recordTombstones('messages', expiredIds);
     if (!isDevMode()) {
@@ -428,6 +436,8 @@ export const toggleReaction = (messageId: string, userId: string, emoji: string)
 export const hardDeleteMessage = async (messageId: string): Promise<void> => {
   const messages = getMessages();
   const message = messages.find(m => m.id === messageId);
+  // A student can permanently delete only a message she sent; other messages stay in her trash.
+  if (!studentMayRemove(message)) return;
   
   // Delete attachments from Dropbox first
   if (message?.attachments?.length) {
@@ -450,7 +460,8 @@ export const hardDeleteMessage = async (messageId: string): Promise<void> => {
 // Empty trash for user - also deletes attachments of permanently deleted messages
 export const emptyTrash = async (userId: string): Promise<void> => {
   const messages = getMessages();
-  const trashMessages = messages.filter(m => m.isDeleted?.[userId]);
+  // A student's device removes for good only messages she sent.
+  const trashMessages = messages.filter(m => m.isDeleted?.[userId] && studentMayRemove(m));
   
   // Delete attachments from Dropbox for each trashed message
   if (trashMessages.length > 0) {
@@ -470,8 +481,9 @@ export const emptyTrash = async (userId: string): Promise<void> => {
     }
   }
   
-  recordTombstones('messages', trashMessages.map(m => m.id));
-  saveMessages(messages.filter(m => !m.isDeleted?.[userId]));
+  const removeIds = new Set(trashMessages.map(m => m.id));
+  recordTombstones('messages', [...removeIds]);
+  saveMessages(messages.filter(m => !removeIds.has(m.id)));
 };
 
 // Cascade delete messages for student (Policy C)
