@@ -70,8 +70,44 @@ export const installWorkerAuthHeaders = () => {
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     if (manager && !headers.get('X-Sonata-Manager-Code')) headers.set('X-Sonata-Manager-Code', manager);
     if (!manager && student && !headers.get('X-Sonata-Student-Code')) headers.set('X-Sonata-Student-Code', student);
+    const grants = getSwapGrantHeader();
+    if (!manager && grants && !headers.get('X-Swap-Grant')) headers.set('X-Swap-Grant', grants);
     return originalFetch(input, { ...init, headers });
   };
+};
+
+/* ---------- lesson swap approval ----------
+ * The other student's swap code is checked by the server (browsers no longer receive
+ * other students' swap codes). The server returns a grant valid for 15 minutes; saves
+ * in that time carry it, and only then may a save move lessons between the two students. */
+let swapGrants: { grant: string; until: number }[] = [];
+
+export const getSwapGrantHeader = (): string => {
+  const now = Date.now();
+  swapGrants = swapGrants.filter((g) => g.until > now);
+  return swapGrants.map((g) => g.grant).join(',');
+};
+
+export type SwapAuthorizeResult = 'ok' | 'wrong_code' | 'too_many' | 'unavailable';
+
+export const authorizeSwap = async (targetStudentId: string, targetCode: string): Promise<SwapAuthorizeResult> => {
+  try {
+    const response = await fetch(`${WORKER_ORIGIN}/?action=swap_authorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetStudentId, targetCode: targetCode.trim() }),
+      cache: 'no-store',
+    });
+    if (response.status === 429) return 'too_many';
+    if (response.status === 403) return 'wrong_code';
+    if (!response.ok) return 'unavailable';
+    const data = await response.json().catch(() => ({}));
+    if (!data?.grant) return 'unavailable';
+    swapGrants.push({ grant: String(data.grant), until: Date.now() + 14 * 60e3 });
+    return 'ok';
+  } catch {
+    return 'unavailable';
+  }
 };
 
 export type AccessCheckResult = 'ok' | 'denied' | 'too_many' | 'unavailable';

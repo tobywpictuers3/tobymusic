@@ -25,7 +25,7 @@ interface LeaderboardEntry {
 
 const sourceBadge = (session: PracticeSession) => {
   const source = (session as any).syncSource || (session as any).source;
-  if (source === 'yemot' || String(source || '').startsWith('yemot_')) {
+  if (source === 'yemot' || /^(yemot_|ivr_)/.test(String(source || ''))) {
     return <Badge variant="outline" className="border-blue-500 text-blue-700">מסונכרן מהטלפון</Badge>;
   }
   return <Badge variant="secondary">פלטפורמה</Badge>;

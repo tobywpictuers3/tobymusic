@@ -8,6 +8,7 @@ import { toast } from '@/hooks/use-toast';
 import { Student, Lesson, SwapRequest } from '@/lib/types';
 import { addSwapRequest, performLessonSwap, getLessons, addLesson, updateLesson } from '@/lib/storage';
 import { addMessage } from '@/lib/messages';
+import { authorizeSwap } from '@/lib/workerAuth';
 import { ArrowLeftRight, X, MousePointerClick } from 'lucide-react';
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
@@ -282,14 +283,19 @@ const StudentSwapPanel = forwardRef<StudentSwapPanelRef, StudentSwapPanelProps>(
           throw new Error('תלמידת יעד לא נמצאה');
         }
 
-        // Check if target swap code is valid
-        const isTargetCodeValid = targetSwapCode && targetStudent?.swapCode === targetSwapCode;
+        // The other student's swap code is checked by the server (browsers don't get others' codes).
+        // The server's approval lets this device's next save move lessons between the two of them.
+        const targetCheck = targetSwapCode ? await authorizeSwap(targetStudent.id, targetSwapCode) : 'wrong_code';
 
         // CRITICAL: Both codes MUST be correct - no pending system
-        if (!isMyCodeValid || !isTargetCodeValid) {
+        if (!isMyCodeValid || targetCheck !== 'ok') {
           toast({
             title: 'שגיאה',
-            description: 'שני הקודים חייבים להיות נכונים לביצוע החלפה',
+            description: targetCheck === 'too_many'
+              ? 'יותר מדי ניסיונות. נסי שוב בעוד כמה דקות'
+              : targetCheck === 'unavailable'
+                ? 'אין חיבור לשרת. נסי שוב'
+                : 'שני הקודים חייבים להיות נכונים לביצוע החלפה',
             variant: 'destructive',
           });
           setIsProcessing(false);
